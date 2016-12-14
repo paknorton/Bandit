@@ -40,7 +40,35 @@ import cbh
 REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
            'r10L', 'r10U', 'r11', 'r12', 'r13', 'r14', 'r15', 'r16', 'r17', 'r18']
 
+HRU_DIMS = ['nhru', 'ngw', 'nssr']  # These dimensions are related and should have same size
+
+# Output directory
+outdir = '/Users/pnorton/Projects/National_Hydrology_Model/regions/subset_testing'
+
+# Output parameter filename
+param_filename = 'crap.param'
+
+# Output observation data filename
+obs_filename = 'sf_data'
+
+# Location of CONUS NHM parameter files
 srcdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params'
+
+# Specify downstream-most stream segment for extracting an upstream subset of NHM model
+dsmost_seg = 31126  # 31380  # 31392    # 10
+
+# Location of global NHM parameter xml file
+params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
+
+# Location of NHM parameter database
+workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
+
+# Location of CBH files by region
+cbh_dir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/daymet'
+
+# Date range for pulling NWIS streamgage observations
+st_date = datetime(1979, 10, 1)
+en_date = datetime(2015, 9, 30)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Read hru_nhm_to_local and hru_nhm_to_region
@@ -82,48 +110,37 @@ if not nx.is_directed_acyclic_graph(DAG_ds):
 
 # Create the upstream graph
 print('-'*10 + 'Creating U/S DAG')
-DG2 = DAG_ds.reverse()
+DAG_us = DAG_ds.reverse()
 
 # =======================================
 # Given a d/s segment...
-dsmost_seg = 31126  # 31380  # 31392    # 10
+# dsmost_seg = 31126  # 31380  # 31392    # 10
 
 print('-'*10 + 'Generating subset')
-# start at the segment d/s of it...
-# start_seg = DAG_ds.neighbors(dsmost_seg)[0]
-start_seg = dsmost_seg
-print('\tstart_seg:', start_seg)
+print('\tdsmost_seg:', dsmost_seg)
 
 # then get all segments u/s of the starting segment
-ss1 = nx.dfs_predecessors(DG2, start_seg)
+ss1 = nx.dfs_predecessors(DAG_us, dsmost_seg)
 
 # Get a set of unique node values from the keys and values
-uniq = set(ss1.keys()).union(set(ss1.values()))
-print('\tunique nodes:', uniq)
-print('\tSize of unique nodes: {}'.format(len(uniq)))
+uniq_seg_us = set(ss1.keys()).union(set(ss1.values()))
+print('\tuniq_seg_us nodes:', uniq_seg_us)
+print('\tSize of uniq_seg_us: {}'.format(len(uniq_seg_us)))
 
 # Get a subgraph in the DAG_ds graph and return the edges
-DAG_subds = DAG_ds.subgraph(uniq)
+DAG_ds_subset = DAG_ds.subgraph(uniq_seg_us)
 
 # Add the downstream segment that exits the subgraph
 # We'll keep the original downstream tosegment value for now
 # DAG_subds.add_edge(dsmost_seg, DAG_ds.neighbors(dsmost_seg)[0])
-DAG_subds.add_edge(dsmost_seg, 'Out_{}'.format(dsmost_seg))
+DAG_ds_subset.add_edge(dsmost_seg, 'Out_{}'.format(dsmost_seg))
 
 print('-'*10 + 'DAG_subds Edges')
-print(DAG_subds.edges())
+print(DAG_ds_subset.edges())
 
-uniq_sub = set()
-for xx in DAG_subds.edges_iter():
-    uniq_sub.add(xx[0])
-
-# We don't need the outsegment included for getting the indice mappings
-#     uniq_sub.add(xx[1])
-
-toseg_idx = list(uniq_sub)
-# Need a 0-based version of toseg_idx to for the index-based lookups
-# NOTE: this will break if any of the entries in toseg_idx are zero (this shouldn't happen)
-toseg_idx0 = [xx-1 for xx in toseg_idx]
+# Create list of toseg ids for the model subset
+toseg_idx = list(set(xx[0] for xx in DAG_ds_subset.edges_iter()))
+toseg_idx0 = [xx-1 for xx in toseg_idx]  # 0-based version of toseg_idx
 
 print('-'*10 + 'toseg_idx')
 print(toseg_idx)
@@ -135,33 +152,29 @@ with open('{}/hru_segment_nhm.pickle'.format(srcdir), 'rb') as ff:
 
 print('Size of original hru_segment: {}'.format(len(hru_segment)))
 
-# Create a dictionary mapping segment to HRUs
-hru_dic = {}
-
+# Create a dictionary mapping segments to HRUs
+seg_to_hru = {}
 for ii, vv in enumerate(hru_segment):
-    hru_dic.setdefault(vv, []).append(ii + 1)
+    seg_to_hru.setdefault(vv, []).append(ii + 1)
 
-# Get HRUs for the selected segments
-hru_order = []
-
-print('-'*10 + 'segTo_hru_dic')
+# Get HRU ids ordered by the segments in the model subset
+print('-'*10 + 'seg_to_hru')
+hru_order_subset = []
 for xx in toseg_idx:
-    if xx in hru_dic:
-        print(xx, hru_dic[xx])
+    if xx in seg_to_hru:
+        print(xx, seg_to_hru[xx])
 
-        for yy in hru_dic[xx]:
-            hru_order.append(yy)
+        for yy in seg_to_hru[xx]:
+            hru_order_subset.append(yy)
+    else:
+        raise ValueError('Stream segment has no HRUs connected to it.')
 
-# Create 0-based version of hru_order for index-based array access
-hru_order0 = [xx - 1 for xx in hru_order]
+hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
 
-# print(hru_order)
-print('Size of hru_order: {}'.format(len(hru_order)))
+print('Size of hru_order: {}'.format(len(hru_order_subset)))
+print(hru_order_subset)
+
 # Use hru_order to pull selected indices for parameters with nhru dimensions
-
-# 1) Create re-numbered tosegment list for subset
-# 2) Create re-numbered hru_segment list for subset
-
 # hru_order contains the in-order indices for the subset of hru_segments
 # toseg_idx contains the in-order indices for the subset of tosegments (the indices reflect the original tosegment size)
 
@@ -170,12 +183,13 @@ new_tosegment = []
 
 print('-'*10 + 'Mapping old DAG_subds indices to new')
 for xx in toseg_idx:
-    if DAG_subds.neighbors(xx)[0] in toseg_idx:
-        print('old: ({}, {}) '.format(xx, DAG_subds.neighbors(xx)[0]) +
-              'new: ({}, {})'.format(toseg_idx.index(xx) + 1, toseg_idx.index(DAG_subds.neighbors(xx)[0]) + 1))
-        new_tosegment.append(toseg_idx.index(DAG_subds.neighbors(xx)[0]) + 1)
+    if DAG_ds_subset.neighbors(xx)[0] in toseg_idx:
+        print('old: ({}, {}) '.format(xx, DAG_ds_subset.neighbors(xx)[0]) +
+              'new: ({}, {})'.format(toseg_idx.index(xx) + 1, toseg_idx.index(DAG_ds_subset.neighbors(xx)[0]) + 1))
+        new_tosegment.append(toseg_idx.index(DAG_ds_subset.neighbors(xx)[0]) + 1)
     else:
-        print('old: ({}, {}) '.format(xx, DAG_subds.neighbors(xx)[0]) +
+        # Outlets should be assigned zero
+        print('old: ({}, {}) '.format(xx, DAG_ds_subset.neighbors(xx)[0]) +
               'new: ({}, {})'.format(toseg_idx.index(xx) + 1, 0))
         new_tosegment.append(0)
 
@@ -187,7 +201,7 @@ new_hru_segment = []
 
 for xx in toseg_idx:
     # if DAG_subds.neighbors(xx)[0] in toseg_idx:
-    for yy in hru_dic[xx]:
+    for yy in seg_to_hru[xx]:
         # The new indices should be 1-based from PRMS
         new_hru_segment.append(toseg_idx.index(xx)+1)
 
@@ -205,16 +219,15 @@ print('Size of original hru_deplcrv: {}'.format(len(hru_deplcrv)))
 
 # Get subset of hru_deplcrv using hru_order
 # A single snarea_curve can be referenced by multiple HRUs
-hru_deplcrv_sub = np.array(hru_deplcrv)[tuple(hru_order0), ]
-uniq_deplcrv = list(set(hru_deplcrv_sub))
+hru_deplcrv_subset = np.array(hru_deplcrv)[tuple(hru_order_subset0),]
+uniq_deplcrv = list(set(hru_deplcrv_subset))
 uniq_deplcrv0 = [xx - 1 for xx in uniq_deplcrv]
+print('-'*10 + 'uniq_deplcrv')
 print(uniq_deplcrv)
 
 # Create new hru_deplcrv and renumber
-new_hru_deplcrv = []
-for idx, cc in enumerate(hru_deplcrv_sub):
-    new_hru_deplcrv.append(uniq_deplcrv.index(cc)+1)
-print(uniq_deplcrv)
+new_hru_deplcrv = [uniq_deplcrv.index(cc)+1 for cc in hru_deplcrv_subset]
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subset poi_gage_segment
@@ -224,19 +237,23 @@ with open('{}/poi_gage_segment.pickle'.format(srcdir), 'rb') as ff:
 
 print('Size of original poi_gage_segment: {}'.format(len(poi_gage_segment)))
 
-
 with open('{}/poi_gage_id.pickle'.format(srcdir), 'rb') as ff:
     poi_gage_id = pickle.load(ff)['data']
 
 with open('{}/poi_type.pickle'.format(srcdir), 'rb') as ff:
     poi_type = pickle.load(ff)['data']
 
+# We want to get the indices of the poi_gage_segments that match the
+# segments that are part of the subset. We can then use these
+# indices to subset poi_gage_id and poi_type.
+# The poi_gage_segment will need to be renumbered for the subset of segments.
+
 # To subset poi_gage_segment we have to lookup each segment in the subset
 new_poi_gage_segment = []
 new_poi_gage_id = []
 new_poi_type = []
 
-for ss in uniq:
+for ss in uniq_seg_us:
     if ss in poi_gage_segment:
         new_poi_gage_segment.append(toseg_idx.index(ss)+1)
         new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
@@ -244,21 +261,12 @@ for ss in uniq:
 
 if len(poi_gage_segment) == 0:
     print_warning('No poi gages found for subset')
-# print(new_poi_gage_segment)
-
-# We want to get the indices of the poi_gage_segments that match the
-# segments that are part of the subset. We can then use these
-# indices to subset poi_gage_id and poi_type.
-# The poi_gage_segment will need to be renumbered for the subset of segments.
 
 
 # ==================================================================
 # ==================================================================
 # Process the parameters and create a parameter file for the subset
 # TODO: We should have the list of params and dimensions in the merged_params directory
-params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
-workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
-
 params = get_global_params(params_file)
 
 dims = get_global_dimensions(params, REGIONS, workdir)
@@ -266,26 +274,26 @@ dims = get_global_dimensions(params, REGIONS, workdir)
 # Map parameter datatypes for output to parameter file
 param_types = {'I': 1, 'F': 2, 'D': 3, 'S': 4}
 
-# Resize dimensions to reflect the subset
+# Resize dimensions to the model subset
 crap_dims = dims.copy()  # need a copy since we modify dims
 for dd, dv in iteritems(crap_dims):
     # dimensions 'nmonths' and 'one' are never changed
-    if dd in ['nhru', 'ngw', 'nssr']:
-        dims[dd] = len(hru_order)
+    if dd in HRU_DIMS:
+        dims[dd] = len(hru_order_subset0)
     elif dd == 'nsegment':
-        dims[dd] = len(toseg_idx)
+        dims[dd] = len(toseg_idx0)
     elif dd == 'ndeplval':
-        dims[dd] = len(uniq_deplcrv) * 11
+        dims[dd] = len(uniq_deplcrv0) * 11
         if 'ndepl' not in dims:
-            dims['ndepl'] = len(uniq_deplcrv)
+            dims['ndepl'] = len(uniq_deplcrv0)
     elif dd == 'npoigages':
         dims[dd] = len(new_poi_gage_segment)
 
 # Open output file
-outhdl = open('crap.param', 'w')
+outhdl = open('{}/{}'.format(outdir, param_filename), 'w')
 
 # Write header lines
-outhdl.write('Subset from NHM written by skein\n')
+outhdl.write('Subset from NHM written by Skein\n')
 outhdl.write('0.5\n')
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -305,42 +313,16 @@ for pp, pv in iteritems(params):
     with open('{}/{}.pickle'.format(srcdir, pp), 'rb') as ff:
         cparam = pickle.load(ff)
 
-    if pp == 'tosegment':
-        cparam['data'] = new_tosegment
-    elif pp == 'hru_segment':
-        cparam['data'] = new_hru_segment
-    elif pp == 'hru_deplcrv':
-        cparam['data'] = new_hru_deplcrv
-    elif pp == 'poi_gage_segment':
-        cparam['data'] = new_poi_gage_segment
-    elif pp == 'poi_gage_id':
-        cparam['data'] = new_poi_gage_id
-    elif pp == 'poi_type':
-        cparam['data'] = new_poi_type
-
     ndims = len(cparam['dimensions'])
     print('Parameter: {}'.format(cparam['name']))
-    # print('Datatype: {}'.format(cparam['type']))
-    # print('Number of dimensions: {}'.format(ndims))
-    # print(cparam['dimensions'])
 
+    # Get order of dimensions and total size for parameter
     dim_order = [None] * ndims
-
     dim_total_size = 1
+
     for dd, dv in iteritems(cparam['dimensions']):
         dim_order[dv['position']-1] = dd
-
-        if dd in ['nhru', 'ngw', 'nssr']:
-            cparam['dimensions'][dd]['size'] = len(hru_order)
-        elif dd == 'nsegment':
-            cparam['dimensions'][dd]['size'] = len(toseg_idx)
-        elif dd == 'ndeplval':
-            cparam['dimensions'][dd]['size'] = len(uniq_deplcrv) * 11
-        elif dd == 'npoigages':
-            cparam['dimensions'][dd]['size'] = len(new_poi_gage_segment)
-
-        dim_total_size *= dv['size']
-    # print(dim_order)
+        dim_total_size *= dims[dd]
 
     outhdl.write('####\n')
     outhdl.write('{}\n'.format(cparam['name']))     # Parameter name
@@ -350,45 +332,60 @@ for pp, pv in iteritems(params):
     for dd in dim_order:
         outhdl.write('{}\n'.format(dd))
 
-    # Write out the total size for given dimensions
+    # Write out the total size for the parameter
     outhdl.write('{}\n'.format(dim_total_size))
 
     # Write out the datatype for the parameter
     outhdl.write('{}\n'.format(param_types[cparam['type']]))
 
-    # Write out the data
+    first_dimension = dim_order[0]
+    second_dimension = dim_order[1]
+
+    # Write out the data for the parameter
     if ndims == 1:
-        if dim_order[0] == 'nsegment':
+        # 1D Parameters
+        if first_dimension == 'one':
+            outdata = np.array(cparam['data'])
+        elif first_dimension == 'nsegment':
             if pp in ['tosegment']:
-                outdata = np.array(cparam['data'])
+                outdata = np.array(new_tosegment)
             else:
                 outdata = np.array(cparam['data'])[tuple(toseg_idx0), ]
-        elif dim_order[0] in ['nhru', 'ngw', 'nssr']:
-            if pp in ['hru_deplcrv', 'hru_segment']:
-                outdata = np.array(cparam['data'])
-            else:
-                outdata = np.array(cparam['data'])[tuple(hru_order0), ]
-        elif dim_order[0] == 'one':
-            outdata = np.array(cparam['data'])
-        elif dim_order[0] == 'ndeplval':
-            # This is really a 2D in disguise, however, it is store in C-order unlike the
+        elif first_dimension == 'ndeplval':
+            # This is really a 2D in disguise, however, it is stored in C-order unlike
             # other 2D arrays
             outdata = np.array(cparam['data']).reshape((-1, 11))[tuple(uniq_deplcrv0), :]
-        elif dim_order[0] in ['npoigages']:
-            outdata = np.array(cparam['data'])
+        elif first_dimension == 'npoigages':
+            if pp == 'poi_gage_segment':
+                outdata = np.array(new_poi_gage_segment)
+            elif pp == 'poi_gage_id':
+                outdata = np.array(new_poi_gage_id)
+            elif pp == 'poi_type':
+                outdata = np.array(new_poi_type)
+            else:
+                print_warning('Unknown parameter, {}, with dimension {}'.format(pp, first_dimension))
+        elif first_dimension in HRU_DIMS:
+            if pp == 'hru_deplcrv':
+                outdata = np.array(new_hru_deplcrv)
+            elif pp == 'hru_segment':
+                outdata = np.array(new_hru_segment)
+            else:
+                outdata = np.array(cparam['data'])[tuple(hru_order_subset0), ]
         else:
-            print_warning('Code not written for dimension {}'.format(dim_order[0]))
+            print_warning('Code not written for dimension {}'.format(first_dimension))
     elif ndims == 2:
-        outdata = np.array(cparam['data']).reshape((-1, cparam['dimensions'][dim_order[1]]['size']), order='F')
+        # 2D Parameters
+        outdata = np.array(cparam['data']).reshape((-1, dims[second_dimension]), order='F')
 
-        if dim_order[0] == 'nsegment':
+        if first_dimension == 'nsegment':
             outdata = outdata[tuple(toseg_idx0), :]
-        elif dim_order[0] in ['nhru', 'ngw', 'nssr']:
-            outdata = outdata[tuple(hru_order0), :]
+        elif first_dimension in HRU_DIMS:
+            outdata = outdata[tuple(hru_order_subset0), :]
         else:
-            print_warning('Code not written for 2D parameters')
+            print_warning('Code not written for 2D parameter, {}, which contains dimension {}'.format(pp, first_dimension))
 
-    if dim_order[0] == 'ndeplval':
+    # Convert outdata to a list for writing
+    if first_dimension == 'ndeplval':
         outlist = outdata.ravel().tolist()
     else:
         outlist = outdata.ravel(order='F').tolist()
@@ -398,17 +395,15 @@ for pp, pv in iteritems(params):
 
 outhdl.close()
 
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subset the cbh files for the selected HRUs
 CBH_VARS = ['tmax', 'tmin', 'prcp']
-
-
-cbh_dir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/daymet'
 hru_order_ss = OrderedDict()
 
 # Subset hru_nhm_to_local mapping
-for xx in hru_order:
+for xx in hru_order_subset:
     hru_order_ss[xx] = hru_nhm_to_local[xx]
 
 print('hru_order_ss')
@@ -416,7 +411,10 @@ print(hru_order_ss)
 
 for vv in CBH_VARS:
     print('Writing {} CBH subset'.format(vv))
-    out_order = [0, 1, 2, 3, 4, 5]  # First six columns are always output for the cbh files
+
+    # For out_order the first six columns contain the time information and
+    # are always output for the cbh files
+    out_order = [0, 1, 2, 3, 4, 5]
 
     if not out_order:
         raise NameError('CBH column order is empty!')
@@ -433,7 +431,7 @@ for vv in CBH_VARS:
                 # print('\tMatching region {}, HRU: {} ({})'.format(rr, yy, hru_order_ss[yy]))
                 idx_retrieve[yy] = hru_order_ss[yy]
         if len(idx_retrieve) > 0:
-            cc1 = cbh.cbh('{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv), idx_retrieve)
+            cc1 = cbh.Cbh('{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv), idx_retrieve)
             cc1.read_cbh()
             if first:
                 outdata = cc1.data.copy()
@@ -441,20 +439,20 @@ for vv in CBH_VARS:
             else:
                 outdata = pd.merge(outdata, cc1.data, on=[0, 1, 2, 3, 4, 5])
 
-    out_order.extend(hru_order)
-    out_cbh = open('{}.cbh'.format(vv), 'w')
+    # Append the HRUs as ordered for the subset
+    out_order.extend(hru_order_subset)
+
+    out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
     out_cbh.write('Written by skein\n')
-    out_cbh.write('{} {}\n'.format(vv, len(hru_order)))
+    out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
     out_cbh.write('########################################\n')
     outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=True)
     out_cbh.close()
 
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Download the streamgage information
-st_date = datetime(1979, 10, 1)
-en_date = datetime(2015, 9, 30)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Download the streamgage information from NWIS
 
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
 base_url = 'http://waterservices.usgs.gov/nwis'
@@ -534,7 +532,7 @@ outdata['hour'] = outdata.index.hour
 outdata['minute'] = outdata.index.minute
 outdata['second'] = outdata.index.second
 
-outhdl = open('sf_data', 'w')
+outhdl = open('{}/{}'.format(outdir, obs_filename), 'w')
 outhdl.write('Created by skein\n')
 outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
 outhdl.write('// Station IDs for runoff:\n')

@@ -1,16 +1,17 @@
 
-
 import pandas as pd
 
 VALID_VARNAMES = ['prcp', 'tmin', 'tmax']
 
 
-class cbh(object):
+class Cbh(object):
     # Author: Parker Norton (pnorton@usgs.gov)
     # Create date: 2016-12-05
-    # Description: Class for working with cbh files
+    # Description: Class for working with individual cbh files
     #
     # This class assumes it is dealing with regional cbh files (not a CONUS-level NHM file)
+    # TODO: As written type of data (e.g. tmax, tmin, prcp) is ignored.
+    # TODO: Verify that given data type size matches number of columns
 
     def __init__(self, filename, indices=None):
         self.__filename = filename
