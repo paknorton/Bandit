@@ -417,6 +417,10 @@ print(hru_order_ss)
 for vv in CBH_VARS:
     print('Writing {} CBH subset'.format(vv))
     out_order = [0, 1, 2, 3, 4, 5]  # First six columns are always output for the cbh files
+
+    if not out_order:
+        raise NameError('CBH column order is empty!')
+
     outdata = None
     first = True
 
