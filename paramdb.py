@@ -7,7 +7,8 @@ from future.utils import iteritems, iterkeys
 
 import xml.etree.ElementTree as xmlET
 import numpy as np
-import pickle as pickle
+# import pickle as pickle
+import msgpack
 from collections import OrderedDict
 import sys
 
@@ -249,19 +250,19 @@ def main():
 
         # Write out additional mapping variables for nhm_seg and nhm_id
         if pp == 'nhm_seg':
-            with open('{}/{}.pickle'.format(outdir, 'segment_nhm_to_local'), 'wb') as ff:
-                pickle.dump(segment_nhm_to_local, ff)
-            with open('{}/{}.pickle'.format(outdir, 'segment_nhm_to_region'), 'wb') as ff:
-                pickle.dump(segment_nhm_to_region, ff)
+            with open('{}/{}.msgpack'.format(outdir, 'segment_nhm_to_local'), 'wb') as ff:
+                msgpack.dump(segment_nhm_to_local, ff)
+            with open('{}/{}.msgpack'.format(outdir, 'segment_nhm_to_region'), 'wb') as ff:
+                msgpack.dump(segment_nhm_to_region, ff)
         elif pp == 'nhm_id':
-            with open('{}/{}.pickle'.format(outdir, 'hru_nhm_to_local'), 'wb') as ff:
-                pickle.dump(hru_nhm_to_local, ff)
-            with open('{}/{}.pickle'.format(outdir, 'hru_nhm_to_region'), 'wb') as ff:
-                pickle.dump(hru_nhm_to_region, ff)
+            with open('{}/{}.msgpack'.format(outdir, 'hru_nhm_to_local'), 'wb') as ff:
+                msgpack.dump(hru_nhm_to_local, ff)
+            with open('{}/{}.msgpack'.format(outdir, 'hru_nhm_to_region'), 'wb') as ff:
+                msgpack.dump(hru_nhm_to_region, ff)
 
         # write the serialized param to a file
-        with open('{}/{}.pickle'.format(outdir, pp), 'wb') as ff:
-            pickle.dump(param, ff)
+        with open('{}/{}.msgpack'.format(outdir, pp), 'wb') as ff:
+            msgpack.dump(param, ff)
 
 
 if __name__ == '__main__':
