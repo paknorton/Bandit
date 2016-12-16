@@ -42,7 +42,8 @@ REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
 HRU_DIMS = ['nhru', 'ngw', 'nssr']  # These dimensions are related and should have same size
 
 # Output directory
-outdir = '/Users/pnorton/Projects/National_Hydrology_Model/regions/subset_testing'
+# outdir = '/Users/pnorton/Projects/National_Hydrology_Model/regions/subset_testing'
+outdir = '/Users/pnorton/USGS/test_out'
 
 # Output parameter filename
 param_filename = 'crap.param'
@@ -51,20 +52,24 @@ param_filename = 'crap.param'
 obs_filename = 'sf_data'
 
 # Location of CONUS NHM parameter files
-srcdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params'
+# srcdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params'
+srcdir = '/Users/pnorton/USGS/merged_params'
 
 # Specify downstream-most stream segment for extracting an upstream subset of NHM model
 # dsmost_seg = 31126  # 31380  # 31392    # 10
 dsmost_seg = (36382, 36383, 22795)
 
 # Location of global NHM parameter xml file
-params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
+# params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
+params_file = '/Users/pnorton/USGS/nhmparamdb/parameters.xml'
 
 # Location of NHM parameter database
-workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
+# workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
+workdir = '/Users/pnorton/USGS/nhmparamdb'
 
 # Location of CBH files by region
 cbh_dir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/daymet'
+do_cbh = False
 
 # Date range for pulling NWIS streamgage observations
 st_date = datetime(1979, 10, 1)
@@ -120,31 +125,22 @@ def main():
     print('-'*10 + 'Generating subset')
     print('\tdsmost_seg:', dsmost_seg)
 
+    # Get all unique segments u/s of the starting segment
     uniq_seg_us = set()
     for xx in dsmost_seg:
         pred = nx.dfs_predecessors(dag_us, xx)
         uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
 
-    # then get all segments u/s of the starting segment
-    # ss1 = nx.dfs_predecessors(dag_us, dsmost_seg)
-
-    # Get a set of unique node values from the keys and values
-    # uniq_seg_us = set(ss1.keys()).union(set(ss1.values()))
-    # print('\tuniq_seg_us nodes:', uniq_seg_us)
     print('\tSize of uniq_seg_us: {}'.format(len(uniq_seg_us)))
 
     # Get a subgraph in the dag_ds graph and return the edges
     dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
 
-    # Add the downstream segment that exits the subgraph
-    # We'll keep the original downstream tosegment value for now
-    # DAG_subds.add_edge(dsmost_seg, dag_ds.neighbors(dsmost_seg)[0])
+    # Add the downstream segments that exit the subgraph
     for xx in dsmost_seg:
         dag_ds_subset.add_edge(xx, 'Out_{}'.format(xx))
-    # dag_ds_subset.add_edge(dsmost_seg, 'Out_{}'.format(dsmost_seg))
 
     print('-'*10 + 'DAG_subds Edges')
-    # print(dag_ds_subset.edges())
 
     # Create list of toseg ids for the model subset
     toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges_iter()))
@@ -403,59 +399,60 @@ def main():
     sys.stdout.write('\rParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
     sys.stdout.flush()
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Subset the cbh files for the selected HRUs
-    CBH_VARS = ['tmax', 'tmin', 'prcp']
-    hru_order_ss = OrderedDict()
+    if do_cbh:
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Subset the cbh files for the selected HRUs
+        CBH_VARS = ['tmax', 'tmin', 'prcp']
+        hru_order_ss = OrderedDict()
 
-    # Subset hru_nhm_to_local mapping
-    for xx in hru_order_subset:
-        hru_order_ss[xx] = hru_nhm_to_local[xx]
+        # Subset hru_nhm_to_local mapping
+        for xx in hru_order_subset:
+            hru_order_ss[xx] = hru_nhm_to_local[xx]
 
-    # print('hru_order_ss')
-    # print(hru_order_ss)
+        # print('hru_order_ss')
+        # print(hru_order_ss)
 
-    print('Processing CBH files')
-    for vv in CBH_VARS:
-        # For out_order the first six columns contain the time information and
-        # are always output for the cbh files
-        out_order = [0, 1, 2, 3, 4, 5]
+        print('Processing CBH files')
+        for vv in CBH_VARS:
+            # For out_order the first six columns contain the time information and
+            # are always output for the cbh files
+            out_order = [0, 1, 2, 3, 4, 5]
 
-        if not out_order:
-            raise NameError('CBH column order is empty!')
+            if not out_order:
+                raise NameError('CBH column order is empty!')
 
-        outdata = None
-        first = True
+            outdata = None
+            first = True
 
-        for rr, rvals in iteritems(hru_nhm_to_region):
-            # print('Examining {} ({} to {})'.format(rr, rvals[0], rvals[1]))
-            idx_retrieve = {}
+            for rr, rvals in iteritems(hru_nhm_to_region):
+                # print('Examining {} ({} to {})'.format(rr, rvals[0], rvals[1]))
+                idx_retrieve = {}
 
-            for yy in hru_order_ss.keys():
-                if rvals[0] <= yy <= rvals[1]:
-                    # print('\tMatching region {}, HRU: {} ({})'.format(rr, yy, hru_order_ss[yy]))
-                    idx_retrieve[yy] = hru_order_ss[yy]
-            if len(idx_retrieve) > 0:
-                cc1 = cbh.Cbh('{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv), idx_retrieve)
-                cc1.read_cbh()
-                if first:
-                    outdata = cc1.data.copy()
-                    first = False
-                else:
-                    outdata = pd.merge(outdata, cc1.data, on=[0, 1, 2, 3, 4, 5])
+                for yy in hru_order_ss.keys():
+                    if rvals[0] <= yy <= rvals[1]:
+                        # print('\tMatching region {}, HRU: {} ({})'.format(rr, yy, hru_order_ss[yy]))
+                        idx_retrieve[yy] = hru_order_ss[yy]
+                if len(idx_retrieve) > 0:
+                    cc1 = cbh.Cbh('{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv), idx_retrieve)
+                    cc1.read_cbh()
+                    if first:
+                        outdata = cc1.data.copy()
+                        first = False
+                    else:
+                        outdata = pd.merge(outdata, cc1.data, on=[0, 1, 2, 3, 4, 5])
 
-        # Append the HRUs as ordered for the subset
-        out_order.extend(hru_order_subset)
+            # Append the HRUs as ordered for the subset
+            out_order.extend(hru_order_subset)
 
-        out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
-        out_cbh.write('Written by skein\n')
-        out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
-        out_cbh.write('########################################\n')
-        outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=True)
-        out_cbh.close()
-        print('\t{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
+            out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
+            out_cbh.write('Written by skein\n')
+            out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
+            out_cbh.write('########################################\n')
+            outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=True)
+            out_cbh.close()
+            print('\t{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -480,14 +477,14 @@ def main():
     t1 = re.compile('^#.*$\n?', re.MULTILINE)   # remove comment lines
     t2 = re.compile('^5s.*$\n?', re.MULTILINE)  # remove field length lines
 
-    first = True
-    outdata = None
+    dd = pd.date_range(start=st_date, end=en_date, freq='D')
+    outdata = pd.DataFrame(index=dd)
     out_order = ['year', 'month', 'day', 'hour', 'minute', 'second']
 
     # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
-    for gg in new_poi_gage_id:
+    for gidx, gg in enumerate(new_poi_gage_id):
         sys.stdout.write('\r                                       ')
-        sys.stdout.write('\rStreamgage: {} '.format(gg))
+        sys.stdout.write('\rStreamgage: {} ({}/{}) '.format(gg, gidx+1, len(new_poi_gage_id)))
         sys.stdout.flush()
 
         url_pieces['sites'] = gg
@@ -499,16 +496,12 @@ def main():
         if streamgage_obs_page.readline().strip() == '#  No sites found matching all criteria':
             # No observations are available for the streamgage
             # Create a dummy dataset to output
-            sys.stdout.write('\n')
-            sys.stdout.flush()
             print_warning('{} has no data for period'.format(gg))
 
             dd = pd.date_range(start=st_date, end=en_date, freq='D')
-            cols = ['site_no', 'mean_va']
+            cols = [gg]
             df = pd.DataFrame(index=dd, columns=cols)
             df.index.name = 'date'
-            df['site_no'] = gg
-            df.fillna(-999, inplace=True)
         else:
             streamgage_observations = streamgage_obs_page.read()
 
@@ -523,8 +516,8 @@ def main():
 
             # Read the rdb file into a dataframe
             # TODO: Handle empty datasets from NWIS by creating dummy data and providing a warning
-            df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols, parse_dates={'date': ['datetime']},
-                             index_col='date')
+            df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
+                             parse_dates={'date': ['datetime']}, index_col='date')
 
             # Conveniently the columns we want to drop contain '_cd' in their names
             drop_cols = [col for col in df.columns if '_cd' in col]
@@ -537,20 +530,12 @@ def main():
             if len(rename_col) > 1:
                 print('ERROR: more than one Q-col returned')
             else:
-                df.rename(columns={rename_col[0]: 'mean_va'}, inplace=True)
+                df.rename(columns={rename_col[0]: gg}, inplace=True)
 
             # Resample to daily to fill in the missing days with NaN
-            df = df.resample('D').mean()
-            df.fillna(-999, inplace=True)
+            # df = df.resample('D').mean()
 
-        # Rename mean_va to site number
-        df.rename(columns={'mean_va': gg}, inplace=True)
-
-        if first:
-            outdata = df.copy()
-            first = False
-        else:
-            outdata = pd.merge(outdata, df, left_index=True, right_index=True)
+        outdata = pd.merge(outdata, df, how='left', left_index=True, right_index=True)
 
         out_order.append(gg)
 
@@ -562,6 +547,7 @@ def main():
         outdata['hour'] = outdata.index.hour
         outdata['minute'] = outdata.index.minute
         outdata['second'] = outdata.index.second
+        outdata.fillna(-999, inplace=True)
     except AttributeError:
         print('AttributeError')
         print(outdata.head())

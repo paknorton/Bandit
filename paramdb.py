@@ -17,8 +17,8 @@ from pr_util import colorize, heading, print_info, print_warning, print_error
 REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
            'r10L', 'r10U', 'r11', 'r12', 'r13', 'r14', 'r15', 'r16', 'r17', 'r18']
 
-workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
-outdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params'
+workdir = '/Users/pnorton/USGS/nhmparamdb'
+outdir = '/Users/pnorton/USGS/merged_params'
 
 dims_file = '{}/dimensions.xml'.format(workdir)
 params_file = '{}/parameters.xml'.format(workdir)
