@@ -8,6 +8,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import msgpack
+import ogr
 import re
 import sys
 
@@ -35,15 +36,18 @@ except ImportError:
 from paramdb import get_global_params, get_global_dimensions
 from pr_util import colorize, heading, print_info, print_warning, print_error
 import cbh
+import prms_geo
 
 REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
            'r10L', 'r10U', 'r11', 'r12', 'r13', 'r14', 'r15', 'r16', 'r17', 'r18']
 
 HRU_DIMS = ['nhru', 'ngw', 'nssr']  # These dimensions are related and should have same size
 
+check_dag = False
+
 # Output directory
-# outdir = '/Users/pnorton/Projects/National_Hydrology_Model/regions/subset_testing'
-outdir = '/Users/pnorton/USGS/test_out'
+outdir = '/Users/pnorton/Projects/National_Hydrology_Model/regions/subset_testing'
+# outdir = '/Users/pnorton/USGS/test_out'
 
 # Output parameter filename
 param_filename = 'crap.param'
@@ -52,20 +56,20 @@ param_filename = 'crap.param'
 obs_filename = 'sf_data'
 
 # Location of CONUS NHM parameter files
-# srcdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params'
-srcdir = '/Users/pnorton/USGS/merged_params'
+srcdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params'
+# srcdir = '/Users/pnorton/USGS/merged_params'
 
 # Specify downstream-most stream segment for extracting an upstream subset of NHM model
-# dsmost_seg = 31126  # 31380  # 31392    # 10
-dsmost_seg = (36382, 36383, 22795)
+dsmost_seg = [31126, ]  # 31380  # 31392    # 10
+# dsmost_seg = (36382, 36383, 22795)
 
 # Location of global NHM parameter xml file
-# params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
-params_file = '/Users/pnorton/USGS/nhmparamdb/parameters.xml'
+params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
+# params_file = '/Users/pnorton/USGS/nhmparamdb/parameters.xml'
 
 # Location of NHM parameter database
-# workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
-workdir = '/Users/pnorton/USGS/nhmparamdb'
+workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
+# workdir = '/Users/pnorton/USGS/nhmparamdb'
 
 # Location of CBH files by region
 cbh_dir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/daymet'
@@ -74,6 +78,9 @@ do_cbh = False
 # Date range for pulling NWIS streamgage observations
 st_date = datetime(1979, 10, 1)
 en_date = datetime(2015, 9, 30)
+
+# File geodatabase for NHM
+geo_file = '/Users/pnorton/Projects/National_Hydrology_Model/GIS/GeospatialFabric_National.gdb'
 
 
 def get_parameter(filename):
@@ -109,12 +116,13 @@ def main():
     print('\tNumber of nodes: {}'.format(dag_ds.number_of_nodes()))
     print('\tNumber of edges: {}'.format(dag_ds.number_of_edges()))
 
-    if not nx.is_directed_acyclic_graph(dag_ds):
-        print('='*40)
-        print_warning('Cycles and/or loops found in stream network')
-        for xx in nx.simple_cycles(dag_ds):
-            print(xx)
-        print('-'*40)
+    if check_dag:
+        if not nx.is_directed_acyclic_graph(dag_ds):
+            print('='*40)
+            print_warning('Cycles and/or loops found in stream network')
+            for xx in nx.simple_cycles(dag_ds):
+                print(xx)
+            print('-'*40)
 
     # Create the upstream graph
     print('-'*10 + 'Creating U/S DAG')
@@ -573,6 +581,26 @@ def main():
     sys.stdout.write('\r                                       ')
     sys.stdout.write('\r\tStreamflow data written to: {}/{}\n'.format(outdir, obs_filename))
     sys.stdout.flush()
+
+    # *******************************************
+    # Create a shapefile of the selected HRUs
+    print('-'*40)
+    print('Writing shapefiles for model subset')
+    geo_shp = prms_geo.Geo(geo_file)
+
+    # Output a shapefile of the selected HRUs
+    geo_shp.select_layer('nhruNationalIdentifier')
+    geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
+    geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
+    # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
+
+    # Output a shapefile of the selected stream segments
+    geo_shp.select_layer('nsegmentNationalIdentifier')
+    geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
+    geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
+
+    del geo_shp
+
 
 if __name__ == '__main__':
     main()
