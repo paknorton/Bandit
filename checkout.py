@@ -74,7 +74,7 @@ workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
 
 # Location of CBH files by region
 cbh_dir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/daymet'
-do_cbh = False
+do_cbh = True
 
 # Date range for pulling NWIS streamgage observations
 st_date = datetime(1979, 10, 1)
@@ -414,14 +414,9 @@ def main():
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Subset the cbh files for the selected HRUs
         CBH_VARS = ['tmax', 'tmin', 'prcp']
-        hru_order_ss = OrderedDict()
 
-        # Subset hru_nhm_to_local mapping
-        for xx in hru_order_subset:
-            hru_order_ss[xx] = hru_nhm_to_local[xx]
-
-        # print('hru_order_ss')
-        # print(hru_order_ss)
+        # Subset the hru_nhm_to_local mapping
+        hru_order_ss = OrderedDict((kk, hru_nhm_to_local[kk]) for kk in hru_order_subset)
 
         print('Processing CBH files')
         for vv in CBH_VARS:
@@ -430,7 +425,7 @@ def main():
             out_order = [0, 1, 2, 3, 4, 5]
 
             if not out_order:
-                raise NameError('CBH column order is empty!')
+                raise NameError('CBH column out order is empty!')
 
             outdata = None
             first = True
@@ -444,7 +439,7 @@ def main():
                         # print('\tMatching region {}, HRU: {} ({})'.format(rr, yy, hru_order_ss[yy]))
                         idx_retrieve[yy] = hru_order_ss[yy]
                 if len(idx_retrieve) > 0:
-                    cc1 = cbh.Cbh('{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv), idx_retrieve)
+                    cc1 = cbh.Cbh(filename='{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv), indices=idx_retrieve)
                     cc1.read_cbh()
                     if first:
                         outdata = cc1.data.copy()
