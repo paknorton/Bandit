@@ -36,6 +36,7 @@ except ImportError:
 from paramdb import get_global_params, get_global_dimensions
 from pr_util import colorize, heading, print_info, print_warning, print_error
 import cbh
+import prms_nwis
 import prms_geo
 
 REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
@@ -466,121 +467,9 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Download the streamgage information from NWIS
     print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
-
-    # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
-    base_url = 'http://waterservices.usgs.gov/nwis'
-
-    url_pieces = OrderedDict()
-    url_pieces['?format'] = 'rdb'
-    url_pieces['sites'] = ''
-    url_pieces['startDT'] = st_date.strftime('%Y-%m-%d')
-    url_pieces['endDT'] = en_date.strftime('%Y-%m-%d')
-    url_pieces['statCd'] = '00003'       # Mean values
-    url_pieces['siteStatus'] = 'all'
-    url_pieces['parameterCd'] = '00060'  # Discharge
-    url_pieces['siteType'] = 'ST'
-    url_pieces['access'] = '3'      # Allows download of observations for restricted sites/parameters
-
-    # Regex's for stripping unneeded clutter from the rdb file
-    t1 = re.compile('^#.*$\n?', re.MULTILINE)   # remove comment lines
-    t2 = re.compile('^5s.*$\n?', re.MULTILINE)  # remove field length lines
-
-    dd = pd.date_range(start=st_date, end=en_date, freq='D')
-    outdata = pd.DataFrame(index=dd)
-    out_order = ['year', 'month', 'day', 'hour', 'minute', 'second']
-
-    # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
-    for gidx, gg in enumerate(new_poi_gage_id):
-        sys.stdout.write('\r                                       ')
-        sys.stdout.write('\rStreamgage: {} ({}/{}) '.format(gg, gidx+1, len(new_poi_gage_id)))
-        sys.stdout.flush()
-
-        url_pieces['sites'] = gg
-        url_final = '&'.join(['{}={}'.format(kk, vv) for kk, vv in iteritems(url_pieces)])
-
-        # Read site data
-        streamgage_obs_page = urlopen('{}/dv/{}'.format(base_url, url_final))
-
-        if streamgage_obs_page.readline().strip() == '#  No sites found matching all criteria':
-            # No observations are available for the streamgage
-            # Create a dummy dataset to output
-            print_warning('{} has no data for period'.format(gg))
-
-            dd = pd.date_range(start=st_date, end=en_date, freq='D')
-            cols = [gg]
-            df = pd.DataFrame(index=dd, columns=cols)
-            df.index.name = 'date'
-        else:
-            streamgage_observations = streamgage_obs_page.read()
-
-            # Strip the comment lines and field length lines from the result using regex
-            streamgage_observations = t1.sub('', streamgage_observations, 0)
-            streamgage_observations = t2.sub('', streamgage_observations, 0)
-
-            # Have to enforce site_no as string/text
-            col_names = ['site_no']
-            col_types = [np.str_]
-            cols = dict(zip(col_names, col_types))
-
-            # Read the rdb file into a dataframe
-            # TODO: Handle empty datasets from NWIS by creating dummy data and providing a warning
-            df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
-                             parse_dates={'date': ['datetime']}, index_col='date')
-
-            # Conveniently the columns we want to drop contain '_cd' in their names
-            drop_cols = [col for col in df.columns if '_cd' in col]
-            df.drop(drop_cols, axis=1, inplace=True)
-
-            # There should now only be date, site_no, and a Q column named *_00060_00003
-            # We will rename the *_00060_00003 to mean_val
-            rename_col = [col for col in df.columns if '_00060_00003' in col]
-
-            if len(rename_col) > 1:
-                print('ERROR: more than one Q-col returned')
-            else:
-                df.rename(columns={rename_col[0]: gg}, inplace=True)
-
-            # Resample to daily to fill in the missing days with NaN
-            # df = df.resample('D').mean()
-
-        outdata = pd.merge(outdata, df, how='left', left_index=True, right_index=True)
-
-        out_order.append(gg)
-
-    # Create the year, month, day, hour, minute, second columns
-    try:
-        outdata['year'] = outdata.index.year
-        outdata['month'] = outdata.index.month
-        outdata['day'] = outdata.index.day
-        outdata['hour'] = outdata.index.hour
-        outdata['minute'] = outdata.index.minute
-        outdata['second'] = outdata.index.second
-        outdata.fillna(-999, inplace=True)
-    except AttributeError:
-        print('AttributeError')
-        print(outdata.head())
-        print(outdata.info())
-
-    outhdl = open('{}/{}'.format(outdir, obs_filename), 'w')
-    outhdl.write('Created by skein\n')
-    outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
-    outhdl.write('// Station IDs for runoff:\n')
-    outhdl.write('// ID\n')
-
-    for gg in new_poi_gage_id:
-        outhdl.write('// {}\n'.format(gg))
-
-    outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
-    outhdl.write('// Unit: runoff = cfs\n')
-    outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
-    outhdl.write('runoff {}\n'.format(len(new_poi_gage_id)))
-    outhdl.write('#########################################################\n')
-
-    outdata.to_csv(outhdl, sep=' ', columns=out_order, index=False, header=False)
-    outhdl.close()
-    sys.stdout.write('\r                                       ')
-    sys.stdout.write('\r\tStreamflow data written to: {}/{}\n'.format(outdir, obs_filename))
-    sys.stdout.flush()
+    streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
+    streamflow.get_daily_streamgage_observations()
+    streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
 
     # *******************************************
     # Create a shapefile of the selected HRUs
