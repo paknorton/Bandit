@@ -8,8 +8,6 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import msgpack
-import ogr
-import re
 import sys
 
 from collections import OrderedDict
