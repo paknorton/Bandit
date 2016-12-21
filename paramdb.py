@@ -20,8 +20,8 @@ REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
 workdir = '/Users/pnorton/USGS/nhmparamdb'
 outdir = '/Users/pnorton/USGS/merged_params'
 
-dims_file = '{}/dimensions.xml'.format(workdir)
-params_file = '{}/parameters.xml'.format(workdir)
+global_dims_file = '{}/dimensions.xml'.format(workdir)
+global_params_file = '{}/parameters.xml'.format(workdir)
 
 
 def get_global_dimensions(params, regions, workdir):
@@ -121,7 +121,7 @@ def get_param_info(xml_file, param):
 # ~~~~~~~~~~~~~~~~~~~~~~~~
 
 def main():
-    param_info = get_global_params(params_file)
+    param_info = get_global_params(global_params_file)
     # dimension_info = get_global_dimensions(param_info, REGIONS, workdir)
 
     for pp, pv in iteritems(param_info):
@@ -245,8 +245,7 @@ def main():
             dim_total *= param['dimensions'][ss]['size']
 
         if len(param['data']) != dim_total:
-            print('WARNING: Declared size of {} ({}) is different from number of values read ({}).'.format(pp, dim_total,
-                                                                                            len(param['data'])))
+            print('WARNING: Declared size of {} ({}) is different from number of values read ({}).'.format(pp, dim_total, len(param['data'])))
 
         # Write out additional mapping variables for nhm_seg and nhm_id
         if pp == 'nhm_seg':

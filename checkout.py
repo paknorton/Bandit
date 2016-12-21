@@ -213,7 +213,7 @@ def main():
     for xx in toseg_idx:
         # if DAG_subds.neighbors(xx)[0] in toseg_idx:
         if xx in seg_to_hru:
-            for yy in seg_to_hru[xx]:
+            for _ in seg_to_hru[xx]:
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
 
