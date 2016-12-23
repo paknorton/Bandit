@@ -17,6 +17,7 @@ def read_xml(filename):
 
 
 class Dimension(object):
+    """Defines a single dimension"""
     # Container for a single dimension
     def __init__(self, position=0, size=0):
         self.__position = 0  # This will get set by self.position below
@@ -25,10 +26,13 @@ class Dimension(object):
 
     @property
     def position(self):
+        """Returns the ordering of the dimension"""
+        # 2016-12-23 PAN: Does this make better sense as the Dimensions level?
         return self.__position
 
     @position.setter
     def position(self, value):
+        """Set the ordering of the dimension"""
         if not isinstance(value, int):
             raise TypeError('Only integers are allowed for dimension position')
         if value < 1 or value > 2:
@@ -38,10 +42,12 @@ class Dimension(object):
 
     @property
     def size(self):
+        """"Return the size of the dimension"""
         return self.__size
 
     @size.setter
     def size(self, value):
+        """Set the size of the dimension"""
         if not isinstance(value, int) or value < 0:
             raise ValueError('Dimension size must be a positive integer')
         self.__size = value
@@ -69,6 +75,7 @@ class Dimension(object):
 
 
 class Dimensions(object):
+    """Container of Dimension objects"""
     # Container for a collection of dimensions
     def __init__(self):
         self.__dimensions = OrderedDict()  # array? dict? of Dimension()
@@ -86,6 +93,7 @@ class Dimensions(object):
 
     @property
     def dimensions(self):
+        """Returns ordered dictionary of Dimension objects"""
         # Return the ordered dictionary of define dimensions
         return self.__dimensions
 
@@ -133,6 +141,7 @@ class Dimensions(object):
         raise ValueError('Parameter has no dimension in position {}'.format(position))
 
     def tostructure(self):
+        """Returns a data structure of Dimensions data for serialization"""
         # Return the dimensions info/data as a data structure
         dims = {}
         for kk, vv in iteritems(self.dimensions):
@@ -141,8 +150,12 @@ class Dimensions(object):
 
 
 class Parameter(object):
+
+    """Container for a single Parameter object"""
+
     # Container for a single parameter
     def __init__(self, name=None, datatype=None, units=None):
+        """Initialize the Parameter object"""
         self.__valid_datatypes = {'I': 1, 'F': 2, 'D': 3, 'S': 4}
 
         self.__name = name  # string
@@ -152,6 +165,7 @@ class Parameter(object):
         self.__data = None  # array
 
     def __str__(self):
+        """Return a pretty print string representation of the parameter information"""
         outstr = 'name: {}\ndatatype: {}\nunits: {}\nndims: {}\n'.format(self.name, self.datatype,
                                                                          self.units, self.ndims)
         if self.ndims:
@@ -160,31 +174,38 @@ class Parameter(object):
 
     @property
     def name(self):
+        """Return the name of the parameter"""
         return self.__name
 
     @property
     def datatype(self):
+        """Return the datatype of the parameter"""
         return self.__datatype
 
     @property
     def units(self):
+        """Return the units used for the parameter data"""
         return self.__units
 
     @units.setter
     def units(self, unitstr):
+        """Set the units used for the parameter data"""
         self.__units = unitstr
 
     @property
     def dimensions(self):
+        """Return the Dimensions object associated with the parameter"""
         return self.__dimensions
 
     @property
     def ndims(self):
+        """Return the number of dimensions that are defined for the parameter"""
         # Return the number of dimensions defined for the parameter
         return self.__dimensions.ndims
 
     @property
     def data(self):
+        """Return the data associated with the parameter"""
         return self.__data
 
     def add_dimension(self, name, position=0, size=0, first_set_size=False):
