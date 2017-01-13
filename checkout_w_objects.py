@@ -45,7 +45,7 @@ HRU_DIMS = ['nhru', 'ngw', 'nssr']  # These dimensions are related and should ha
 check_dag = False
 
 # Output directory
-outdir = '/Users/pnorton/Projects/National_Hydrology_Model/regions/subset_testing'
+outdir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/regions/subset_testing'
 # outdir = '/Users/pnorton/USGS/test_out'
 
 # Output parameter filename
@@ -59,8 +59,28 @@ srcdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params
 # srcdir = '/Users/pnorton/USGS/merged_params'
 
 # Specify downstream-most stream segment for extracting an upstream subset of NHM model
-dsmost_seg = [31126, ]  # 31380  # 31392    # 10
-# dsmost_seg = (36382, 36383, 22795)
+
+# GCPO outlet segments
+dsmost_seg = [4288, 4289, 4308, 4309, 4335, 4466, 4467, 4601, 4659, 4662, 4734, 4764,
+              4772, 4782, 4989, 5387, 7150, 7152, 7192, 7193, 7347, 7720, 7802, 8310,
+              8350, 8357, 8362, 8432, 8433, 8696, 8701, 8716, 8717, 8729, 9773, 9885,
+              21378, 21382, 21810, 21825, 21832, 22944, 23136, 23137, 23140, 23201,
+              23202, 23203, 23205, 23206, 23207, 23245, 23272, 23273, 38360, 38761,
+              38764, 38771, 38772, 38781, 38786, 38803, 38876, 41702]
+# dsmost_seg = [31126, ]  # 31380  # 31392    # 10
+# dsmost_seg = (36382, 36383, 22795)    # Red River of the South
+
+# Specify the upstream-most stream segments to remove from the final subset
+
+# GCPO cutoff segments
+# uscutoff_seg = [12368, 16955, 20406, 24635, 24963,
+#                 25304, 25506, 33700, 33812, 33829, 33700,
+#                 36766, 38416, 39973, 40159]
+uscutoff_seg = [12364, 12369, 16954, 17608, 20360, 20391, 24618, 24619,
+                24961, 24962, 25302, 25303, 25503, 25504, 33705, 33811,
+                33826, 33837, 34262, 36763, 36764, 38408, 39971, 40160]
+# uscutoff_seg = [31113, ]    # cutoff for 31126
+
 
 # Location of global NHM parameter xml file
 params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
@@ -72,7 +92,9 @@ workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
 
 # Location of CBH files by region
 cbh_dir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/daymet'
-do_cbh = True
+do_cbh = False
+
+download_streamflow = False
 
 # Date range for pulling NWIS streamgage observations
 st_date = datetime(1979, 10, 1)
@@ -126,11 +148,21 @@ def main():
     # Create the upstream graph
     print('-'*10 + 'Creating U/S DAG')
     dag_us = dag_ds.reverse()
+    print('\tNumber of nodes: {}'.format(dag_us.number_of_nodes()))
+    print('\tNumber of edges: {}'.format(dag_us.number_of_edges()))
+
+    # Trim the u/s graph to remove segments above the u/s cutoff segments
+    print('-'*10 + 'Trimming U/S DAG segments')
+    for xx in uscutoff_seg:
+        dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
+
+    print('\tNumber of nodes: {}'.format(dag_us.number_of_nodes()))
+    print('\tNumber of edges: {}'.format(dag_us.number_of_edges()))
 
     # =======================================
     # Given a d/s segment (dsmost_seg) create a subset of u/s segments
     print('-'*10 + 'Generating subset')
-    print('\tdsmost_seg:', dsmost_seg)
+    # print('\tdsmost_seg:', dsmost_seg)
 
     # Get all unique segments u/s of the starting segment
     uniq_seg_us = set()
@@ -183,7 +215,7 @@ def main():
     hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
 
     print('Size of hru_order: {}'.format(len(hru_order_subset)))
-    print(hru_order_subset)
+    # print(hru_order_subset)
 
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
@@ -459,10 +491,11 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Download the streamgage information from NWIS
-    print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
-    streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
-    streamflow.get_daily_streamgage_observations()
-    streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
+    if download_streamflow:
+        print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+        streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
+        streamflow.get_daily_streamgage_observations()
+        streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
 
     # *******************************************
     # Create a shapefile of the selected HRUs
