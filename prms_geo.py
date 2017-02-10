@@ -39,7 +39,7 @@ class Geo(object):
         # use OGR specific exceptions
         ogr.UseExceptions()
 
-        # Load the file - this assume a file geodatabase
+        # Load the file - this assumes a file geodatabase
         driver = ogr.GetDriverByName('OpenFileGDB')
         self.__gdb = driver.Open(self.__filename)
 
@@ -67,16 +67,21 @@ class Geo(object):
 
         # Make sure the attr_values elements are strings
         attr_args = ','.join([str(xx) for xx in attr_values])
+        print(len(attr_args))
+        print('-'*50)
+        print(attr_args)
+        print('-' * 50)
 
         self.__selected_layer.SetAttributeFilter('{} in ({})'.format(attr_name, attr_args))
 
-    def write_shapefile(self, filename, included_fields=None):
+    def write_shapefile(self, filename, attr_name, attr_values, included_fields=None):
         # Create a shapefile for the current selected layer
         # If a filter is set then a subset of features is written
         out_driver = ogr.GetDriverByName('ESRI Shapefile')
 
         out_ds = out_driver.CreateDataSource(filename)
-        out_layer = out_ds.CreateLayer(self.__selected_layer.GetName(), geom_type=ogr.wkbMultiPolygon)
+        out_layer = out_ds.CreateLayer(self.__selected_layer.GetName(), self.__selected_layer.GetSpatialRef())
+                                        # , geom_type=ogr.wkbMultiPolygon)
 
         # Copy field definitions from input to output file
         in_layer_def = self.__selected_layer.GetLayerDefn()
@@ -92,26 +97,31 @@ class Geo(object):
         # Get feature definitions for the output layer
         out_layer_def = out_layer.GetLayerDefn()
 
+        # Create blank output feature
+        out_feat = ogr.Feature(out_layer_def)
+
         # Add features to the output layer
         for in_feat in self.__selected_layer:
-            # Create output feature
-            out_feat = ogr.Feature(out_layer_def)
+            if in_feat.GetField(attr_name) in attr_values:
+                # Add field values from the input layer
+                for ii in range(out_layer_def.GetFieldCount()):
+                    fld_def = out_layer_def.GetFieldDefn(ii)
+                    fld_name = fld_def.GetName()
 
-            # Add field values from the input layer
-            for ii in range(out_layer_def.GetFieldCount()):
-                fld_def = out_layer_def.GetFieldDefn(ii)
-                fld_name = fld_def.GetName()
+                    if included_fields and fld_name not in included_fields:
+                        continue
+                    out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(), in_feat.GetField(ii))
 
-                if included_fields and fld_name not in included_fields:
-                    continue
-                out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(), in_feat.GetField(ii))
+                # Set geometry as centroid
+                # geom = in_feat.GetGeometryRef
+                # out_feat.SetGeometry(geom.Clone())
 
-            # Set geometry as centroid
-            geom = in_feat.GetGeometryRef
-            out_feat.SetGeometry(geom.Clone())
+                # Set geometry
+                geom = in_feat.geometry()
+                out_feat.SetGeometry(geom)
 
-            # Add the new feature to the output layer
-            out_layer.CreateFeature(out_feat)
+                # Add the new feature to the output layer
+                out_layer.CreateFeature(out_feat)
 
         # Close the output datasource
         out_ds.Destroy()

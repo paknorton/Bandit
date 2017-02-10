@@ -66,19 +66,24 @@ dsmost_seg = [4288, 4289, 4308, 4309, 4335, 4466, 4467, 4601, 4659, 4662, 4734, 
               8350, 8357, 8362, 8432, 8433, 8696, 8701, 8716, 8717, 8729, 9773, 9885,
               21378, 21382, 21810, 21825, 21832, 22944, 23136, 23137, 23140, 23201,
               23202, 23203, 23205, 23206, 23207, 23245, 23272, 23273, 38360, 38761,
-              38764, 38771, 38772, 38781, 38786, 38803, 38876, 41702]
+              38764, 38771, 38772, 38781, 38786, 38803, 38876, 41702,
+              22363]
 # dsmost_seg = [31126, ]  # 31380  # 31392    # 10
 # dsmost_seg = (36382, 36383, 22795)    # Red River of the South
 
 # Specify the upstream-most stream segments to remove from the final subset
 
 # GCPO cutoff segments
-# uscutoff_seg = [12368, 16955, 20406, 24635, 24963,
+# hold: 12368, 38416, 39973, 40159
+# uscutoff_seg = [12364, 12369, 16955, 20406, 24635, 24963,
 #                 25304, 25506, 33700, 33812, 33829, 33700,
-#                 36766, 38416, 39973, 40159]
+#                 36766, 38408, 39971, 40160]
 uscutoff_seg = [12364, 12369, 16954, 17608, 20360, 20391, 24618, 24619,
                 24961, 24962, 25302, 25303, 25503, 25504, 33705, 33811,
-                33826, 33837, 34262, 36763, 36764, 38408, 39971, 40160]
+                33826, 33837, 34262, 34910, 34912, 36763, 36764, 38408, 39971, 40160,
+                8074]
+
+
 # uscutoff_seg = [31113, ]    # cutoff for 31126
 
 
@@ -155,6 +160,9 @@ def main():
     print('-'*10 + 'Trimming U/S DAG segments')
     for xx in uscutoff_seg:
         dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
+
+        # Also remove the cutoff segment itself
+        dag_us.remove_node(xx)
 
     print('\tNumber of nodes: {}'.format(dag_us.number_of_nodes()))
     print('\tNumber of edges: {}'.format(dag_us.number_of_edges()))
@@ -505,14 +513,16 @@ def main():
 
     # Output a shapefile of the selected HRUs
     geo_shp.select_layer('nhruNationalIdentifier')
-    geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
-    geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
+    geo_shp.write_shapefile('{}/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+    # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
+    # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
     # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
 
     # Output a shapefile of the selected stream segments
     geo_shp.select_layer('nsegmentNationalIdentifier')
-    geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
-    geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
+    geo_shp.write_shapefile('{}/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+    # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
+    # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 
     del geo_shp
 
