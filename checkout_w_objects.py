@@ -4,9 +4,11 @@ from __future__ import (absolute_import, division, print_function)
 # , unicode_literals)
 from future.utils import iteritems
 
+import argparse
 import networkx as nx
 import numpy as np
 import pandas as pd
+import re
 import msgpack
 import sys
 
@@ -31,43 +33,95 @@ except ImportError:
     # from urllib import urlencode
     from urllib2 import urlopen, Request, HTTPError
 
+import bandit_cfg as bc
 from paramdb import get_global_params, get_global_dimensions
 from pr_util import colorize, heading, print_info, print_warning, print_error
 import cbh
 import prms_nwis
 import prms_geo
 
+__author__ = 'Parker Norton (pnorton@usgs.gov)'
+__version__ = '0.2'
+
 REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
            'r10L', 'r10U', 'r11', 'r12', 'r13', 'r14', 'r15', 'r16', 'r17', 'r18']
 
 HRU_DIMS = ['nhru', 'ngw', 'nssr']  # These dimensions are related and should have same size
 
-check_dag = False
+# Command line arguments
+parser = argparse.ArgumentParser(description='Extract model subsets from the National Hydrologic Model')
+parser.add_argument('-O', '--output_dir', help='Output directory for subset')
+parser.add_argument('-p', '--param_filename', help='Name of output parameter file')
+parser.add_argument('-s', '--streamflow_filename', help='Name of streamflow data file')
+parser.add_argument('-P', '--paramdb_dir', help='Location of parameter database')
+parser.add_argument('-M', '--merged_paramdb_dir', help='Location of merged parameter database')
+parser.add_argument('-C', '--cbh_dir', help='Location of CBH files')
+parser.add_argument('-g', '--geodatabase_filename', help='Full path to NHM geodatabase')
+parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
+parser.add_argument('--output_cbh', help='Output CBH files for subset', action='store_true')
+parser.add_argument('--output_shapefiles', help='Output shapefiles for subset', action='store_true')
+parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
 
-# Output directory
-outdir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/regions/subset_testing'
-# outdir = '/Users/pnorton/USGS/test_out'
+args = parser.parse_args()
+print(args)
 
-# Output parameter filename
-param_filename = 'crap.param'
+config = bc.Cfg('bandit.cfg')
 
-# Output observation data filename
-obs_filename = 'sf_data'
+# Override configuration variables with any command line parameters
+for kk, vv in iteritems(args.__dict__):
+    if vv:
+        print("Overriding configuration for {} with {}".format(kk, vv))
+        config.update_value(kk, vv)
 
-# Location of CONUS NHM parameter files
-srcdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params'
-# srcdir = '/Users/pnorton/USGS/merged_params'
+# Where to output the subset
+outdir = config.output_dir
+
+# What to name the output parameter file
+param_filename = config.param_filename
+
+# What to name the streamflow output file
+obs_filename = config.streamflow_filename
+
+# Location of the NHM parameter database
+paramdb_dir = config.paramdb_dir
+
+# Location of the merged parameter database
+merged_paramdb_dir = config.merged_paramdb_dir
+
+# Location of the NHM CBH files
+cbh_dir = config.cbh_dir
+
+# Full path and filename to the geodatabase to use for outputting shapefile subsets
+geo_file = config.geodatabase_filename
+
+# List of outlets
+dsmost_seg = config.outlets
+
+# List of upstream cutoffs
+uscutoff_seg = config.cutoffs
+
+# Control what is checked and output for subset
+check_dag = config.check_DAG
+output_cbh = config.output_cbh
+output_streamflow = config.output_streamflow
+output_shapefiles = config.output_shapefiles
+
+# Date range for pulling NWIS streamgage observations
+st_date = datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
+en_date = datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
+
+params_file = '{}/parameters.xml'.format(paramdb_dir)
 
 # Specify downstream-most stream segment for extracting an upstream subset of NHM model
 
 # GCPO outlet segments
-dsmost_seg = [4288, 4289, 4308, 4309, 4335, 4466, 4467, 4601, 4659, 4662, 4734, 4764,
-              4772, 4782, 4989, 5387, 7150, 7152, 7192, 7193, 7347, 7720, 7802, 8310,
-              8350, 8357, 8362, 8432, 8433, 8696, 8701, 8716, 8717, 8729, 9773, 9885,
-              21378, 21382, 21810, 21825, 21832, 22944, 23136, 23137, 23140, 23201,
-              23202, 23203, 23205, 23206, 23207, 23245, 23272, 23273, 38360, 38761,
-              38764, 38771, 38772, 38781, 38786, 38803, 38876, 41702,
-              22363]
+# dsmost_seg = [4288, 4289, 4308, 4309, 4335, 4466, 4467, 4601, 4659, 4662, 4734, 4764,
+#               4772, 4782, 4989, 5387, 7150, 7152, 7192, 7193, 7347, 7720, 7802, 8310,
+#               8350, 8357, 8362, 8432, 8433, 8696, 8701, 8716, 8717, 8729, 9773, 9885,
+#               21378, 21382, 21810, 21825, 21832, 22944, 23136, 23137, 23140, 23201,
+#               23202, 23203, 23205, 23206, 23207, 23245, 23272, 23273, 38360, 38761,
+#               38764, 38771, 38772, 38781, 38786, 38803, 38876, 41702,
+#               22363]
 # dsmost_seg = [31126, ]  # 31380  # 31392    # 10
 # dsmost_seg = (36382, 36383, 22795)    # Red River of the South
 
@@ -78,35 +132,12 @@ dsmost_seg = [4288, 4289, 4308, 4309, 4335, 4466, 4467, 4601, 4659, 4662, 4734, 
 # uscutoff_seg = [12364, 12369, 16955, 20406, 24635, 24963,
 #                 25304, 25506, 33700, 33812, 33829, 33700,
 #                 36766, 38408, 39971, 40160]
-uscutoff_seg = [12364, 12369, 16954, 17608, 20360, 20391, 24618, 24619,
-                24961, 24962, 25302, 25303, 25503, 25504, 33705, 33811,
-                33826, 33837, 34262, 34910, 34912, 36763, 36764, 38408, 39971, 40160,
-                8074]
-
+# uscutoff_seg = [12364, 12369, 16954, 17608, 20360, 20391, 24618, 24619,
+#                 24961, 24962, 25302, 25303, 25503, 25504, 33705, 33811,
+#                 33826, 33837, 34262, 34910, 34912, 36763, 36764, 38408, 39971, 40160,
+#                 8074]
 
 # uscutoff_seg = [31113, ]    # cutoff for 31126
-
-
-# Location of global NHM parameter xml file
-params_file = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb/parameters.xml'
-# params_file = '/Users/pnorton/USGS/nhmparamdb/parameters.xml'
-
-# Location of NHM parameter database
-workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
-# workdir = '/Users/pnorton/USGS/nhmparamdb'
-
-# Location of CBH files by region
-cbh_dir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/daymet'
-do_cbh = False
-
-download_streamflow = False
-
-# Date range for pulling NWIS streamgage observations
-st_date = datetime(1979, 10, 1)
-en_date = datetime(2015, 9, 30)
-
-# File geodatabase for NHM
-geo_file = '/Users/pnorton/Projects/National_Hydrology_Model/GIS/GeospatialFabric_National.gdb'
 
 
 def get_parameter(filename):
@@ -119,15 +150,15 @@ def main():
     # Read hru_nhm_to_local and hru_nhm_to_region
     # Create segment_nhm_to_local and segment_nhm_to_region
     print('-'*10 + 'Reading hru_nhm_to_region')
-    hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(srcdir))
+    hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(merged_paramdb_dir))
 
     print('-'*10 + 'Reading hru_nhm_to_local')
-    hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(srcdir))
+    hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(merged_paramdb_dir))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read tosegment_nhm
     print('-'*10 + 'Reading tosegment_nhm')
-    tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(srcdir))['data']
+    tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
     print('\tGenerating DAG of tosegments')
     dag_ds = nx.DiGraph()
@@ -198,7 +229,7 @@ def main():
     print('len(toseg_idx): {}'.format(len(toseg_idx)))
 
     print('Reading hru_segment_nhm')
-    hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(srcdir))['data']
+    hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
     print('Size of original hru_segment: {}'.format(len(hru_segment)))
 
@@ -264,7 +295,7 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset hru_deplcrv
     print('-'*10 + 'Reading hru_deplcrv')
-    hru_deplcrv = get_parameter('{}/hru_deplcrv.msgpack'.format(srcdir))['data']
+    hru_deplcrv = get_parameter('{}/hru_deplcrv.msgpack'.format(merged_paramdb_dir))['data']
 
     print('Size of original hru_deplcrv: {}'.format(len(hru_deplcrv)))
 
@@ -282,11 +313,11 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
     print('-'*10 + 'Reading poi_gage_segment, poi_gage_id, poi_type')
-    poi_gage_segment = get_parameter('{}/poi_gage_segment.msgpack'.format(srcdir))['data']
+    poi_gage_segment = get_parameter('{}/poi_gage_segment.msgpack'.format(merged_paramdb_dir))['data']
     print('Size of original poi_gage_segment: {}'.format(len(poi_gage_segment)))
 
-    poi_gage_id = get_parameter('{}/poi_gage_id.msgpack'.format(srcdir))['data']
-    poi_type = get_parameter('{}/poi_type.msgpack'.format(srcdir))['data']
+    poi_gage_id = get_parameter('{}/poi_gage_id.msgpack'.format(merged_paramdb_dir))['data']
+    poi_type = get_parameter('{}/poi_type.msgpack'.format(merged_paramdb_dir))['data']
 
     # We want to get the indices of the poi_gage_segments that match the
     # segments that are part of the subset. We can then use these
@@ -313,7 +344,7 @@ def main():
     # TODO: We should have the list of params and dimensions in the merged_params directory
     params = get_global_params(params_file)
 
-    dims = get_global_dimensions(params, REGIONS, workdir)
+    dims = get_global_dimensions(params, REGIONS, paramdb_dir)
 
     # Map parameter datatypes for output to parameter file
     param_types = {'I': 1, 'F': 2, 'D': 3, 'S': 4}
@@ -354,7 +385,7 @@ def main():
     outhdl.write('** Parameters **\n')
 
     for pp, pv in iteritems(params):
-        cparam = get_parameter('{}/{}.msgpack'.format(srcdir, pp))
+        cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
 
         ndims = len(cparam['dimensions'])
         sys.stdout.write('\r                                       ')
@@ -446,7 +477,7 @@ def main():
     sys.stdout.write('\rParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
     sys.stdout.flush()
 
-    if do_cbh:
+    if output_cbh:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -499,7 +530,7 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Download the streamgage information from NWIS
-    if download_streamflow:
+    if output_streamflow:
         print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
         streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
         streamflow.get_daily_streamgage_observations()
@@ -507,24 +538,27 @@ def main():
 
     # *******************************************
     # Create a shapefile of the selected HRUs
-    print('-'*40)
-    print('Writing shapefiles for model subset')
-    geo_shp = prms_geo.Geo(geo_file)
+    if output_shapefiles:
+        print('-'*40)
+        print('Writing shapefiles for model subset')
+        geo_shp = prms_geo.Geo(geo_file)
 
-    # Output a shapefile of the selected HRUs
-    geo_shp.select_layer('nhruNationalIdentifier')
-    geo_shp.write_shapefile('{}/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
-    # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
-    # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
-    # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
+        # Output a shapefile of the selected HRUs
+        print('\tHRUs')
+        geo_shp.select_layer('nhruNationalIdentifier')
+        geo_shp.write_shapefile('{}/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+        # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
+        # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
+        # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
 
-    # Output a shapefile of the selected stream segments
-    geo_shp.select_layer('nsegmentNationalIdentifier')
-    geo_shp.write_shapefile('{}/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
-    # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
-    # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
+        # Output a shapefile of the selected stream segments
+        print('\tSegments')
+        geo_shp.select_layer('nsegmentNationalIdentifier')
+        geo_shp.write_shapefile('{}/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+        # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
+        # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 
-    del geo_shp
+        del geo_shp
 
 
 if __name__ == '__main__':
