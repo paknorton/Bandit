@@ -100,6 +100,9 @@ dsmost_seg = config.outlets
 # List of upstream cutoffs
 uscutoff_seg = config.cutoffs
 
+# List of additional HRUs (have no route to segment within subset)
+hru_noroute = config.hru_noroute
+
 # Control what is checked and output for subset
 check_dag = config.check_DAG
 output_cbh = config.output_cbh
@@ -251,6 +254,11 @@ def main():
             print_warning('Stream segment {} has no HRUs connected to it.'.format(xx))
             # raise ValueError('Stream segment has no HRUs connected to it.')
 
+    # Append the additional non-routed HRUs to the list
+    if len(hru_noroute) > 0:
+        print("Adding additional non-routed HRUs")
+        hru_order_subset.extend(hru_noroute)
+
     hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
 
     print('Size of hru_order: {}'.format(len(hru_order_subset)))
@@ -287,6 +295,12 @@ def main():
             for _ in seg_to_hru[xx]:
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
+
+    # Append zeroes to new_hru_segment for each additional non-routed HRU
+    if len(hru_noroute) > 0:
+        print("Adding additional non-routed HRUs to new_hru_segment")
+        for _ in hru_noroute:
+            new_hru_segment.append(0)
 
     print('-'*10 + 'New hru_segment indices')
     # print(new_hru_segment)
