@@ -1,17 +1,21 @@
 #!/usr/bin/env python
 
-from __future__ import (absolute_import, division,
-                        print_function)
+from __future__ import (absolute_import, division, print_function)
 # , unicode_literals)
 from future.utils import iteritems, iterkeys
 
+import argparse
 import xml.etree.ElementTree as xmlET
 import msgpack
 from collections import OrderedDict
 import sys
 
+import bandit_cfg as bc
 from dimension_class import Parameter
 from pr_util import print_warning, print_error
+
+__author__ = 'Parker Norton (pnorton@usgs.gov)'
+__version__ = '0.1'
 
 REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
            'r10L', 'r10U', 'r11', 'r12', 'r13', 'r14', 'r15', 'r16', 'r17', 'r18']
@@ -66,13 +70,19 @@ def get_global_params(params_file):
 
     return params
 
+config = bc.Cfg('bandit.cfg')
+
 
 def main():
-    workdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
-    outdir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params2'
+    # TODO: Automatically update the paramdb from git before creating merged params
+    paramdb_dir = config.paramdb_dir
+    merged_paramdb_dir = config.merged_paramdb_dir
 
-    global_dims_file = '{}/dimensions.xml'.format(workdir)
-    global_params_file = '{}/parameters.xml'.format(workdir)
+    # paramdb_dir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
+    # merged_paramdb_dir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params2'
+
+    global_dims_file = '{}/dimensions.xml'.format(paramdb_dir)
+    global_params_file = '{}/parameters.xml'.format(paramdb_dir)
 
     param_info = get_global_params(global_params_file)
     # dimension_info = get_global_dimensions(param_info, REGIONS, workdir)
@@ -96,7 +106,7 @@ def main():
             sys.stdout.flush()
 
             # Read parameter information
-            cdir = '{}/{}/{}'.format(workdir, pp, rr)
+            cdir = '{}/{}/{}'.format(paramdb_dir, pp, rr)
 
             if not param.ndims:
                 param.add_dimensions_from_xml('{}/{}.xml'.format(cdir, pp))
@@ -118,7 +128,7 @@ def main():
             param.append_paramdb_data(tmp_data)
 
         # write the serialized param to a file
-        with open('{}/{}.msgpack'.format(outdir, pp), 'wb') as ff:
+        with open('{}/{}.msgpack'.format(merged_paramdb_dir, pp), 'wb') as ff:
             msgpack.dump(param.tostructure(), ff)
 
     # =======================================================================
@@ -138,7 +148,7 @@ def main():
             sys.stdout.flush()
 
             # Read parameter information
-            cdir = '{}/{}/{}'.format(workdir, pp, rr)
+            cdir = '{}/{}/{}'.format(paramdb_dir, pp, rr)
 
             if not param.ndims:
                 param.add_dimensions_from_xml('{}/{}.xml'.format(cdir, pp))
@@ -146,7 +156,7 @@ def main():
             if pp == 'poi_gage_segment':
                 # When processing poi_gage_segment we also need nhm_seg to
                 # translate the segment entries from region to national IDs.
-                seghdl = open('{}/nhm_seg/{}/nhm_seg.csv'.format(workdir, rr))
+                seghdl = open('{}/nhm_seg/{}/nhm_seg.csv'.format(paramdb_dir, rr))
                 segdata = seghdl.read().splitlines()
                 seghdl.close()
                 seg_it = iter(segdata)
@@ -186,7 +196,7 @@ def main():
             param.append_paramdb_data(tmp_data)
 
         # write the serialized param to a file
-        with open('{}/{}.msgpack'.format(outdir, pp), 'wb') as ff:
+        with open('{}/{}.msgpack'.format(merged_paramdb_dir, pp), 'wb') as ff:
             msgpack.dump(param.tostructure(), ff)
 
     # =======================================================================
@@ -208,7 +218,7 @@ def main():
         sys.stdout.flush()
 
         # Read parameter information
-        cdir = '{}/{}/{}'.format(workdir, pp, rr)
+        cdir = '{}/{}/{}'.format(paramdb_dir, pp, rr)
 
         # Read the data
         fhdl = open('{}/{}.csv'.format(cdir, pp))
@@ -231,10 +241,10 @@ def main():
         segment_nhm_to_region[rr] = [min(tmp_data), max(tmp_data)]
 
     # write the serialized segment mappings to a file
-    with open('{}/segment_nhm_to_local.msgpack'.format(outdir), 'wb') as ff:
+    with open('{}/segment_nhm_to_local.msgpack'.format(merged_paramdb_dir), 'wb') as ff:
         msgpack.dump(segment_nhm_to_local, ff)
 
-    with open('{}/segment_nhm_to_region.msgpack'.format(outdir), 'wb') as ff:
+    with open('{}/segment_nhm_to_region.msgpack'.format(merged_paramdb_dir), 'wb') as ff:
         msgpack.dump(segment_nhm_to_region, ff)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -251,7 +261,7 @@ def main():
         sys.stdout.flush()
 
         # Read parameter information
-        cdir = '{}/{}/{}'.format(workdir, pp, rr)
+        cdir = '{}/{}/{}'.format(paramdb_dir, pp, rr)
 
         # Read the data
         fhdl = open('{}/{}.csv'.format(cdir, pp))
@@ -274,10 +284,10 @@ def main():
         hru_nhm_to_region[rr] = [min(tmp_data), max(tmp_data)]
 
     # write the serialized segment mappings to a file
-    with open('{}/hru_nhm_to_local.msgpack'.format(outdir), 'wb') as ff:
+    with open('{}/hru_nhm_to_local.msgpack'.format(merged_paramdb_dir), 'wb') as ff:
         msgpack.dump(hru_nhm_to_local, ff)
 
-    with open('{}/hru_nhm_to_region.msgpack'.format(outdir), 'wb') as ff:
+    with open('{}/hru_nhm_to_region.msgpack'.format(merged_paramdb_dir), 'wb') as ff:
         msgpack.dump(hru_nhm_to_region, ff)
 
 

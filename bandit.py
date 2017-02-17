@@ -557,7 +557,7 @@ def main():
             out_order.extend(hru_order_subset)
 
             out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
-            out_cbh.write('Written by skein\n')
+            out_cbh.write('Written by Bandit\n')
             out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
             out_cbh.write('########################################\n')
             outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=True)
