@@ -538,6 +538,9 @@ def main():
 
             for rr, rvals in iteritems(hru_nhm_to_region):
                 # print('Examining {} ({} to {})'.format(rr, rvals[0], rvals[1]))
+                if rvals[0] >= rvals[1]:
+                    raise ValueError('Lower HRU bound is greater than upper HRU bound.')
+
                 idx_retrieve = {}
 
                 for yy in hru_order_ss.keys():

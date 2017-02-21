@@ -253,6 +253,10 @@ def main():
     sys.stdout.write('\r                                       ')
     sys.stdout.write('\rProcessing {} mappings')
 
+    # NOTE: There really is no point to using Ordered dictionaries
+    #       because msgpack does not honor the ordered dicionary type.
+    #       These will end up being read into a standard dictionary
+    #       and the desired order will be gone.
     hru_nhm_to_local = OrderedDict()
     hru_nhm_to_region = OrderedDict()
 
@@ -280,7 +284,7 @@ def main():
                 print_warning('{} has duplicate entry in hru_nhm_to_local'.format(pp))
             hru_nhm_to_local[int(val)] = int(idx)
 
-            tmp_data.append(val)
+            tmp_data.append(int(val))
         hru_nhm_to_region[rr] = [min(tmp_data), max(tmp_data)]
 
     # write the serialized segment mappings to a file
