@@ -447,7 +447,7 @@ def main():
         outhdl.write('{}\n'.format(dim_total_size))
 
         # Write out the datatype for the parameter
-        outhdl.write('{}\n'.format(param_types[cparam['type']]))
+        outhdl.write('{}\n'.format(param_types[cparam['datatype']]))
 
         first_dimension = dim_order[0]
 

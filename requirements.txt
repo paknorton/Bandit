@@ -1,6 +1,8 @@
 gdal
 yaml
+pyyaml
 future
 pandas
 numpy
 networkx
+msgpack
