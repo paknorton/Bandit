@@ -237,7 +237,7 @@ def main():
                 print_warning('{} has duplicate entry in segment_nhm_to_local'.format(pp))
             segment_nhm_to_local[int(val)] = int(idx)
 
-            tmp_data.append(val)
+            tmp_data.append(int(val))
         segment_nhm_to_region[rr] = [min(tmp_data), max(tmp_data)]
 
     # write the serialized segment mappings to a file
