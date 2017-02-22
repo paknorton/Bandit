@@ -5,4 +5,4 @@ future
 pandas
 numpy
 networkx
-msgpack
+msgpack-python
