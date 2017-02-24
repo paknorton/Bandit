@@ -10,6 +10,7 @@ import msgpack
 from collections import OrderedDict
 import sys
 
+from bandit import git_version
 import bandit_cfg as bc
 from dimension_class import Parameter
 from pr_util import print_warning, print_error
@@ -75,11 +76,13 @@ config = bc.Cfg('bandit.cfg')
 
 def main():
     # TODO: Automatically update the paramdb from git before creating merged params
+
     paramdb_dir = config.paramdb_dir
     merged_paramdb_dir = config.merged_paramdb_dir
 
-    # paramdb_dir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
-    # merged_paramdb_dir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/merged_params2'
+    # Write the git revision number of the NhmParamDb repo to a file in the merged params directory
+    with open('{}/00-REVISION'.format(merged_paramdb_dir), 'w') as fhdl:
+        fhdl.write('{}\n'.format(git_version(paramdb_dir)))
 
     global_dims_file = '{}/dimensions.xml'.format(paramdb_dir)
     global_params_file = '{}/parameters.xml'.format(paramdb_dir)

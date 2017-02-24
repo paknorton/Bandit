@@ -12,6 +12,7 @@ import os
 import pandas as pd
 import re
 import msgpack
+import subprocess
 import sys
 
 from collections import OrderedDict
@@ -69,6 +70,36 @@ clog.setFormatter(log_fmt)
 
 bandit_log.addHandler(flog)
 bandit_log.addHandler(clog)
+
+
+def git_version(repo_dir):
+    # Return the git revision as a string
+    # Modified version of function from numpy setup.py
+    # http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
+    # Accessed on 2017-02-24
+    def _minimal_ext_cmd(cmd):
+        # construct minimal environment
+        env = {}
+
+        for k in ['SYSTEMROOT', 'PATH']:
+            v = os.environ.get(k)
+            if v is not None:
+                env[k] = v
+
+        # LANGUAGE is used on win32
+        env['LANGUAGE'] = 'C'
+        env['LANG'] = 'C'
+        env['LC_ALL'] = 'C'
+        out = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env).communicate()[0]
+        return out
+
+    try:
+        out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', 'HEAD'])
+        GIT_REVISION = out.strip().decode('ascii')
+    except OSError:
+        GIT_REVISION = "Unknown"
+
+    return GIT_REVISION
 
 
 def get_parameter(filename):
@@ -142,6 +173,11 @@ def main():
     en_date = datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
 
     params_file = '{}/parameters.xml'.format(paramdb_dir)
+
+    # Output revision of NhmParamDb and the revision used by merged paramdb
+    bandit_log.info('Current NhmParamDb revision: {}'.format(git_version(paramdb_dir)))
+    with open('{}/00-REVISION'.format(merged_paramdb_dir), 'r') as fhdl:
+        bandit_log.info('Merged params based on NhmParamDb revision: {}'.format(fhdl.readline().strip()))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read hru_nhm_to_local and hru_nhm_to_region
