@@ -8,6 +8,7 @@ import argparse
 import logging
 import networkx as nx
 import numpy as np
+import os
 import pandas as pd
 import re
 import msgpack
@@ -36,7 +37,7 @@ except ImportError:
 
 import bandit_cfg as bc
 from paramdb import get_global_params, get_global_dimensions
-from pr_util import colorize, heading, print_info, print_warning, print_error
+# from pr_util import colorize, heading, print_info, print_warning, print_error
 import cbh
 import prms_nwis
 import prms_geo
@@ -91,13 +92,13 @@ def main():
     parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
 
     args = parser.parse_args()
-    # print(args)
+
+    bandit_log.info('========== START {} =========='.format(datetime.now().isoformat()))
 
     # Override configuration variables with any command line parameters
     for kk, vv in iteritems(args.__dict__):
         if vv:
             bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
-            # print("Overriding configuration for {} with {}".format(kk, vv))
             config.update_value(kk, vv)
 
     # Where to output the subset
@@ -145,15 +146,12 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read hru_nhm_to_local and hru_nhm_to_region
     # Create segment_nhm_to_local and segment_nhm_to_region
-    # print('-'*10 + 'Reading hru_nhm_to_region')
     hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(merged_paramdb_dir))
 
-    # print('-'*10 + 'Reading hru_nhm_to_local')
     hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(merged_paramdb_dir))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read tosegment_nhm
-    # print('-'*10 + 'Reading tosegment_nhm')
     tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
     print('Generating stream network from tosegment_nhm')
@@ -166,54 +164,40 @@ def main():
             dag_ds.add_edge(ii + 1, vv)
 
     # nx.draw_networkx(dag_ds)
-    bandit_log.debug('Number of downstream nodes: {}'.format(dag_ds.number_of_nodes()))
-    bandit_log.debug('Number of downstream edges: {}'.format(dag_ds.number_of_edges()))
-    # print('\tNumber of nodes: {}'.format(dag_ds.number_of_nodes()))
-    # print('\tNumber of edges: {}'.format(dag_ds.number_of_edges()))
+    bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
+    bandit_log.debug('Number of NHM downstream edges: {}'.format(dag_ds.number_of_edges()))
 
     if check_dag:
         if not nx.is_directed_acyclic_graph(dag_ds):
             bandit_log.error('Cycles and/or loops found in stream network')
-            # print('='*40)
-            # print_warning('Cycles and/or loops found in stream network')
+
             for xx in nx.simple_cycles(dag_ds):
                 bandit_log.error('Cycle found for segment {}'.format(xx))
-                # print(xx)
-            # print('-'*40)
 
     # Create the upstream graph
-    # print('-'*10 + 'Creating U/S DAG')
     dag_us = dag_ds.reverse()
-    bandit_log.debug('Number of upstream nodes: {}'.format(dag_us.number_of_nodes()))
-    bandit_log.debug('Number of upstream edges: {}'.format(dag_us.number_of_edges()))
-    # print('\tNumber of nodes: {}'.format(dag_us.number_of_nodes()))
-    # print('\tNumber of edges: {}'.format(dag_us.number_of_edges()))
+    bandit_log.debug('Number of NHM upstream nodes: {}'.format(dag_us.number_of_nodes()))
+    bandit_log.debug('Number of NHM upstream edges: {}'.format(dag_us.number_of_edges()))
 
     # Trim the u/s graph to remove segments above the u/s cutoff segments
-    # print('-'*10 + 'Trimming stream network at cutoff segments')
     for xx in uscutoff_seg:
         dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
 
         # Also remove the cutoff segment itself
         dag_us.remove_node(xx)
 
-    bandit_log.debug('Number of upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
-    bandit_log.debug('Number of upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
-    # print('\tNumber of nodes: {}'.format(dag_us.number_of_nodes()))
-    # print('\tNumber of edges: {}'.format(dag_us.number_of_edges()))
+    bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
+    bandit_log.debug('Number of NHM upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
 
     # =======================================
     # Given a d/s segment (dsmost_seg) create a subset of u/s segments
     print('\tExtracting model subset')
-    # print('\tdsmost_seg:', dsmost_seg)
 
     # Get all unique segments u/s of the starting segment
     uniq_seg_us = set()
     for xx in dsmost_seg:
         pred = nx.dfs_predecessors(dag_us, xx)
         uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
-
-    # print('\tSize of uniq_seg_us: {}'.format(len(uniq_seg_us)))
 
     # Get a subgraph in the dag_ds graph and return the edges
     dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
@@ -222,22 +206,15 @@ def main():
     for xx in dsmost_seg:
         dag_ds_subset.add_edge(xx, 'Out_{}'.format(xx))
 
-    # print('-'*10 + 'DAG_subds Edges')
-
     # Create list of toseg ids for the model subset
     toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges_iter()))
     toseg_idx0 = [xx-1 for xx in toseg_idx]  # 0-based version of toseg_idx
 
-    # print('-'*10 + 'toseg_idx')
-    # print(toseg_idx)
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
-    # print('len(toseg_idx): {}'.format(len(toseg_idx)))
 
-    # print('Reading hru_segment_nhm')
     hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
     bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
-    # print('Size of original hru_segment: {}'.format(len(hru_segment)))
 
     # Create a dictionary mapping segments to HRUs
     seg_to_hru = {}
@@ -245,25 +222,20 @@ def main():
         seg_to_hru.setdefault(vv, []).append(ii + 1)
 
     # Get HRU ids ordered by the segments in the model subset
-    # print('-'*10 + 'seg_to_hru')
     hru_order_subset = []
     for xx in toseg_idx:
         if xx in seg_to_hru:
-            # print(xx, seg_to_hru[xx])
-
             for yy in seg_to_hru[xx]:
                 hru_order_subset.append(yy)
         else:
             bandit_log.warning('Stream segment {} has no HRUs connected to it.'.format(xx))
-            # print_warning('Stream segment {} has no HRUs connected to it.'.format(xx))
             # raise ValueError('Stream segment has no HRUs connected to it.')
 
     # Append the additional non-routed HRUs to the list
     if len(hru_noroute) > 0:
-        # print("Adding additional non-routed HRUs")
         for xx in hru_noroute:
             if hru_segment[xx-1] == 0:
-                bandit_log.warning('User-supplied HRU {} is not connected to any stream segment'.format(xx))
+                bandit_log.info('User-supplied HRU {} is not connected to any stream segment'.format(xx))
                 hru_order_subset.append(xx)
             else:
                 bandit_log.error('User-supplied additional HRU {} routes to stream segment {} - Skipping.'.format(xx, hru_segment[xx-1]))
@@ -271,8 +243,6 @@ def main():
     hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
 
     bandit_log.info('Number of HRUs in subset: {}'.format(len(hru_order_subset)))
-    # print('Size of hru_order: {}'.format(len(hru_order_subset)))
-    # print(hru_order_subset)
 
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
@@ -281,20 +251,13 @@ def main():
     # Renumber the tosegment list
     new_tosegment = []
 
-    # print('-'*10 + 'Mapping old DAG_subds indices to new')
+    # Map old DAG_subds indices to new
     for xx in toseg_idx:
         if dag_ds_subset.neighbors(xx)[0] in toseg_idx:
-            # print('old: ({}, {}) '.format(xx, dag_ds_subset.neighbors(xx)[0]) +
-            #       'new: ({}, {})'.format(toseg_idx.index(xx) + 1, toseg_idx.index(dag_ds_subset.neighbors(xx)[0]) + 1))
             new_tosegment.append(toseg_idx.index(dag_ds_subset.neighbors(xx)[0]) + 1)
         else:
             # Outlets should be assigned zero
-            # print('old: ({}, {}) '.format(xx, dag_ds_subset.neighbors(xx)[0]) +
-            #       'new: ({}, {})'.format(toseg_idx.index(xx) + 1, 0))
             new_tosegment.append(0)
-
-    # print('-'*10 + 'New tosegment indices')
-    # print(new_tosegment)
 
     # Renumber the hru_segments for the subset
     new_hru_segment = []
@@ -308,19 +271,14 @@ def main():
 
     # Append zeroes to new_hru_segment for each additional non-routed HRU
     if len(hru_noroute) > 0:
-        # print("Adding user-supplied non-routed HRUs to new_hru_segment")
         for xx in hru_noroute:
             if hru_segment[xx-1] == 0:
                 new_hru_segment.append(0)
 
-    # print('-'*10 + 'New hru_segment indices')
-    # print(new_hru_segment)
     bandit_log.info('Size of hru_segment for subset: {}'.format(len(new_hru_segment)))
-    # print('Size of new_hru_segment: {}'.format(len(new_hru_segment)))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset hru_deplcrv
-    # print('-'*10 + 'Reading hru_deplcrv')
     hru_deplcrv = get_parameter('{}/hru_deplcrv.msgpack'.format(merged_paramdb_dir))['data']
 
     bandit_log.info('Size of NHM hru_deplcrv: {}'.format(len(hru_deplcrv)))
@@ -330,8 +288,6 @@ def main():
     hru_deplcrv_subset = np.array(hru_deplcrv)[tuple(hru_order_subset0), ]
     uniq_deplcrv = list(set(hru_deplcrv_subset))
     uniq_deplcrv0 = [xx - 1 for xx in uniq_deplcrv]
-    # print('-'*10 + 'uniq_deplcrv')
-    # print(uniq_deplcrv)
 
     # Create new hru_deplcrv and renumber
     new_hru_deplcrv = [uniq_deplcrv.index(cc)+1 for cc in hru_deplcrv_subset]
@@ -339,10 +295,8 @@ def main():
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
-    # print('-'*10 + 'Reading poi_gage_segment, poi_gage_id, poi_type')
     poi_gage_segment = get_parameter('{}/poi_gage_segment.msgpack'.format(merged_paramdb_dir))['data']
     bandit_log.info('Size of NHM poi_gage_segment: {}'.format(len(poi_gage_segment)))
-    # print('Size of original poi_gage_segment: {}'.format(len(poi_gage_segment)))
 
     poi_gage_id = get_parameter('{}/poi_gage_id.msgpack'.format(merged_paramdb_dir))['data']
     poi_type = get_parameter('{}/poi_type.msgpack'.format(merged_paramdb_dir))['data']
@@ -425,7 +379,6 @@ def main():
         sys.stdout.write('\r                                       ')
         sys.stdout.write('\rProcessing {} '.format(cparam['name']))
         sys.stdout.flush()
-        # print('Parameter: {}'.format(cparam['name']))
 
         # Get order of dimensions and total size for parameter
         dim_order = [None] * ndims
@@ -477,7 +430,6 @@ def main():
                     outdata = np.array(new_poi_type)
                 else:
                     bandit_log('Unkown parameter, {}, with dimensions {}'.format(pp, first_dimension))
-                    # print_warning('Unknown parameter, {}, with dimension {}'.format(pp, first_dimension))
             elif first_dimension in HRU_DIMS:
                 if pp == 'hru_deplcrv':
                     outdata = np.array(new_hru_deplcrv)
@@ -487,7 +439,6 @@ def main():
                     outdata = np.array(cparam['data'])[tuple(hru_order_subset0), ]
             else:
                 bandit_log.error('No rules to handle dimension {}'.format(first_dimension))
-                # print_warning('Code not written for dimension {}'.format(first_dimension))
         elif ndims == 2:
             # 2D Parameters
             outdata = np.array(cparam['data']).reshape((-1, dims[second_dimension]), order='F')
@@ -498,7 +449,6 @@ def main():
                 outdata = outdata[tuple(hru_order_subset0), :]
             else:
                 bandit_log.error('No rules to handle 2D parameter, {}, which contains dimension {}'.format(pp, first_dimension))
-                # print_warning('Code not written for 2D parameter, {}, which contains dimension {}'.format(pp, first_dimension))
 
         # Convert outdata to a list for writing
         if first_dimension == 'ndeplval':
@@ -547,9 +497,20 @@ def main():
                     if rvals[0] <= yy <= rvals[1]:
                         # print('\tMatching region {}, HRU: {} ({})'.format(rr, yy, hru_order_ss[yy]))
                         idx_retrieve[yy] = hru_order_ss[yy]
+
                 if len(idx_retrieve) > 0:
-                    cc1 = cbh.Cbh(filename='{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv), indices=idx_retrieve)
+                    # The current region contains HRUs in the model subset
+                    # Read in the data for those HRUs
+                    cbh_file = '{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv)
+
+                    if not os.path.isfile(cbh_file):
+                        # Missing datan file for this variable and region
+                        bandit_log.error('Required CBH file, {}, is missing. Unable to continue'.format(cbh_file))
+                        raise IOError('Required CBH file, {}, is missing.'.format(cbh_file))
+
+                    cc1 = cbh.Cbh(filename=cbh_file, indices=idx_retrieve)
                     cc1.read_cbh()
+
                     if first:
                         outdata = cc1.data.copy()
                         first = False
@@ -566,7 +527,6 @@ def main():
             outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=True)
             out_cbh.close()
             bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
-            # print('\t{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -582,25 +542,29 @@ def main():
     if output_shapefiles:
         print('-'*40)
         print('Writing shapefiles for model subset')
-        geo_shp = prms_geo.Geo(geo_file)
+        if not os.path.isdir(geo_file):
+            bandit_log.error('File geodatabase, {}, does not exist. Shapefiles of model subset will not be created'.format(geo_file))
+        else:
+            geo_shp = prms_geo.Geo(geo_file)
 
-        # Output a shapefile of the selected HRUs
-        print('\tHRUs')
-        geo_shp.select_layer('nhruNationalIdentifier')
-        geo_shp.write_shapefile('{}/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
-        # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
-        # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
-        # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
+            # Output a shapefile of the selected HRUs
+            print('\tHRUs')
+            geo_shp.select_layer('nhruNationalIdentifier')
+            geo_shp.write_shapefile('{}/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+            # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
+            # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
+            # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
 
-        # Output a shapefile of the selected stream segments
-        print('\tSegments')
-        geo_shp.select_layer('nsegmentNationalIdentifier')
-        geo_shp.write_shapefile('{}/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
-        # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
-        # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
+            # Output a shapefile of the selected stream segments
+            print('\tSegments')
+            geo_shp.select_layer('nsegmentNationalIdentifier')
+            geo_shp.write_shapefile('{}/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+            # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
+            # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 
-        del geo_shp
+            del geo_shp
 
+    bandit_log.info('========== END {} =========='.format(datetime.now().isoformat()))
 
 if __name__ == '__main__':
     main()
