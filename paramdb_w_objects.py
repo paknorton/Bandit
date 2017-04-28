@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from __future__ import (absolute_import, division, print_function)
-# , unicode_literals)
 from future.utils import iteritems, iterkeys
 
 import argparse
@@ -56,7 +55,7 @@ def get_global_dimensions(params, regions, workdir):
 
 def get_global_params(params_file):
     # Get the parameters available from the parameter database
-    # Returns a dictionary of parameters and associate units and types
+    # Returns a dictionary of parameters and associated units and types
 
     # Read in the parameters.xml file
     params_tree = xmlET.parse(params_file)

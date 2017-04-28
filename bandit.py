@@ -37,7 +37,7 @@ except ImportError:
     from urllib2 import urlopen, Request, HTTPError
 
 import bandit_cfg as bc
-from paramdb import get_global_params, get_global_dimensions
+from paramdb_w_objects import get_global_params, get_global_dimensions
 # from pr_util import colorize, heading, print_info, print_warning, print_error
 import cbh
 import prms_nwis
@@ -175,9 +175,10 @@ def main():
     params_file = '{}/parameters.xml'.format(paramdb_dir)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
-    bandit_log.info('Current NhmParamDb revision: {}'.format(git_version(paramdb_dir)))
+    bandit_log.debug('Current NhmParamDb revision: {}'.format(git_version(paramdb_dir)))
     with open('{}/00-REVISION'.format(merged_paramdb_dir), 'r') as fhdl:
-        bandit_log.info('Merged params based on NhmParamDb revision: {}'.format(fhdl.readline().strip()))
+        nhmparamdb_revision = fhdl.readline().strip()
+        bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read hru_nhm_to_local and hru_nhm_to_region
@@ -386,8 +387,8 @@ def main():
     outhdl = open('{}/{}'.format(outdir, param_filename), 'w')
 
     # Write header lines
-    outhdl.write('Subset from NHM written by Bandit\n')
-    outhdl.write('0.5\n')
+    outhdl.write('Written by Bandit version {}\n'.format(__version__))
+    outhdl.write('NhmParamDb revision: {}\n'.format(nhmparamdb_revision))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write out dimensions section

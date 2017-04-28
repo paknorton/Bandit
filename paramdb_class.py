@@ -118,7 +118,6 @@ class ParamDb(object):
                 print('Error occurred' + sys.exc_info()[0])
         return self.__parameters[param_name]
 
-
     def create_conusdb(self):
         # Create the CONUS parameter database from the official parameter database
         self.__global_parameters = get_global_params(self.__global_params_file)
