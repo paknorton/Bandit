@@ -512,11 +512,11 @@ def main():
                     cbh_file = '{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv)
 
                     if not os.path.isfile(cbh_file):
-                        # Missing datan file for this variable and region
+                        # Missing data file for this variable and region
                         bandit_log.error('Required CBH file, {}, is missing. Unable to continue'.format(cbh_file))
                         raise IOError('Required CBH file, {}, is missing.'.format(cbh_file))
 
-                    cc1 = cbh.Cbh(filename=cbh_file, indices=idx_retrieve)
+                    cc1 = cbh.Cbh(filename=cbh_file, indices=idx_retrieve, st_date=st_date, en_date=en_date)
                     cc1.read_cbh()
 
                     if first:
