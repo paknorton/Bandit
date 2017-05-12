@@ -9,9 +9,11 @@ import msgpack
 from collections import OrderedDict
 import sys
 
-from bandit import git_version
+# from bandit import git_version
+
 import bandit_cfg as bc
 from dimension_class import Parameter
+from helpers import git_version
 from pr_util import print_warning, print_error
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'

@@ -12,7 +12,7 @@ import os
 import pandas as pd
 import re
 import msgpack
-import subprocess
+# import subprocess
 import sys
 
 from collections import OrderedDict
@@ -42,6 +42,7 @@ from paramdb_w_objects import get_global_params, get_global_dimensions
 import cbh
 import prms_nwis
 import prms_geo
+from helpers import git_version
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 __version__ = '0.2'
@@ -70,36 +71,6 @@ clog.setFormatter(log_fmt)
 
 bandit_log.addHandler(flog)
 bandit_log.addHandler(clog)
-
-
-def git_version(repo_dir):
-    # Return the git revision as a string
-    # Modified version of function from numpy setup.py
-    # http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
-    # Accessed on 2017-02-24
-    def _minimal_ext_cmd(cmd):
-        # construct minimal environment
-        env = {}
-
-        for k in ['SYSTEMROOT', 'PATH']:
-            v = os.environ.get(k)
-            if v is not None:
-                env[k] = v
-
-        # LANGUAGE is used on win32
-        env['LANGUAGE'] = 'C'
-        env['LANG'] = 'C'
-        env['LC_ALL'] = 'C'
-        out = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env).communicate()[0]
-        return out
-
-    try:
-        out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', 'HEAD'])
-        GIT_REVISION = out.strip().decode('ascii')
-    except OSError:
-        GIT_REVISION = "Unknown"
-
-    return GIT_REVISION
 
 
 def get_parameter(filename):

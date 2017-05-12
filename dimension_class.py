@@ -259,7 +259,17 @@ class Parameter(object):
             self.__data = data_np
         else:
             # Data structure has already been created; try concatenating the incoming data
-            self.__data = np.concatenate((self.__data, data_np))
+
+            if 'one' in self.__dimensions.dimensions.keys():
+                # A parameter with the dimension 'one' should never have
+                # more than 1 value. Output warning if the incoming value
+                # is different from a pre-existing value
+                if data_np[0] != self.__data[0]:
+                    print('WARNING: {} with dimension one has value {} with existing value of {}'.format(self.__name,
+                                                                                                         data_np[0],
+                                                                                                         self.__data[0]))
+            else:
+                self.__data = np.concatenate((self.__data, data_np))
 
         # Resize dimensions to reflect new size
         self.__resize_dims()
