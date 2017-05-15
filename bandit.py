@@ -532,7 +532,7 @@ def main():
             out_cbh.write('Written by Bandit\n')
             out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
             out_cbh.write('########################################\n')
-            outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=True)
+            outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False)
             out_cbh.close()
             bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 

@@ -67,44 +67,26 @@ class Cbh(object):
     #     # The subset can span over multiple regions
 
     def read_cbh(self):
-        # Read the data
+        """Read a CBH (Climate-by_HRU) file"""
         if self.__indices:
-            incl_cols = [0, 1, 2, 3, 4, 5]
-            for xx in self.__indices.values():
-                incl_cols.append(xx+5)  # include an offset for the having datetime info
-
-            # Columns 0-5 always represent date/time information
-            self.__data = pd.read_csv(self.__filename, sep=' ', skipinitialspace=True, usecols=incl_cols,
-                                      skiprows=3, engine='c', header=None)
-
-            # Rename columns with NHM HRU ids
-            ren_dict = {v+5: k for k, v in self.__indices.iteritems()}
-            # print(ren_dict)
-
-            # NOTE: The rename is an expensive operation
-            self.__data.rename(columns=ren_dict, inplace=True)
-        else:
-            # Read the entire file
-            self.__data = pd.read_csv(self.__filename, sep=' ', skipinitialspace=True,
-                                      skiprows=3, engine='c', header=None)
-        # in_hdl.close()
-
-    def read_cbh2(self):
-        if self.__indices:
-            incl_cols = CBH_INDEX_COLS.copy()
+            incl_cols = list(CBH_INDEX_COLS)
             for xx in self.__indices.values():
                 incl_cols.append(xx+5)  # include an offset for the having datetime info
 
             # Columns 0-5 always represent date/time information
             self.__data = pd.read_csv(self.__filename, sep=' ', skipinitialspace=True, usecols=incl_cols,
                                       skiprows=3, engine='c',
-                                      date_parser=dparse, parse_dates={'thedate': [0, 1, 2, 3, 4, 5]},
-                                      index_col='thedate', header=None, na_values=[-99.0, -999.0])
-            print(self.__data.head())
+                                      date_parser=dparse, parse_dates={'thedate': CBH_INDEX_COLS},
+                                      index_col='thedate', keep_date_col=True, header=None, na_values=[-99.0, -999.0])
+
+            if self.__stdate is not None and self.__endate is not None:
+                # Given a date range to restrict the output
+                self.__data = self.__data[self.__stdate:self.__endate]
+
+            self.__data.reset_index(drop=True, inplace=True)
 
             # Rename columns with NHM HRU ids
             ren_dict = {v + 5: k for k, v in self.__indices.iteritems()}
-            # print(ren_dict)
 
             # NOTE: The rename is an expensive operation
             self.__data.rename(columns=ren_dict, inplace=True)
@@ -114,8 +96,8 @@ class Cbh(object):
 
             # Load the CBH file
             self.__data = pd.read_csv(self.__filename, sep=' ', skipinitialspace=True, skiprows=3, engine='c',
-                                      date_parser=dparse, parse_dates={'thedate': [0, 1, 2, 3, 4, 5]},
-                                      index_col='thedate', header=None, na_values=[-99.0, -999.0])
+                                      date_parser=dparse, parse_dates={'thedate': CBH_INDEX_COLS},
+                                      index_col='thedate', keep_date_col=True, header=None, na_values=[-99.0, -999.0])
 
     def write_cbh_subset(self, outdir):
         outdata = None
