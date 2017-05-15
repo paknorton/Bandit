@@ -465,7 +465,10 @@ def main():
             outlist = outdata.ravel(order='F').tolist()
 
         for xx in outlist:
-            outhdl.write('{}\n'.format(xx))
+            if param_types[cparam['datatype']] in [2, 3]:
+                outhdl.write('{:f}\n'.format(xx))
+            else:
+                outhdl.write('{}\n'.format(xx))
 
     outhdl.close()
     sys.stdout.write('\r                                       ')
