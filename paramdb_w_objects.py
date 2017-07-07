@@ -72,11 +72,10 @@ def get_global_params(params_file):
 
     return params
 
-config = bc.Cfg('bandit.cfg')
-
 
 def main():
     # TODO: Automatically update the paramdb from git before creating merged params
+    config = bc.Cfg('bandit.cfg')
 
     paramdb_dir = config.paramdb_dir
     merged_paramdb_dir = config.merged_paramdb_dir

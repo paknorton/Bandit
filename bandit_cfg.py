@@ -17,6 +17,21 @@ class Cfg(object):
         self.__cmdline = cmdline
         self.load(filename)
 
+    def __str__(self):
+        """Pretty-print the configuration items"""
+        outstr = ''
+
+        for (kk, vv) in iteritems(self.__cfgdict):
+            outstr += '{0:s}: '.format(kk)
+
+            if isinstance(vv, list):
+                for ll in vv:
+                    outstr += '{}, '.format(ll)
+                outstr = outstr.strip(', ') + '\n'
+            else:
+                outstr += '{}\n'.format(vv)
+        return outstr
+
     def __getattr__(self, item):
         # Undefined attributes will look up the given configuration item
         return self.get_value(item)
@@ -29,17 +44,6 @@ class Cfg(object):
             print('Configuration variable, {}, does not exist'.format(varname))
             return None
 
-    def list_config_items(self):
-        for (kk, vv) in iteritems(self.__cfgdict):
-            print('{0:s}:'.format(kk)),
-
-            if isinstance(vv, list):
-                for ll in vv:
-                    print(ll),
-                print()
-            else:
-                print(vv)
-
     def load(self, filename):
         tmp = yaml.load(open(filename, 'r'))
         self.__cfgdict = tmp
@@ -50,3 +54,8 @@ class Cfg(object):
             self.__cfgdict[variable] = newval
         else:
             raise KeyError("Configuration variable, {}, does not exist".format(variable))
+
+    def write(self, filename):
+        """"Write the configuration out to a file"""
+        outfile = file(filename, 'w')
+        yaml.dump(self.__cfgdict, outfile)

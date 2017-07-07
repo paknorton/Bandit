@@ -52,26 +52,6 @@ REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
 
 HRU_DIMS = ['nhru', 'ngw', 'nssr']  # These dimensions are related and should have same size
 
-config = bc.Cfg('bandit.cfg')
-
-bandit_log = logging.getLogger('bandit')
-bandit_log.setLevel(logging.DEBUG)
-
-log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
-
-# Handler for file logs
-flog = logging.FileHandler('bandit.log')
-flog.setLevel(logging.DEBUG)
-flog.setFormatter(log_fmt)
-
-# Handler for console logs
-clog = logging.StreamHandler()
-clog.setLevel(logging.ERROR)
-clog.setFormatter(log_fmt)
-
-bandit_log.addHandler(flog)
-bandit_log.addHandler(clog)
-
 
 def get_parameter(filename):
     with open(filename, 'rb') as ff:
@@ -88,6 +68,7 @@ def main():
     parser.add_argument('-M', '--merged_paramdb_dir', help='Location of merged parameter database')
     parser.add_argument('-C', '--cbh_dir', help='Location of CBH files')
     parser.add_argument('-g', '--geodatabase_filename', help='Full path to NHM geodatabase')
+    parser.add_argument('-j', '--job', help='Job directory to work in')
     parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
     parser.add_argument('--output_cbh', help='Output CBH files for subset', action='store_true')
     parser.add_argument('--output_shapefiles', help='Output shapefiles for subset', action='store_true')
@@ -95,13 +76,46 @@ def main():
 
     args = parser.parse_args()
 
+    stdir = os.getcwd()
+
+    if args.job:
+        if os.path.exists(args.job):
+            # Change into job directory before running extraction
+            os.chdir(args.job)
+            print('Working in directory: {}'.format(args.job))
+        else:
+            print('ERROR: Invalid jobs directory: {}'.format(args.job))
+            exit(-1)
+
+    # Setup the logging
+    bandit_log = logging.getLogger('bandit')
+    bandit_log.setLevel(logging.DEBUG)
+
+    log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
+
+    # Handler for file logs
+    flog = logging.FileHandler('bandit.log')
+    flog.setLevel(logging.DEBUG)
+    flog.setFormatter(log_fmt)
+
+    # Handler for console logs
+    clog = logging.StreamHandler()
+    clog.setLevel(logging.ERROR)
+    clog.setFormatter(log_fmt)
+
+    bandit_log.addHandler(flog)
+    bandit_log.addHandler(clog)
+
     bandit_log.info('========== START {} =========='.format(datetime.now().isoformat()))
+
+    config = bc.Cfg('bandit.cfg')
 
     # Override configuration variables with any command line parameters
     for kk, vv in iteritems(args.__dict__):
-        if vv:
-            bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
-            config.update_value(kk, vv)
+        if kk not in ['job']:
+            if vv:
+                bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
+                config.update_value(kk, vv)
 
     # Where to output the subset
     outdir = config.output_dir
@@ -576,6 +590,8 @@ def main():
             del geo_shp
 
     bandit_log.info('========== END {} =========='.format(datetime.now().isoformat()))
+
+    os.chdir(stdir)
 
 if __name__ == '__main__':
     main()
