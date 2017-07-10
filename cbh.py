@@ -115,7 +115,7 @@ class Cbh(object):
 
                 if len(idx_retrieve) > 0:
                     self.__filename = '{}/{}_{}.cbh.gz'.format(self.__cbhdb_dir, rr, vv)
-                    self.read_cbh2()
+                    self.read_cbh()
                     if first:
                         outdata = self.__data
                         first = False
@@ -126,5 +126,5 @@ class Cbh(object):
             outorder.extend(self.__nhm_hrus)
 
             out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
-            out_cbh.write('Written by Skein\n')
+            out_cbh.write('Written by Bandit\n')
             out_cbh.write('{} {}\n'.format(vv, len()))

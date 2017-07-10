@@ -7,12 +7,11 @@ from future.utils import iteritems
 import argparse
 import logging
 import networkx as nx
+import msgpack
 import numpy as np
 import os
 import pandas as pd
 import re
-import msgpack
-# import subprocess
 import sys
 
 from collections import OrderedDict
@@ -39,7 +38,7 @@ except ImportError:
 import bandit_cfg as bc
 from paramdb_w_objects import get_global_params, get_global_dimensions
 # from pr_util import colorize, heading, print_info, print_warning, print_error
-import cbh
+from pyPRMS.Cbh import Cbh
 import prms_nwis
 import prms_geo
 from helpers import git_version
@@ -157,6 +156,7 @@ def main():
     st_date = datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
     en_date = datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
 
+    # ===============================================================
     params_file = '{}/parameters.xml'.format(paramdb_dir)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
@@ -533,7 +533,7 @@ def main():
                         bandit_log.error('Required CBH file, {}, is missing. Unable to continue'.format(cbh_file))
                         raise IOError('Required CBH file, {}, is missing.'.format(cbh_file))
 
-                    cc1 = cbh.Cbh(filename=cbh_file, indices=idx_retrieve, st_date=st_date, en_date=en_date)
+                    cc1 = Cbh(filename=cbh_file, indices=idx_retrieve, st_date=st_date, en_date=en_date)
                     cc1.read_cbh()
 
                     if first:
