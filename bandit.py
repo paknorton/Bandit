@@ -2,7 +2,7 @@
 
 from __future__ import (absolute_import, division, print_function)
 # , unicode_literals)
-from future.utils import iteritems
+from future.utils import iteritems, iterkeys
 
 import argparse
 import logging
@@ -10,9 +10,9 @@ import networkx as nx
 import msgpack
 import numpy as np
 import os
-import pandas as pd
 import re
 import sys
+import xml.etree.ElementTree as xmlET
 
 from collections import OrderedDict
 from datetime import datetime
@@ -36,20 +36,66 @@ except ImportError:
     from urllib2 import urlopen, Request, HTTPError
 
 import bandit_cfg as bc
-from paramdb_w_objects import get_global_params, get_global_dimensions
+# from paramdb_w_objects import get_global_params, get_global_dimensions
 # from pr_util import colorize, heading, print_info, print_warning, print_error
-from pyPRMS.Cbh import Cbh
+from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
+from pyPRMS.Cbh import Cbh, CBH_VARNAMES
 import prms_nwis
 import prms_geo
 from helpers import git_version
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
-__version__ = '0.2'
+__version__ = '0.4'
 
-REGIONS = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08', 'r09',
-           'r10L', 'r10U', 'r11', 'r12', 'r13', 'r14', 'r15', 'r16', 'r17', 'r18']
 
-HRU_DIMS = ['nhru', 'ngw', 'nssr']  # These dimensions are related and should have same size
+def get_global_dimensions(params, regions, workdir):
+    # This builds a dictionary of total dimension sizes for the concatenated parameters
+    dimension_info = {}
+    is_populated = {}
+
+    # Loop through the xml files for each parameter and define the total size and dimensions
+    for pp in iterkeys(params):
+        for rr in regions:
+            cdim_tree = xmlET.parse('{}/{}/{}/{}.xml'.format(workdir, pp, rr, pp))
+            cdim_root = cdim_tree.getroot()
+
+            for cdim in cdim_root.findall('./dimensions/dimension'):
+                dim_name = cdim.get('name')
+                dim_size = int(cdim.get('size'))
+
+                is_populated.setdefault(dim_name, False)
+
+                if not is_populated[dim_name]:
+                    if dim_name in ['nmonths', 'ndays', 'one']:
+                        # Non-additive dimensions
+                        dimension_info[dim_name] = dimension_info.get(dim_name, dim_size)
+                    else:
+                        # Other dimensions are additive
+                        dimension_info[dim_name] = dimension_info.get(dim_name, 0) + dim_size
+
+        # Update is_populated to reflect dimension size(s) don't need to be re-computed
+        for kk, vv in iteritems(is_populated):
+            if not vv:
+                is_populated[kk] = True
+    return dimension_info
+
+
+def get_global_params(params_file):
+    # Get the parameters available from the parameter database
+    # Returns a dictionary of parameters and associated units and types
+
+    # Read in the parameters.xml file
+    params_tree = xmlET.parse(params_file)
+    params_root = params_tree.getroot()
+
+    params = {}
+
+    for param in params_root.findall('parameter'):
+        params[param.get('name')] = {}
+        params[param.get('name')]['type'] = param.get('type')
+        params[param.get('name')]['units'] = param.get('units')
+
+    return params
 
 
 def get_parameter(filename):
@@ -157,7 +203,7 @@ def main():
     en_date = datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
 
     # ===============================================================
-    params_file = '{}/parameters.xml'.format(paramdb_dir)
+    params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
     bandit_log.debug('Current NhmParamDb revision: {}'.format(git_version(paramdb_dir)))
@@ -169,7 +215,6 @@ def main():
     # Read hru_nhm_to_local and hru_nhm_to_region
     # Create segment_nhm_to_local and segment_nhm_to_region
     hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(merged_paramdb_dir))
-
     hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(merged_paramdb_dir))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -350,9 +395,6 @@ def main():
 
     dims = get_global_dimensions(params, REGIONS, paramdb_dir)
 
-    # Map parameter datatypes for output to parameter file
-    param_types = {'I': 1, 'F': 2, 'D': 3, 'S': 4}
-
     # Resize dimensions to the model subset
     crap_dims = dims.copy()  # need a copy since we modify dims
     for dd, dv in iteritems(crap_dims):
@@ -407,7 +449,7 @@ def main():
         dim_total_size = 1
 
         for dd, dv in iteritems(cparam['dimensions']):
-            dim_order[dv['position']-1] = dd
+            dim_order[dv['position']] = dd
             dim_total_size *= dims[dd]
 
         outhdl.write('####\n')
@@ -422,7 +464,8 @@ def main():
         outhdl.write('{}\n'.format(dim_total_size))
 
         # Write out the datatype for the parameter
-        outhdl.write('{}\n'.format(param_types[cparam['datatype']]))
+        # outhdl.write('{}\n'.format(param_types[cparam['datatype']]))
+        outhdl.write('{}\n'.format(cparam['datatype']))
 
         first_dimension = dim_order[0]
 
@@ -479,8 +522,16 @@ def main():
             outlist = outdata.ravel(order='F').tolist()
 
         for xx in outlist:
-            if param_types[cparam['datatype']] in [2, 3]:
-                outhdl.write('{:f}\n'.format(xx))
+            if cparam['datatype'] in [2, 3]:
+                # Float and double types have to be formatted specially so
+                # they aren't written in exponential notation or with
+                # extraneous zeroes
+                tmp = '{:<20f}'.format(xx).rstrip('0 ')
+                if tmp[-1] == '.':
+                    tmp += '0'
+
+                outhdl.write('{}\n'.format(tmp))
+                # outhdl.write('{:f}\n'.format(xx))
             else:
                 outhdl.write('{}\n'.format(xx))
 
@@ -494,62 +545,36 @@ def main():
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Subset the cbh files for the selected HRUs
-        CBH_VARS = ['tmax', 'tmin', 'prcp']
 
         # Subset the hru_nhm_to_local mapping
-        hru_order_ss = OrderedDict((kk, hru_nhm_to_local[kk]) for kk in hru_order_subset)
+        hru_order_ss = OrderedDict()
+        for kk in hru_order_subset:
+            hru_order_ss[kk] = hru_nhm_to_local[kk]
 
         print('Processing CBH files')
-        for vv in CBH_VARS:
+
+        # for vv in ['prcp']:
+        for vv in CBH_VARNAMES:
+            print(vv)
             # For out_order the first six columns contain the time information and
             # are always output for the cbh files
-            out_order = [0, 1, 2, 3, 4, 5]
+            out_order = [kk for kk in hru_order_subset]
+            for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
+                out_order.insert(0, cc)
 
-            if not out_order:
-                raise NameError('CBH column out order is empty!')
+            cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
+                          st_date=st_date, en_date=en_date)
 
-            outdata = None
-            first = True
+            print('\tReading {}'.format(vv))
+            cbh_hdl.read_cbh_multifile(cbh_dir)
 
-            for rr, rvals in iteritems(hru_nhm_to_region):
-                # print('Examining {} ({} to {})'.format(rr, rvals[0], rvals[1]))
-                if rvals[0] >= rvals[1]:
-                    raise ValueError('Lower HRU bound is greater than upper HRU bound.')
-
-                idx_retrieve = {}
-
-                for yy in hru_order_ss.keys():
-                    if rvals[0] <= yy <= rvals[1]:
-                        # print('\tMatching region {}, HRU: {} ({})'.format(rr, yy, hru_order_ss[yy]))
-                        idx_retrieve[yy] = hru_order_ss[yy]
-
-                if len(idx_retrieve) > 0:
-                    # The current region contains HRUs in the model subset
-                    # Read in the data for those HRUs
-                    cbh_file = '{}/{}_{}.cbh.gz'.format(cbh_dir, rr, vv)
-
-                    if not os.path.isfile(cbh_file):
-                        # Missing data file for this variable and region
-                        bandit_log.error('Required CBH file, {}, is missing. Unable to continue'.format(cbh_file))
-                        raise IOError('Required CBH file, {}, is missing.'.format(cbh_file))
-
-                    cc1 = Cbh(filename=cbh_file, indices=idx_retrieve, st_date=st_date, en_date=en_date)
-                    cc1.read_cbh()
-
-                    if first:
-                        outdata = cc1.data.copy()
-                        first = False
-                    else:
-                        outdata = pd.merge(outdata, cc1.data, on=[0, 1, 2, 3, 4, 5])
-
-            # Append the HRUs as ordered for the subset
-            out_order.extend(hru_order_subset)
-
+            print('\tWriting {} CBH file'.format(vv))
             out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
             out_cbh.write('Written by Bandit\n')
             out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
             out_cbh.write('########################################\n')
-            outdata.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False)
+            cbh_hdl.data.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False,
+                                encoding=None, chunksize=50)
             out_cbh.close()
             bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 
@@ -595,4 +620,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
