@@ -255,7 +255,7 @@ def main():
             dag_us.remove_node(xx)
     except TypeError:
         # The list of outlet segments is NoneType - pull all segments
-        bandit_log.error('Selected outlets should at least be an empty list instead of NoneType')
+        bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType')
         exit(1)
 
     bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
@@ -267,16 +267,20 @@ def main():
 
     # Get all unique segments u/s of the starting segment
     uniq_seg_us = set()
-    for xx in dsmost_seg:
-        pred = nx.dfs_predecessors(dag_us, xx)
-        uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
+    if dsmost_seg:
+        for xx in dsmost_seg:
+            pred = nx.dfs_predecessors(dag_us, xx)
+            uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
 
-    # Get a subgraph in the dag_ds graph and return the edges
-    dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
+        # Get a subgraph in the dag_ds graph and return the edges
+        dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
 
-    # Add the downstream segments that exit the subgraph
-    for xx in dsmost_seg:
-        dag_ds_subset.add_edge(xx, 'Out_{}'.format(xx))
+        # Add the downstream segments that exit the subgraph
+        for xx in dsmost_seg:
+            dag_ds_subset.add_edge(xx, 'Out_{}'.format(xx))
+    else:
+        # No outlets specified so pull the CONUS
+        dag_ds_subset = dag_ds
 
     # Create list of toseg ids for the model subset
     toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges_iter()))
@@ -383,7 +387,8 @@ def main():
     new_poi_gage_id = []
     new_poi_type = []
 
-    for ss in uniq_seg_us:
+    # for ss in uniq_seg_us:
+    for ss in nx.edges_iter(dag_ds_subset):
         if ss in poi_gage_segment:
             new_poi_gage_segment.append(toseg_idx.index(ss)+1)
             new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
