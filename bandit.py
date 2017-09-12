@@ -247,11 +247,16 @@ def main():
     bandit_log.debug('Number of NHM upstream edges: {}'.format(dag_us.number_of_edges()))
 
     # Trim the u/s graph to remove segments above the u/s cutoff segments
-    for xx in uscutoff_seg:
-        dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
+    try:
+        for xx in uscutoff_seg:
+            dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
 
-        # Also remove the cutoff segment itself
-        dag_us.remove_node(xx)
+            # Also remove the cutoff segment itself
+            dag_us.remove_node(xx)
+    except TypeError:
+        # The list of outlet segments is NoneType - pull all segments
+        bandit_log.error('Selected outlets should at least be an empty list instead of NoneType')
+        exit(1)
 
     bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
     bandit_log.debug('Number of NHM upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
