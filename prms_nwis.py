@@ -79,7 +79,7 @@ class NWIS(object):
 
     @end_date.setter
     def end_date(self, en_date):
-        if type(en_date) is datetime.datetime:
+        if type(en_date) is datetime:
             self.__endate = en_date
         else:
             try:
@@ -89,7 +89,7 @@ class NWIS(object):
                 # Wrong form for date was provided
                 print_error('Date must be either a datetime or of form "YYYY-MM-DD"')
                 print(dt_err)
-        self.outdata = None
+        self.__outdata = None
 
     @property
     def gage_ids(self):

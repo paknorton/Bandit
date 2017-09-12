@@ -81,7 +81,6 @@ class Geo(object):
 
         out_ds = out_driver.CreateDataSource(filename)
         out_layer = out_ds.CreateLayer(self.__selected_layer.GetName(), self.__selected_layer.GetSpatialRef())
-                                        # , geom_type=ogr.wkbMultiPolygon)
 
         # Copy field definitions from input to output file
         in_layer_def = self.__selected_layer.GetLayerDefn()

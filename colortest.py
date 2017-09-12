@@ -17,7 +17,7 @@ for k, v in dict(attrs='none bold faint italic underline blink fast reverse conc
 
 
 def term(arg=None, sep=' ', end='\n'):
-    '''
+    """
         "arg" is a string or None
         if "arg" is None : the terminal is reset to its default values.
         if "arg" is a string it must contain "sep" separated values.
@@ -45,7 +45,7 @@ def term(arg=None, sep=' ', end='\n'):
             attributes in any order with or without colors
     term('blink Python')         : output a blinking 'Python'
     term('@@ hello')             : clear the screen and print 'hello' at 1;1
-    '''
+    """
     cmd, txt = [reset], []
     if arg:
         arglist = arg.split(sep)

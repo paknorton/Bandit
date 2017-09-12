@@ -25,16 +25,16 @@ def git_version(repo_dir):
         env['LANGUAGE'] = 'C'
         env['LANG'] = 'C'
         env['LC_ALL'] = 'C'
-        out = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env).communicate()[0]
-        return out
+        result = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env).communicate()[0]
+        return result
 
     try:
         out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', 'HEAD'])
-        GIT_REVISION = out.strip().decode('ascii')
+        git_revision = out.strip().decode('ascii')
     except OSError:
-        GIT_REVISION = "Unknown"
+        git_revision = "Unknown"
 
-    return GIT_REVISION
+    return git_revision
 
 
 def main():

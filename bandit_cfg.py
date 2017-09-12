@@ -57,5 +57,5 @@ class Cfg(object):
 
     def write(self, filename):
         """"Write the configuration out to a file"""
-        outfile = file(filename, 'w')
+        outfile = open(filename, 'w')
         yaml.dump(self.__cfgdict, outfile)
