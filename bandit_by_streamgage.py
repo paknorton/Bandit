@@ -301,7 +301,7 @@ def main():
                 dsmost_seg = [poi_id_to_seg[sg]]
             except KeyError:
                 bandit_log.info('Streamgage {} does not exist in poi_gage_id'.format(sg))
-                continue
+                break
 
             sg_dir = '{}/{}'.format(outdir, sg)
 
