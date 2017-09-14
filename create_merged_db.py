@@ -43,8 +43,7 @@ def main():
     param_info = pdb.available_parameters
 
     # =======================================================================
-    # Process all the parameters, skipping those that need to be handled
-    # specially.
+    # Process all the parameters, skipping special-handling cases
     for pp in param_info:
         sys.stdout.write('\r                                       ')
         sys.stdout.write('\rProcessing {}'.format(pp))
