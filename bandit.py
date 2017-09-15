@@ -389,7 +389,6 @@ def main():
 
     # for ss in uniq_seg_us:
     for ss in nx.nodes_iter(dag_ds_subset):
-        print(ss)
         if ss in poi_gage_segment:
             new_poi_gage_segment.append(toseg_idx.index(ss)+1)
             new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])

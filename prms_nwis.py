@@ -33,7 +33,7 @@ except ImportError:
 
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
 BASE_NWIS_URL = 'http://waterservices.usgs.gov/nwis'
-
+RETRIES = 3
 
 class NWIS(object):
     # Class for NWIS streamgage observations
@@ -150,7 +150,14 @@ class NWIS(object):
             url_final = '&'.join(['{}={}'.format(kk, vv) for kk, vv in iteritems(url_pieces)])
 
             # Read site data from NWIS
-            streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
+            attempts = 0
+            while attempts < RETRIES:
+                try:
+                    streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
+                    break
+                except HTTPError as err:
+                    attempts += 1
+                    print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
 
             if streamgage_obs_page.readline().strip() == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
