@@ -314,7 +314,8 @@ def main():
                 bandit_log.info('User-supplied HRU {} is not connected to any stream segment'.format(xx))
                 hru_order_subset.append(xx)
             else:
-                bandit_log.error('User-supplied additional HRU {} routes to stream segment {} - Skipping.'.format(xx, hru_segment[xx-1]))
+                bandit_log.error('User-supplied HRU {} routes to stream segment {} - Skipping.'.format(xx,
+                                                                                                       hru_segment[xx-1]))
 
     hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
 
@@ -504,7 +505,7 @@ def main():
                 elif pp == 'poi_type':
                     outdata = np.array(new_poi_type)
                 else:
-                    bandit_log('Unkown parameter, {}, with dimensions {}'.format(pp, first_dimension))
+                    bandit_log.error('Unkown parameter, {}, with dimensions {}'.format(pp, first_dimension))
             elif first_dimension in HRU_DIMS:
                 if pp == 'hru_deplcrv':
                     outdata = np.array(new_hru_deplcrv)
@@ -523,7 +524,8 @@ def main():
             elif first_dimension in HRU_DIMS:
                 outdata = outdata[tuple(hru_order_subset0), :]
             else:
-                bandit_log.error('No rules to handle 2D parameter, {}, which contains dimension {}'.format(pp, first_dimension))
+                bandit_log.error('No rules to handle 2D parameter, {}, which contains dimension {}'.format(pp,
+                                                                                                           first_dimension))
 
         # Convert outdata to a list for writing
         if first_dimension == 'ndeplval':
@@ -603,7 +605,7 @@ def main():
         print('-'*40)
         print('Writing shapefiles for model subset')
         if not os.path.isdir(geo_file):
-            bandit_log.error('File geodatabase, {}, does not exist. Shapefiles of model subset will not be created'.format(geo_file))
+            bandit_log.error('File geodatabase, {}, does not exist. Shapefiles will not be created'.format(geo_file))
         else:
             geo_shp = prms_geo.Geo(geo_file)
 
@@ -627,6 +629,7 @@ def main():
     bandit_log.info('========== END {} =========='.format(datetime.now().isoformat()))
 
     os.chdir(stdir)
+
 
 if __name__ == '__main__':
     main()

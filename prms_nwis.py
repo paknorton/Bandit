@@ -6,6 +6,8 @@ from future.utils import iteritems
 
 from collections import OrderedDict
 from datetime import datetime
+
+import logging
 import numpy as np
 import pandas as pd
 import re
@@ -35,12 +37,17 @@ except ImportError:
 BASE_NWIS_URL = 'http://waterservices.usgs.gov/nwis'
 RETRIES = 3
 
+nwis_logger = logging.getLogger('bandit.NWIS')
+
+
 class NWIS(object):
     # Class for NWIS streamgage observations
     # As written this class provides fucntions for downloading daily streamgage observations
     # Additional functionality (e.g. monthyly, annual, other statistics) may be added at a future time.
 
     def __init__(self, gage_ids=None, st_date=None, en_date=None):
+        self.logger = logging.getLogger('bandit.NWIS')
+        self.logger.info('NWIS instance')
 
         self.__stdate = st_date
         self.__endate = en_date
@@ -157,12 +164,15 @@ class NWIS(object):
                     break
                 except HTTPError as err:
                     attempts += 1
-                    print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    self.logger.warning('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
 
             if streamgage_obs_page.readline().strip() == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
-                print_warning('{} has no data for period'.format(gg))
+                self.logger.warning('{} has no data for {} to {}'.format(gg,
+                                                                         self.__stdate.strftime('%Y-%m-%d'),
+                                                                         self.__endate.strftime('%Y-%m-%d')))
 
                 df = pd.DataFrame(index=self.__date_range, columns=[gg])
                 df.index.name = 'date'
@@ -192,12 +202,17 @@ class NWIS(object):
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
-                    print_error('More than one Q-col returned')
-                else:
-                    df.rename(columns={rename_col[0]: gg}, inplace=True)
+                    self.logger.warning('{} had more than one Q-col returned; using {}'.format(gg, rename_col[0]))
 
-                    # Resample to daily to fill in the missing days with NaN
-                    # df = df.resample('D').mean()
+                    # Keep the first TS column and drop the others
+                    while len(rename_col) > 1:
+                        curr_col = rename_col.pop()
+                        df.drop([curr_col], axis=1, inplace=True)
+
+                df.rename(columns={rename_col[0]: gg}, inplace=True)
+
+                # Resample to daily to fill in the missing days with NaN
+                # df = df.resample('D').mean()
 
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append(gg)
@@ -218,7 +233,7 @@ class NWIS(object):
             print(self.__outdata.info())
 
         outhdl = open(filename, 'w')
-        outhdl.write('Created by skein\n')
+        outhdl.write('Created by Bandit\n')
         outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
         outhdl.write('// Station IDs for runoff:\n')
         outhdl.write('// ID\n')
