@@ -624,37 +624,40 @@ def main():
                 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                 # Subset the cbh files for the selected HRUs
 
-                # Subset the hru_nhm_to_local mapping
-                hru_order_ss = OrderedDict()
-                for kk in hru_order_subset:
-                    hru_order_ss[kk] = hru_nhm_to_local[kk]
+                if len(hru_order_subset) > 0:
+                    # Subset the hru_nhm_to_local mapping
+                    hru_order_ss = OrderedDict()
+                    for kk in hru_order_subset:
+                        hru_order_ss[kk] = hru_nhm_to_local[kk]
 
-                print('Processing CBH files')
+                    print('Processing CBH files')
 
-                # for vv in ['prcp']:
-                for vv in CBH_VARNAMES:
-                    print(vv)
-                    # For out_order the first six columns contain the time information and
-                    # are always output for the cbh files
-                    out_order = [kk for kk in hru_order_subset]
-                    for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
-                        out_order.insert(0, cc)
+                    # for vv in ['prcp']:
+                    for vv in CBH_VARNAMES:
+                        print(vv)
+                        # For out_order the first six columns contain the time information and
+                        # are always output for the cbh files
+                        out_order = [kk for kk in hru_order_subset]
+                        for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
+                            out_order.insert(0, cc)
 
-                    cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
-                                  st_date=st_date, en_date=en_date)
+                        cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
+                                      st_date=st_date, en_date=en_date)
 
-                    print('\tReading {}'.format(vv))
-                    cbh_hdl.read_cbh_multifile(cbh_dir)
+                        print('\tReading {}'.format(vv))
+                        cbh_hdl.read_cbh_multifile(cbh_dir)
 
-                    print('\tWriting {} CBH file'.format(vv))
-                    out_cbh = open('{}/{}.cbh'.format(sg_dir, vv), 'w')
-                    out_cbh.write('Written by Bandit\n')
-                    out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
-                    out_cbh.write('########################################\n')
-                    cbh_hdl.data.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False,
-                                        encoding=None, chunksize=50)
-                    out_cbh.close()
-                    bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(sg_dir, vv)))
+                        print('\tWriting {} CBH file'.format(vv))
+                        out_cbh = open('{}/{}.cbh'.format(sg_dir, vv), 'w')
+                        out_cbh.write('Written by Bandit\n')
+                        out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
+                        out_cbh.write('########################################\n')
+                        cbh_hdl.data.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False,
+                                            encoding=None, chunksize=50)
+                        out_cbh.close()
+                        bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(sg_dir, vv)))
+                else:
+                    bandit_log.error('{} has no HRUs associated with the segments'.format(sg))
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
