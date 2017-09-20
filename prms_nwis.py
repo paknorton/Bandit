@@ -31,7 +31,7 @@ except ImportError:
     # Otherwise fallback to Python 2.x
     # from urlparse import urlparse
     # from urllib import urlencode
-    from urllib2 import urlopen, Request, HTTPError
+    from urllib2 import urlopen, Request, HTTPError, URLError
 
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
 BASE_NWIS_URL = 'http://waterservices.usgs.gov/nwis'
@@ -162,7 +162,7 @@ class NWIS(object):
                 try:
                     streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
                     break
-                except HTTPError as err:
+                except (HTTPError, URLError) as err:
                     attempts += 1
                     self.logger.warning('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
                     # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
