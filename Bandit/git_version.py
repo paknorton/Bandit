@@ -48,9 +48,19 @@ def git_version(repo_dir):
 
 
 def main():
-    paramdb_dir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
-    print('GIT version for {}'.format(paramdb_dir))
-    print(git_version(paramdb_dir))
+    import argparse
+
+    # Command line arguments
+    parser = argparse.ArgumentParser(description='Get current revision of GIT repo')
+    parser.add_argument('-p', '--path_repo', help='Path to local repository')
+    parser.add_argument('--verbose', help='Verbose output', action='store_true')
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        print('GIT version for {}'.format(args.path_repo))
+
+    print(git_version(args.path_repo))
 
 
 if __name__ == '__main__':

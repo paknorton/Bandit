@@ -254,7 +254,6 @@ def main():
             # Also remove the cutoff segment itself
             dag_us.remove_node(xx)
     except TypeError:
-        # The list of outlet segments is NoneType - pull all segments
         bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType')
         exit(1)
 
