@@ -37,7 +37,17 @@ NoDatesSafeLoader.remove_implicit_resolver('tag:yaml.org,2002:timestamp')
 
 
 class Cfg(object):
+    """Configuration class for the Bandit NHM extraction program."""
+
     def __init__(self, filename, cmdline=None):
+        """Init method for Cfg class.
+
+        Args:
+            filename (str): The configuration filename.
+            cmdline (str, optional): Currently unused. Defaults to None.
+
+        """
+
         self.__cfgdict = None
         self.__cmdline = cmdline
         self.load(filename)
@@ -62,7 +72,16 @@ class Cfg(object):
         return self.get_value(item)
 
     def get_value(self, varname):
-        """Return the value for a given config variable"""
+        """Return the value for a given config variable.
+
+        Args:
+            varname (str): Configuration variable.
+
+        Returns:
+             The value of the configuration variable or None if variable does not exist.
+
+        """
+
         try:
             return self.__cfgdict[varname]
         except KeyError:
@@ -70,17 +89,40 @@ class Cfg(object):
             return None
 
     def load(self, filename):
+        """Load the YAML-format configuration file.
+
+        Args:
+            filename (str): Name of the configuration file.
+
+        """
+
         tmp = yaml.load(open(filename, 'r'), Loader=NoDatesSafeLoader)
         self.__cfgdict = tmp
 
     def update_value(self, variable, newval):
-        """Update an existing configuration variable with a new value"""
+        """Update an existing configuration variable with a new value
+
+        Args:
+            variable (str): The configuration variable to update.
+            newval (str): The value to assign to the variable.
+
+        Raises:
+            KeyError: If configuration variable does not exist.
+
+        """
+
         if variable in self.__cfgdict:
             self.__cfgdict[variable] = newval
         else:
             raise KeyError("Configuration variable, {}, does not exist".format(variable))
 
     def write(self, filename):
-        """"Write the configuration out to a file"""
+        """"Write the configuration out to a file.
+
+        Args:
+            filename (str): Name of file to write configuration to.
+
+        """
+
         outfile = open(filename, 'w')
         yaml.dump(self.__cfgdict, outfile)

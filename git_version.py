@@ -8,6 +8,16 @@ import subprocess
 
 
 def git_version(repo_dir):
+    """Retrieve current git version from local directory.
+
+    Args:
+        repo_dir (str): Local git repository directory.
+
+    Returns:
+        str: Current git revision or 'Unknown'.
+
+    """
+
     # Return the git revision as a string
     # Modified version of function from numpy setup.py
     # http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
@@ -41,6 +51,7 @@ def main():
     paramdb_dir = '/Users/pnorton/Projects/National_Hydrology_Model/paramDb/nhmparamdb'
     print('GIT version for {}'.format(paramdb_dir))
     print(git_version(paramdb_dir))
+
 
 if __name__ == '__main__':
     main()

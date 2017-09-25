@@ -41,11 +41,25 @@ nwis_logger = logging.getLogger('bandit.NWIS')
 
 
 class NWIS(object):
+    """Class for accessing and manipulating streamflow information from the
+    National Water Information System (NWIS; https://waterdata.usgs.gov/) provided by the
+    United States Geological Survey (USGS; https://www.usgs.gov/).
+
+    """
+
     # Class for NWIS streamgage observations
     # As written this class provides fucntions for downloading daily streamgage observations
     # Additional functionality (e.g. monthyly, annual, other statistics) may be added at a future time.
 
     def __init__(self, gage_ids=None, st_date=None, en_date=None):
+        """Init method for NWIS class.
+
+        Args:
+            gage_ids (:obj:`list` of :obj:`str`): String or list of strings of streamgage IDs.
+            st_date (:obj:`datetime`, optional: Starting date for date range to retrieve streamgage observations.
+            en_date (:obj:`datetime`, optional: Ending date for date range to retrieve streamgage observations.
+        """
+
         self.logger = logging.getLogger('bandit.NWIS')
         self.logger.info('NWIS instance')
 
@@ -62,13 +76,17 @@ class NWIS(object):
 
     @property
     def start_date(self):
+        """:obj:`datetime`: The starting date of a date range for retrieving streamflow observations.
+
+        """
+
         return self.__stdate
 
     @start_date.setter
     def start_date(self, st_date):
         # Set the starting date for retrieval
         # As written this will clear any streamgage observations that have been downloaded.
-        if type(st_date) is datetime.datetime:
+        if isinstance(st_date, datetime.datetime):
             self.__stdate = st_date
         else:
             try:
@@ -82,11 +100,15 @@ class NWIS(object):
 
     @property
     def end_date(self):
+        """:obj:`datetime`: The ending date of a date range for retrieving streamflow observations.
+
+        """
+
         return self.__endate
 
     @end_date.setter
     def end_date(self, en_date):
-        if type(en_date) is datetime:
+        if isinstance(en_date, datetime.datetime):
             self.__endate = en_date
         else:
             try:
@@ -100,6 +122,10 @@ class NWIS(object):
 
     @property
     def gage_ids(self):
+        """:obj:`list` of :obj:`str`: Streamgage IDs for retrieval.
+
+        """
+
         return self.__gageids
 
     @gage_ids.setter
@@ -114,7 +140,7 @@ class NWIS(object):
         self.__outdata = None
 
     def initialize_dataframe(self):
-        # Clears any downloaded observations and initializes the output dataframe
+        """Clears downloaded data and initializes the output dataframe"""
         if not self.__endate:
             self.__endate = datetime.today()
         if not self.__stdate:
@@ -128,8 +154,7 @@ class NWIS(object):
         self.__final_outorder = ['year', 'month', 'day', 'hour', 'minute', 'second']
 
     def get_daily_streamgage_observations(self):
-        # Retrieve the daily observations for a given set of streamgages
-
+        """Retrieves daily observations for a given date range and set of streamgage IDs"""
         if not self.__outdata:
             if not self.__gageids:
                 print_error('No streamgages have been specified')
@@ -218,6 +243,10 @@ class NWIS(object):
             self.__final_outorder.append(gg)
 
     def write_prms_data(self, filename):
+        """Writes streamgage observations that have been downloaded to a file in PRMS format
+
+        Args:
+            filename: The name of the file for writing streamgage observations."""
         # Create the year, month, day, hour, minute, second columns
         try:
             self.__outdata['year'] = self.__outdata.index.year

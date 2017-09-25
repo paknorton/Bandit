@@ -43,13 +43,25 @@ from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
 from pyPRMS.Cbh import Cbh, CBH_VARNAMES
 import prms_nwis
 import prms_geo
-from helpers import git_version
+from git_version import git_version
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 __version__ = '0.2'
 
 
 def get_global_dimensions(params, regions, workdir):
+    """Build dictionary of global dimensions for given list of parameters from the NHM parameter database.
+
+    Args:
+        params (:obj:`list` of :obj:`str`: List of parameters.
+        regions (:obj:`list` of :obj:`str`: List of regions to include.
+        workdir (str): Location of NHM parameter database.
+
+    Returns:
+        Dictionary of dimensions and sizes.
+
+    """
+
     # This builds a dictionary of total dimension sizes for the concatenated parameters
     dimension_info = {}
     is_populated = {}
@@ -82,8 +94,15 @@ def get_global_dimensions(params, regions, workdir):
 
 
 def get_global_params(params_file):
-    # Get the parameters available from the parameter database
-    # Returns a dictionary of parameters and associated units and types
+    """Retrieve dictionary of parameters with associated unit and type information.
+
+    Args:
+        params_file (str): Name of parameter xml file from the NHM parameter database.
+
+    Returns:
+        Dictionary of parameters with associated unit and type information.
+
+    """
 
     # Read in the parameters.xml file
     params_tree = xmlET.parse(params_file)
@@ -100,6 +119,16 @@ def get_global_params(params_file):
 
 
 def get_parameter(filename):
+    """Load a msgpack file.
+
+    Args:
+        filename (str): Name of msgpack file.
+
+    Returns:
+        Object from msgpack file.
+
+    """
+
     with open(filename, 'rb') as ff:
         return msgpack.load(ff, use_list=False)
 
@@ -464,7 +493,6 @@ def main():
             if len(poi_gage_segment) == 0:
                 bandit_log.warning('No poi gages found for subset')
 
-
             # ==================================================================
             # ==================================================================
             # Process the parameters and create a parameter file for the subset
@@ -572,7 +600,7 @@ def main():
                         elif pp == 'poi_type':
                             outdata = np.array(new_poi_type)
                         else:
-                            bandit_log('Unkown parameter, {}, with dimensions {}'.format(pp, first_dimension))
+                            bandit_log.error('Unkown parameter, {}, with dimensions {}'.format(pp, first_dimension))
                     elif first_dimension in HRU_DIMS:
                         if pp == 'hru_deplcrv':
                             outdata = np.array(new_hru_deplcrv)

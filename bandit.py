@@ -42,7 +42,7 @@ from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
 from pyPRMS.Cbh import Cbh, CBH_VARNAMES
 import prms_nwis
 import prms_geo
-from helpers import git_version
+from git_version import git_version
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 __version__ = '0.4'

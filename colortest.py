@@ -47,11 +47,14 @@ def term(arg=None, sep=' ', end='\n'):
     term('@@ hello')             : clear the screen and print 'hello' at 1;1
     """
     cmd, txt = [reset], []
+
     if arg:
         arglist = arg.split(sep)
+
         for offset in (fgoffset, bgoffset):
             if arglist and arglist[0] in colors:
                 cmd.append(format_code % (colors[arglist.pop(0)] + offset))
+
         for a in arglist:
             c = format_code % attrs[a] if a in attrs else None
             if c and c not in cmd:
@@ -71,7 +74,10 @@ def term(arg=None, sep=' ', end='\n'):
 
     stdout.write(esc.join(cmd) + sep.join(txt))
 
+
 if __name__ == '__main__':
+    from time import sleep, strftime, gmtime
+
     print('')
     term('@@ reverse blink')
     print('reverse blink  default colors at 1;1 on a cleared screen')
@@ -90,12 +96,16 @@ if __name__ == '__main__':
     term('yellow,red,yellow on red 2', sep=',')
     print('yellow on red 3')
     print('')
+
     for bg in colors:
         term(bg.title().center(8), sep='.', end='')
+
         for fg in colors:
             att = [fg, bg]
+
             if fg == bg:
                 att.append('blink')
+
             att.append(fg.center(8))
             term(','.join(att), sep=',', end='')
         print('')
@@ -105,13 +115,13 @@ if __name__ == '__main__':
         term('%s,%s' % (att, att.title().center(10)), sep=',', end='')
     print('')
 
-    from time import sleep, strftime, gmtime
     colist = 'grey blue cyan white cyan blue'.split()
+
     while True:
         try:
-            for c in colist:
+            for cc in colist:
                 sleep(.1)
-                term('%s @28;33 hit ctrl-c to quit' % c)
+                term('%s @28;33 hit ctrl-c to quit' % cc)
             term('yellow @6;66 %s' % strftime('%H:%M:%S', gmtime()))
         except KeyboardInterrupt:
             break
