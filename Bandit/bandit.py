@@ -152,7 +152,7 @@ def main():
     bandit_log.addHandler(flog)
     bandit_log.addHandler(clog)
 
-    bandit_log.info('========== START {} =========='.format(datetime.now().isoformat()))
+    bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
 
     config = bc.Cfg('bandit.cfg')
 
@@ -633,7 +633,7 @@ def main():
 
             del geo_shp
 
-    bandit_log.info('========== END {} =========='.format(datetime.now().isoformat()))
+    bandit_log.info('========== END {} =========='.format(datetime.datetime.now().isoformat()))
 
     os.chdir(stdir)
 
