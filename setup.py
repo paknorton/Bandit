@@ -113,7 +113,8 @@ setup(
             'bandit_by_streamgage=Bandit.bandit_by_streamgage:main',
             'create_merged_db=Bandit.create_merged_db:main',
             'git_version=Bandit.git_version:main',
-            'create_bandit_job=Bandit.utilities.create_bandit_job:main'
+            'create_bandit_job=Bandit.utilities.create_bandit_job:main',
+            'check_nhmparamdb=Bandit.utilities.check_nhmparamdb:main'
         ],
     },
 )
