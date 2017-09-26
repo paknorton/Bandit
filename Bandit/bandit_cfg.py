@@ -205,4 +205,4 @@ class Cfg(object):
         """
 
         outfile = open(filename, 'w')
-        yaml.dump(self.__cfgdict, outfile, default_flow_style=False)
+        yaml.dump(self.__cfgdict, outfile, default_flow_style=True, canonical=True)
