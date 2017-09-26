@@ -44,9 +44,9 @@ from pyPRMS.Cbh import Cbh, CBH_VARNAMES
 import Bandit.prms_nwis as prms_nwis
 import Bandit.prms_geo as prms_geo
 from Bandit.git_version import git_version
+from Bandit import __version__
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
-__version__ = '0.2'
 
 
 def get_global_dimensions(params, regions, workdir):
