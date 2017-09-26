@@ -32,7 +32,9 @@ def main():
 
         print('  NhmParamDb revision used by bandit: {}'.format(m_rev))
         print('NhmParamDb revision available on GIT: {}'.format(c_rev))
-
+    else:
+        print('NhmParamDb is up-to-date.')
+        
 
 if __name__ == '__main__':
     main()
