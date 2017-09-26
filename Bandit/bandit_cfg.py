@@ -54,6 +54,7 @@ class OrderedDictYAMLLoader(yaml.Loader):
     A YAML loader that loads mappings into ordered dictionaries.
     """
 
+    # FROM: https://stackoverflow.com/questions/5121931/in-python-how-can-you-load-yaml-mappings-as-ordereddicts
     def __init__(self, *args, **kwargs):
         yaml.Loader.__init__(self, *args, **kwargs)
 
@@ -203,4 +204,4 @@ class Cfg(object):
         """
 
         outfile = open(filename, 'w')
-        yaml.dump(self.__cfgdict, outfile)
+        yaml.dump(self.__cfgdict, outfile, default_flow_style=False)
