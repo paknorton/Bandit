@@ -9,6 +9,7 @@ from __future__ import (absolute_import, division, print_function)
 from future.utils import iteritems
 
 import yaml
+import yaml.constructor
 from collections import OrderedDict
 
 
@@ -37,15 +38,52 @@ from collections import OrderedDict
 #     return yaml.dump(data, stream, OrderedDumper, **kwds)
 
 
-_mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
+# _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
+#
+#
+# def dict_representer(dumper, data):
+#     return dumper.represent_dict(iteritems(data))
+#
+#
+# def dict_constructor(loader, node):
+#     return OrderedDict(loader.construct_pairs(node))
 
 
-def dict_representer(dumper, data):
-    return dumper.represent_dict(iteritems(data))
+class OrderedDictYAMLLoader(yaml.Loader):
+    """
+    A YAML loader that loads mappings into ordered dictionaries.
+    """
 
+    def __init__(self, *args, **kwargs):
+        yaml.Loader.__init__(self, *args, **kwargs)
 
-def dict_constructor(loader, node):
-    return OrderedDict(loader.construct_pairs(node))
+        self.add_constructor(u'tag:yaml.org,2002:map', type(self).construct_yaml_map)
+        self.add_constructor(u'tag:yaml.org,2002:omap', type(self).construct_yaml_map)
+
+    def construct_yaml_map(self, node):
+        data = OrderedDict()
+        yield data
+        value = self.construct_mapping(node)
+        data.update(value)
+
+    def construct_mapping(self, node, deep=False):
+        if isinstance(node, yaml.MappingNode):
+            self.flatten_mapping(node)
+        else:
+            raise yaml.constructor.ConstructorError(None, None,
+                'expected a mapping node, but found %s' % node.id, node.start_mark)
+
+        mapping = OrderedDict()
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                hash(key)
+            except TypeError as exc:
+                raise yaml.constructor.ConstructorError('while constructing a mapping',
+                    node.start_mark, 'found unacceptable key (%s)' % exc, key_node.start_mark)
+            value = self.construct_object(value_node, deep=deep)
+            mapping[key] = value
+        return mapping
 
 
 # Following class from: https://stackoverflow.com/questions/34667108/ignore-dates-and-times-while-parsing-yaml
@@ -85,8 +123,8 @@ class Cfg(object):
 
         """
 
-        yaml.add_representer(OrderedDict, dict_representer)
-        yaml.add_constructor(_mapping_tag, dict_constructor)
+        # yaml.add_representer(OrderedDict, dict_representer)
+        # yaml.add_constructor(_mapping_tag, dict_constructor)
 
         self.__cfgdict = None
         self.__cmdline = cmdline
@@ -135,8 +173,8 @@ class Cfg(object):
             filename (str): Name of the configuration file.
 
         """
-
-        tmp = yaml.load(open(filename, 'r'), Loader=NoDatesSafeLoader)
+        # tmp = yaml.load(open(filename, 'r'), Loader=NoDatesSafeLoader)
+        tmp = yaml.load(open(filename, 'r'), Loader=OrderedDictYAMLLoader)
         self.__cfgdict = tmp
 
     def update_value(self, variable, newval):
