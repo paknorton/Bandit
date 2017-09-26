@@ -15,7 +15,15 @@ def main():
     parser = argparse.ArgumentParser(description='Setup new job for Bandit extraction')
     parser.add_argument('-j', '--jobdir', help='Name of new job directory')
 
-    args = parser.parse_args()
+    opt, args = parser.parse_args()
+
+    # Check for required command-line options
+    req_opts = ['jobdir']
+    for rr in req_opts:
+        if not opt.__dict__[rr]:
+            print('Required option, {}, is missing'.format(rr))
+            parser.print_help()
+            exit(1)
 
     config = bc.Cfg('bandit.cfg')
 
@@ -31,7 +39,7 @@ def main():
     elif not os.path.exists(config.merged_paramdb_dir):
         print("Location of the merged parameters database (merged_paramdb_dir) does not exist!")
         exit(2)
-    elif not os.path.isfile(config.geodatabase_filename):
+    elif not os.path.exists(config.geodatabase_filename):
         print("The geodatabase file (geodatabase_filename) does not exist!")
         exit(2)
     elif not os.path.exists(config.output_dir):
