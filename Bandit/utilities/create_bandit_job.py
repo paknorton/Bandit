@@ -64,7 +64,7 @@ def main():
 
     # Copy bandit.cfg to job directory
     print('\tCreating bandit.cfg file for new job')
-    config.update_value('output_dir', new_job_dir)
+    # config.update_value('output_dir', new_job_dir)
     config.write('{}/bandit.cfg'.format(new_job_dir))
 
     # Copy the control.default file to the job directory
