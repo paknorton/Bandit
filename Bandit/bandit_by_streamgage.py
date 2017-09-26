@@ -16,7 +16,7 @@ import sys
 import xml.etree.ElementTree as xmlET
 
 from collections import OrderedDict
-from datetime import datetime
+import datetime
 
 try:
     # Python 2.x
@@ -184,7 +184,7 @@ def main():
     bandit_log.addHandler(flog)
     bandit_log.addHandler(clog)
 
-    bandit_log.info('========== START {} =========='.format(datetime.now().isoformat()))
+    bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
 
     config = bc.Cfg('bandit.cfg')
 
@@ -235,8 +235,15 @@ def main():
     output_shapefiles = config.output_shapefiles
 
     # Date range for pulling NWIS streamgage observations
-    st_date = datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
-    en_date = datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
+    if isinstance(config.start_date, datetime.date):
+        st_date = config.start_date
+    else:
+        st_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
+
+    if isinstance(config.end_date, datetime.date):
+        en_date = config.end_date
+    else:
+        en_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
 
     # ===============================================================
     params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
@@ -735,7 +742,7 @@ def main():
 
             break   # break out of while True loop
 
-    bandit_log.info('========== END {} =========='.format(datetime.now().isoformat()))
+    bandit_log.info('========== END {} =========='.format(datetime.datetime.now().isoformat()))
 
     os.chdir(stdir)
 
