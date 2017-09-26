@@ -109,10 +109,10 @@ setup(
     # pip to create the appropriate form of executable for the target platform.
     entry_points={
         'console_scripts': [
-            'bandit=Bandit.bandit:launch_new_instance',
-            'bandit_by_streamgage=Bandit.bandit_by_streamgage:launch_new_instance',
-            'create_merged_db=Bandit.create_merged_db:launch_new_instance',
-            'git_version=Bandit.git_version:launch_new_instance'
+            'bandit=Bandit.bandit:main',
+            'bandit_by_streamgage=Bandit.bandit_by_streamgage:main',
+            'create_merged_db=Bandit.create_merged_db:main',
+            'git_version=Bandit.git_version:main'
         ],
     },
 )

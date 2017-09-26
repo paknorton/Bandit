@@ -48,7 +48,6 @@ from pyPRMS.Cbh import Cbh, CBH_VARNAMES
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 
-
 def get_global_dimensions(params, regions, workdir):
     # This builds a dictionary of total dimension sizes for the concatenated parameters
     dimension_info = {}
