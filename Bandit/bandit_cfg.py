@@ -9,6 +9,43 @@ from __future__ import (absolute_import, division, print_function)
 from future.utils import iteritems
 
 import yaml
+from collections import OrderedDict
+
+
+# def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
+#     # From: https://stackoverflow.com/questions/5121931/in-python-how-can-you-load-yaml-mappings-as-ordereddicts
+#     class OrderedLoader(Loader):
+#         pass
+#
+#     def construct_mapping(loader, node):
+#         loader.flatten_mapping(node)
+#         return object_pairs_hook(loader.construct_pairs(node))
+#
+#     OrderedLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
+#     return yaml.load(stream, OrderedLoader)
+#
+#
+# def ordered_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
+#     # From: https://stackoverflow.com/questions/5121931/in-python-how-can-you-load-yaml-mappings-as-ordereddicts
+#     class OrderedDumper(Dumper):
+#         pass
+#
+#     def _dict_representer(dumper, data):
+#         return dumper.represent_mapping(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, data.items())
+#
+#     OrderedDumper.add_representer(OrderedDict, _dict_representer)
+#     return yaml.dump(data, stream, OrderedDumper, **kwds)
+
+
+_mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
+
+
+def dict_representer(dumper, data):
+    return dumper.represent_dict(iteritems(data))
+
+
+def dict_constructor(loader, node):
+    return OrderedDict(loader.construct_pairs(node))
 
 
 # Following class from: https://stackoverflow.com/questions/34667108/ignore-dates-and-times-while-parsing-yaml
@@ -47,6 +84,9 @@ class Cfg(object):
             cmdline (str, optional): Currently unused. Defaults to None.
 
         """
+
+        yaml.add_representer(OrderedDict, dict_representer)
+        yaml.add_constructor(_mapping_tag, dict_constructor)
 
         self.__cfgdict = None
         self.__cmdline = cmdline
