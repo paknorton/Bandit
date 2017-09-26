@@ -16,7 +16,6 @@ from Bandit.git_version import git_version
 # from pr_util import print_warning, print_error
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
-__version__ = '0.3'
 
 config = bc.Cfg('bandit.cfg')
 
