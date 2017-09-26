@@ -13,7 +13,7 @@ import pandas as pd
 import re
 import sys
 
-from pr_util import print_warning, print_error
+from Bandit.pr_util import print_warning, print_error
 
 try:
     # Python 2.x

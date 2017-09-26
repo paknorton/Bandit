@@ -8,11 +8,11 @@ import msgpack
 import os
 import sys
 
-import bandit_cfg as bc
+import Bandit.bandit_cfg as bc
 from pyPRMS.NhmParamDb import NhmParamDb
 
 # from dimension_class import Parameter
-from git_version import git_version
+from Bandit.git_version import git_version
 # from pr_util import print_warning, print_error
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
