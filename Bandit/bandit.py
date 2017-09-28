@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division, print_function)
 from future.utils import iteritems, iterkeys
 
 import argparse
+import errno
 import logging
 import networkx as nx
 import msgpack
@@ -36,13 +37,11 @@ except ImportError:
     from urllib2 import urlopen, Request, HTTPError
 
 import Bandit.bandit_cfg as bc
-import Bandit.prms_nwis as prms_nwis
 import Bandit.prms_geo as prms_geo
+import Bandit.prms_nwis as prms_nwis
 from Bandit.git_version import git_version
 from Bandit import __version__
 
-# from paramdb_w_objects import get_global_params, get_global_dimensions
-# from pr_util import colorize, heading, print_info, print_warning, print_error
 from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
 from pyPRMS.Cbh import Cbh, CBH_VARNAMES
 
@@ -50,6 +49,18 @@ __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 
 def get_global_dimensions(params, regions, workdir):
+    """Build dictionary of global dimensions for given list of parameters from the NHM parameter database.
+
+    Args:
+        params (:obj:`list` of :obj:`str`: List of parameters.
+        regions (:obj:`list` of :obj:`str`: List of regions to include.
+        workdir (str): Location of NHM parameter database.
+
+    Returns:
+        Dictionary of dimensions and sizes.
+
+    """
+
     # This builds a dictionary of total dimension sizes for the concatenated parameters
     dimension_info = {}
     is_populated = {}
@@ -82,8 +93,15 @@ def get_global_dimensions(params, regions, workdir):
 
 
 def get_global_params(params_file):
-    # Get the parameters available from the parameter database
-    # Returns a dictionary of parameters and associated units and types
+    """Retrieve dictionary of parameters with associated unit and type information.
+
+    Args:
+        params_file (str): Name of parameter xml file from the NHM parameter database.
+
+    Returns:
+        Dictionary of parameters with associated unit and type information.
+
+    """
 
     # Read in the parameters.xml file
     params_tree = xmlET.parse(params_file)
@@ -100,6 +118,16 @@ def get_global_params(params_file):
 
 
 def get_parameter(filename):
+    """Load a msgpack file.
+
+    Args:
+        filename (str): Name of msgpack file.
+
+    Returns:
+        Object from msgpack file.
+
+    """
+
     with open(filename, 'rb') as ff:
         return msgpack.load(ff, use_list=False)
 
@@ -257,10 +285,13 @@ def main():
     # Trim the u/s graph to remove segments above the u/s cutoff segments
     try:
         for xx in uscutoff_seg:
-            dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
+            try:
+                dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
 
-            # Also remove the cutoff segment itself
-            dag_us.remove_node(xx)
+                # Also remove the cutoff segment itself
+                dag_us.remove_node(xx)
+            except KeyError:
+                        print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
     except TypeError:
         bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType')
         exit(1)
@@ -565,37 +596,40 @@ def main():
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Subset the cbh files for the selected HRUs
 
-        # Subset the hru_nhm_to_local mapping
-        hru_order_ss = OrderedDict()
-        for kk in hru_order_subset:
-            hru_order_ss[kk] = hru_nhm_to_local[kk]
+        if len(hru_order_subset) > 0:
+            # Subset the hru_nhm_to_local mapping
+            hru_order_ss = OrderedDict()
+            for kk in hru_order_subset:
+                hru_order_ss[kk] = hru_nhm_to_local[kk]
 
-        print('Processing CBH files')
+            print('Processing CBH files')
 
-        # for vv in ['prcp']:
-        for vv in CBH_VARNAMES:
-            print(vv)
-            # For out_order the first six columns contain the time information and
-            # are always output for the cbh files
-            out_order = [kk for kk in hru_order_subset]
-            for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
-                out_order.insert(0, cc)
+            # for vv in ['prcp']:
+            for vv in CBH_VARNAMES:
+                print(vv)
+                # For out_order the first six columns contain the time information and
+                # are always output for the cbh files
+                out_order = [kk for kk in hru_order_subset]
+                for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
+                    out_order.insert(0, cc)
 
-            cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
-                          st_date=st_date, en_date=en_date)
+                cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
+                              st_date=st_date, en_date=en_date)
 
-            print('\tReading {}'.format(vv))
-            cbh_hdl.read_cbh_multifile(cbh_dir)
+                print('\tReading {}'.format(vv))
+                cbh_hdl.read_cbh_multifile(cbh_dir)
 
-            print('\tWriting {} CBH file'.format(vv))
-            out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
-            out_cbh.write('Written by Bandit\n')
-            out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
-            out_cbh.write('########################################\n')
-            cbh_hdl.data.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False,
-                                encoding=None, chunksize=50)
-            out_cbh.close()
-            bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
+                print('\tWriting {} CBH file'.format(vv))
+                out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
+                out_cbh.write('Written by Bandit\n')
+                out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
+                out_cbh.write('########################################\n')
+                cbh_hdl.data.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False,
+                                    encoding=None, chunksize=50)
+                out_cbh.close()
+                bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
+        else:
+            bandit_log.error('No HRUs associated with the segments')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -615,6 +649,16 @@ def main():
             bandit_log.error('File geodatabase, {}, does not exist. Shapefiles will not be created'.format(geo_file))
         else:
             geo_shp = prms_geo.Geo(geo_file)
+
+            # Create GIS sub-directory if it doesn't already exist
+            gis_dir = '{}/GIS'.format(outdir)
+            try:
+                os.makedirs(gis_dir)
+            except OSError as exception:
+                if exception.errno != errno.EEXIST:
+                    raise
+                else:
+                    pass
 
             # Output a shapefile of the selected HRUs
             print('\tHRUs')

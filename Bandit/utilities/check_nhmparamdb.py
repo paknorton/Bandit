@@ -3,7 +3,7 @@
 from __future__ import (absolute_import, division, print_function)
 
 # import argparse
-# import os
+import os
 # import shutil
 
 import Bandit.bandit_cfg as bc
@@ -32,9 +32,13 @@ def main():
 
         print('  NhmParamDb revision used by bandit: {}'.format(m_rev))
         print('NhmParamDb revision available on GIT: {}'.format(c_rev))
+        print('\nTo update the NhmParamDb first change into directory: {}'.format(config.paramdb_dir))
+        print("Then type 'git pull'")
+        print('After the update is completed change into directory: {}'.format(os.getcwd()))
+        print("Then type 'create_merged_db'")
     else:
         print('NhmParamDb is up-to-date.')
-        
+
 
 if __name__ == '__main__':
     main()

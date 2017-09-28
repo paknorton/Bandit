@@ -37,14 +37,13 @@ except ImportError:
     from urllib2 import urlopen, Request, HTTPError
 
 import Bandit.bandit_cfg as bc
-# from paramdb_w_objects import get_global_params, get_global_dimensions
-# from pr_util import colorize, heading, print_info, print_warning, print_error
-from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
-from pyPRMS.Cbh import Cbh, CBH_VARNAMES
-import Bandit.prms_nwis as prms_nwis
 import Bandit.prms_geo as prms_geo
+import Bandit.prms_nwis as prms_nwis
 from Bandit.git_version import git_version
 from Bandit import __version__
+
+from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
+from pyPRMS.Cbh import Cbh, CBH_VARNAMES
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 

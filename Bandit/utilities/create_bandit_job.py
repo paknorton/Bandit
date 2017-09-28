@@ -72,7 +72,7 @@ def main():
     shutil.copy('{}/control.default'.format(tl_jobsdir), '{}/control.default'.format(new_job_dir))
 
     print('\nNew job directory has been created.')
-    print('Make sure to update outlets, cutoffs, and hru_noroute parameters as needed in bandit.cfg' +
+    print('Make sure to update outlets, cutoffs, and hru_noroute parameters as needed in bandit.cfg ' +
           'before running bandit.')
 
 
