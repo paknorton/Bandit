@@ -433,14 +433,18 @@ def main():
             new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
             new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
 
-    if len(poi_gage_segment) == 0:
-        bandit_log.warning('No poi gages found for subset')
-
     # ==================================================================
     # ==================================================================
     # Process the parameters and create a parameter file for the subset
     # TODO: We should have the list of params and dimensions in the merged_params directory
     params = get_global_params(params_file)
+
+    # Remove the POI-related parameters if we have no POIs
+    if len(poi_gage_segment) == 0:
+        bandit_log.warning('No poi gages found for subset')
+
+        for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
+            params.pop(rp, None)
 
     dims = get_global_dimensions(params, REGIONS, paramdb_dir)
 
@@ -635,10 +639,13 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Download the streamgage information from NWIS
     if output_streamflow:
-        print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
-        streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
-        streamflow.get_daily_streamgage_observations()
-        streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
+        if len(new_poi_gage_id) > 0:
+            print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+            streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
+            streamflow.get_daily_streamgage_observations()
+            streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
+        else:
+            bandit_log.warning('No POIs exist; streamflow observation file will not be created.')
 
     # *******************************************
     # Create a shapefile of the selected HRUs
