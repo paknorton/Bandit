@@ -136,7 +136,6 @@ class NWIS(object):
         else:
             # Assuming a single value, so convert to a list
             self.__gageids = [gage_ids]
-            print(self.__gageids)
         self.__outdata = None
 
     def initialize_dataframe(self):
@@ -156,9 +155,9 @@ class NWIS(object):
     def get_daily_streamgage_observations(self):
         """Retrieves daily observations for a given date range and set of streamgage IDs"""
         if not self.__outdata:
-            if not self.__gageids:
-                print_error('No streamgages have been specified')
-                return
+            # if not self.__gageids:
+            #     print_error('No streamgages have been specified')
+            #     return
             self.initialize_dataframe()
 
         url_pieces = OrderedDict()
