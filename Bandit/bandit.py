@@ -440,7 +440,7 @@ def main():
     params = get_global_params(params_file)
 
     # Remove the POI-related parameters if we have no POIs
-    if len(poi_gage_segment) == 0:
+    if len(new_poi_gage_segment) == 0:
         bandit_log.warning('No poi gages found for subset')
 
         for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
