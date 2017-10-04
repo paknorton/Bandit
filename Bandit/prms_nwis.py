@@ -275,8 +275,11 @@ class NWIS(object):
         outhdl.write('// Station IDs for runoff:\n')
         outhdl.write('// ID\n')
 
-        for gg in self.__gageids:
-            outhdl.write('// {}\n'.format(gg))
+        if not self.__gageids:
+            outhdl.write('// 00000000\n')
+        else:
+            for gg in self.__gageids:
+                outhdl.write('// {}\n'.format(gg))
 
         outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
         outhdl.write('// Unit: runoff = cfs\n')
