@@ -172,6 +172,15 @@ class NWIS(object):
         url_pieces['siteType'] = 'ST'
         url_pieces['access'] = '3'  # Allows download of observations for restricted sites/parameters
 
+        if not self.__gageids:
+            # If do streamgages are provided then create a single dummy column filled with noData
+            self.logger.warning('No streamgages provided - dummy entry created.')
+            df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
+            df.index.name = 'date'
+
+            self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
+            self.__final_outorder.append('00000000')
+
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
         for gidx, gg in enumerate(self.__gageids):
             sys.stdout.write('\r                                       ')

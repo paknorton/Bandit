@@ -639,13 +639,10 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Download the streamgage information from NWIS
     if output_streamflow:
-        if len(new_poi_gage_id) > 0:
-            print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
-            streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
-            streamflow.get_daily_streamgage_observations()
-            streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
-        else:
-            bandit_log.warning('No POIs exist; streamflow observation file will not be created.')
+        print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+        streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
+        streamflow.get_daily_streamgage_observations()
+        streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
 
     # *******************************************
     # Create a shapefile of the selected HRUs
