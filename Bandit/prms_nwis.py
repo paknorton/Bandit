@@ -136,7 +136,7 @@ class NWIS(object):
         else:
             # Assuming a single value, so convert to a list
             self.__gageids = [gage_ids]
-
+            print(self.__gageids)
         self.__outdata = None
 
     def initialize_dataframe(self):
