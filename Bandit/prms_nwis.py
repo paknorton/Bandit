@@ -155,9 +155,6 @@ class NWIS(object):
     def get_daily_streamgage_observations(self):
         """Retrieves daily observations for a given date range and set of streamgage IDs"""
         if not self.__outdata:
-            # if not self.__gageids:
-            #     print_error('No streamgages have been specified')
-            #     return
             self.initialize_dataframe()
 
         url_pieces = OrderedDict()

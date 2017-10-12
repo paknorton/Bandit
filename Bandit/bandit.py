@@ -441,7 +441,7 @@ def main():
 
     # Remove the POI-related parameters if we have no POIs
     if len(new_poi_gage_segment) == 0:
-        bandit_log.warning('No poi gages found for subset')
+        bandit_log.warning('No POI gages found for subset; removing POI-related parameters.')
 
         for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
             params.pop(rp, None)
@@ -667,7 +667,7 @@ def main():
             # Output a shapefile of the selected HRUs
             print('\tHRUs')
             geo_shp.select_layer('nhruNationalIdentifier')
-            geo_shp.write_shapefile('{}/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
             # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
             # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
             # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
@@ -675,7 +675,7 @@ def main():
             # Output a shapefile of the selected stream segments
             print('\tSegments')
             geo_shp.select_layer('nsegmentNationalIdentifier')
-            geo_shp.write_shapefile('{}/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+            geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
             # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
             # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 
