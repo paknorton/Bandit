@@ -313,8 +313,22 @@ def main():
         # Get a subgraph in the dag_ds graph and return the edges
         dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
 
+        # 2018-02-13 PAN: It is possible to have outlets specified which are not truly
+        #                 outlets in the most conservative sense (e.g. a point where
+        #                 the stream network exits the study area). This occurs when
+        #                 doing headwater extractions where all segments for a headwater
+        #                 are specified in the configuration file. Instead of creating
+        #                 output edges for all specified 'outlets' the set difference
+        #                 between the specified outlets and nodes in the graph subset
+        #                 which have no edges is performed first to reduce the number of
+        #                 outlets to the 'true' outlets of the system.
+        node_outlets = [ee[0] for ee in dag_ds_subset.edges()]
+        true_outlets = set(dsmost_seg).difference(set(node_outlets))
+        bandit_log.debug('node_outlets: {}'.format(','.join(map(str, node_outlets))))
+        bandit_log.debug('true_outlets: {}'.format(','.join(map(str, true_outlets))))
+
         # Add the downstream segments that exit the subgraph
-        for xx in dsmost_seg:
+        for xx in true_outlets:
             dag_ds_subset.add_edge(xx, 'Out_{}'.format(xx))
     else:
         # No outlets specified so pull the CONUS
