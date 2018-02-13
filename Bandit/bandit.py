@@ -313,8 +313,22 @@ def main():
         # Get a subgraph in the dag_ds graph and return the edges
         dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
 
+        # 2018-02-13 PAN: It is possible to have outlets specified which are not truly
+        #                 outlets in the most conservative sense (e.g. a point where
+        #                 the stream network exits the study area). This occurs when
+        #                 doing headwater extractions where all segments for a headwater
+        #                 are specified in the configuration file. Instead of creating
+        #                 output edges for all specified 'outlets' the set difference
+        #                 between the specified outlets and nodes in the graph subset
+        #                 which have no edges is performed first to reduce the number of
+        #                 outlets to the 'true' outlets of the system.
+        node_outlets = [ee[0] for ee in dag_ds_subset.edges()]
+        true_outlets = set(dsmost_seg).difference(set(node_outlets))
+        bandit_log.debug('node_outlets: {}'.format(','.join(map(str, node_outlets))))
+        bandit_log.debug('true_outlets: {}'.format(','.join(map(str, true_outlets))))
+
         # Add the downstream segments that exit the subgraph
-        for xx in dsmost_seg:
+        for xx in true_outlets:
             dag_ds_subset.add_edge(xx, 'Out_{}'.format(xx))
     else:
         # No outlets specified so pull the CONUS
@@ -433,14 +447,18 @@ def main():
             new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
             new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
 
-    if len(poi_gage_segment) == 0:
-        bandit_log.warning('No poi gages found for subset')
-
     # ==================================================================
     # ==================================================================
     # Process the parameters and create a parameter file for the subset
     # TODO: We should have the list of params and dimensions in the merged_params directory
     params = get_global_params(params_file)
+
+    # Remove the POI-related parameters if we have no POIs
+    if len(new_poi_gage_segment) == 0:
+        bandit_log.warning('No POI gages found for subset; removing POI-related parameters.')
+
+        for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
+            params.pop(rp, None)
 
     dims = get_global_dimensions(params, REGIONS, paramdb_dir)
 
@@ -663,7 +681,7 @@ def main():
             # Output a shapefile of the selected HRUs
             print('\tHRUs')
             geo_shp.select_layer('nhruNationalIdentifier')
-            geo_shp.write_shapefile('{}/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
             # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
             # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
             # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
@@ -671,7 +689,7 @@ def main():
             # Output a shapefile of the selected stream segments
             print('\tSegments')
             geo_shp.select_layer('nsegmentNationalIdentifier')
-            geo_shp.write_shapefile('{}/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+            geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
             # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
             # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 

@@ -136,7 +136,6 @@ class NWIS(object):
         else:
             # Assuming a single value, so convert to a list
             self.__gageids = [gage_ids]
-
         self.__outdata = None
 
     def initialize_dataframe(self):
@@ -156,9 +155,6 @@ class NWIS(object):
     def get_daily_streamgage_observations(self):
         """Retrieves daily observations for a given date range and set of streamgage IDs"""
         if not self.__outdata:
-            if not self.__gageids:
-                print_error('No streamgages have been specified')
-                return
             self.initialize_dataframe()
 
         url_pieces = OrderedDict()
@@ -171,6 +167,15 @@ class NWIS(object):
         url_pieces['parameterCd'] = '00060'  # Discharge
         url_pieces['siteType'] = 'ST'
         url_pieces['access'] = '3'  # Allows download of observations for restricted sites/parameters
+
+        if not self.__gageids:
+            # If do streamgages are provided then create a single dummy column filled with noData
+            self.logger.warning('No streamgages provided - dummy entry created.')
+            df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
+            df.index.name = 'date'
+
+            self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
+            self.__final_outorder.append('00000000')
 
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
         for gidx, gg in enumerate(self.__gageids):
@@ -267,8 +272,11 @@ class NWIS(object):
         outhdl.write('// Station IDs for runoff:\n')
         outhdl.write('// ID\n')
 
-        for gg in self.__gageids:
-            outhdl.write('// {}\n'.format(gg))
+        if not self.__gageids:
+            outhdl.write('// 00000000\n')
+        else:
+            for gg in self.__gageids:
+                outhdl.write('// {}\n'.format(gg))
 
         outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
         outhdl.write('// Unit: runoff = cfs\n')
