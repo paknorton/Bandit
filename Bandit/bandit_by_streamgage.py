@@ -334,6 +334,11 @@ def main():
             # Lookup the outlet for the current streamgage
             try:
                 dsmost_seg = [poi_id_to_seg[sg]]
+
+                if dsmost_seg == 0:
+                    # POI stream segment was never properly assigned in paramdb
+                    bandit_log.info('Streamgage {} has segment = 0. Skipping.'.format(sg))
+                    break
             except KeyError:
                 bandit_log.info('Streamgage {} does not exist in poi_gage_id'.format(sg))
                 break

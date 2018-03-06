@@ -340,6 +340,13 @@ def main():
 
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
 
+    #print('edges')
+    #for xx in dag_ds_subset.adjacency_iter():
+    #    print(xx)
+
+    #print('toseg_idx')
+    #print(toseg_idx)
+
     hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
     bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
@@ -358,6 +365,9 @@ def main():
         else:
             bandit_log.warning('Stream segment {} has no HRUs connected to it.'.format(xx))
             # raise ValueError('Stream segment has no HRUs connected to it.')
+
+    #print('hru_order_subset')
+    #print(hru_order_subset)
 
     # Append the additional non-routed HRUs to the list
     if len(hru_noroute) > 0:
@@ -388,15 +398,22 @@ def main():
             # Outlets should be assigned zero
             new_tosegment.append(0)
 
+    #print('new_tosegment')
+    #print(new_tosegment)
+
     # Renumber the hru_segments for the subset
     new_hru_segment = []
 
     for xx in toseg_idx:
         # if DAG_subds.neighbors(xx)[0] in toseg_idx:
         if xx in seg_to_hru:
-            for _ in seg_to_hru[xx]:
+            for yy in seg_to_hru[xx]:
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
+                print(xx, yy)
+
+    #print('new_hru_segment')
+    #print(new_hru_segment)
 
     # Append zeroes to new_hru_segment for each additional non-routed HRU
     if len(hru_noroute) > 0:
@@ -418,9 +435,15 @@ def main():
     uniq_deplcrv = list(set(hru_deplcrv_subset))
     uniq_deplcrv0 = [xx - 1 for xx in uniq_deplcrv]
 
+    #print('hru_deplcrv_subset')
+    #print(hru_deplcrv_subset)
+
     # Create new hru_deplcrv and renumber
     new_hru_deplcrv = [uniq_deplcrv.index(cc)+1 for cc in hru_deplcrv_subset]
     bandit_log.info('Size of hru_deplcrv for subset: {}'.format(len(new_hru_deplcrv)))
+
+    #print('new_hru_deplcrv')
+    #print(new_hru_deplcrv)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
