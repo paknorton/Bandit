@@ -335,9 +335,13 @@ def main():
             try:
                 dsmost_seg = [poi_id_to_seg[sg]]
 
-                if dsmost_seg == 0:
+                if dsmost_seg[0] == 0:
                     # POI stream segment was never properly assigned in paramdb
                     bandit_log.info('Streamgage {} has segment = 0. Skipping.'.format(sg))
+                    break
+                elif len(dsmost_seg) > 1:
+                    # Should never have more than one segment per streamgage
+                    bandit_log.info('Streamgage {} has more than one stream segment.'.format(sg))
                     break
             except KeyError:
                 bandit_log.info('Streamgage {} does not exist in poi_gage_id'.format(sg))
