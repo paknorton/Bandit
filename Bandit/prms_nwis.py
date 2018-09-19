@@ -169,7 +169,7 @@ class NWIS(object):
         url_pieces['access'] = '3'  # Allows download of observations for restricted sites/parameters
 
         if not self.__gageids:
-            # If do streamgages are provided then create a single dummy column filled with noData
+            # If no streamgages are provided then create a single dummy column filled with noData
             self.logger.warning('No streamgages provided - dummy entry created.')
             df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
             df.index.name = 'date'
@@ -240,6 +240,21 @@ class NWIS(object):
                         df.drop([curr_col], axis=1, inplace=True)
 
                 df.rename(columns={rename_col[0]: gg}, inplace=True)
+
+                # Check for discontinued gage records
+                if df[gg].dtype == np.object_:
+                    # If the datatype of the streamgage values is np.object_ that
+                    # means some string is appended to one or more of the values.
+                    dis_count = df[gg].str.contains('_Dis').sum()
+                    dis_first_date = df[df[gg].str.contains('_Dis')].index[0].strftime('%Y-%m-%d')
+
+                    if dis_count > 0:
+                        # Dis  Record has been discontinued at the measurement site.
+                        # Streamgage has values when the gage records were discontinued
+                        self.logger.warning('{} has {} records marked _Dis (discontinued). '
+                                            'First occurrence at {}. Suffix removed from values'.format(gg, dis_count,
+                                                                                                        dis_first_date))
+                        df[gg].replace('_Dis', '', regex=True, inplace=True)
 
                 # Resample to daily to fill in the missing days with NaN
                 # df = df.resample('D').mean()
