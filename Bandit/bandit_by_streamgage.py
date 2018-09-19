@@ -323,7 +323,7 @@ def main():
                         # Also remove the cutoff segment itself
                         dag_us.remove_node(xx)
                     except KeyError:
-                        print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
+                        print('WARNING: Specified cutoff segment {} does not exist in stream network'.format(xx))
             except TypeError:
                 bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType')
                 exit(1)
@@ -337,14 +337,14 @@ def main():
 
                 if dsmost_seg[0] == 0:
                     # POI stream segment was never properly assigned in paramdb
-                    bandit_log.info('Streamgage {} has segment = 0. Skipping.'.format(sg))
+                    bandit_log.error('Streamgage {} has segment = 0. Skipping.'.format(sg))
                     break
                 elif len(dsmost_seg) > 1:
                     # Should never have more than one segment per streamgage
                     bandit_log.info('Streamgage {} has more than one stream segment.'.format(sg))
                     break
             except KeyError:
-                bandit_log.info('Streamgage {} does not exist in poi_gage_id'.format(sg))
+                bandit_log.error('Streamgage {} does not exist in poi_gage_id'.format(sg))
                 break
 
             sg_dir = '{}/{}'.format(outdir, sg)
