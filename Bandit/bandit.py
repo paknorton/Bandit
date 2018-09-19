@@ -410,7 +410,7 @@ def main():
             for yy in seg_to_hru[xx]:
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
-                print(xx, yy)
+                # print(xx, yy)
 
     #print('new_hru_segment')
     #print(new_hru_segment)
@@ -526,7 +526,10 @@ def main():
     # Write out parameters section
     outhdl.write('** Parameters **\n')
 
-    for pp, pv in iteritems(params):
+    # for pp, pv in iteritems(params):
+    params = params.keys()
+    params.sort()
+    for pp in params:
         cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
 
         ndims = len(cparam['dimensions'])
