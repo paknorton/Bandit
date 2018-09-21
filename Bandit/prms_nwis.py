@@ -245,16 +245,40 @@ class NWIS(object):
                 if df[gg].dtype == np.object_:
                     # If the datatype of the streamgage values is np.object_ that
                     # means some string is appended to one or more of the values.
+
+                    # Check for discontinued flagged records
                     dis_count = df[gg].str.contains('_Dis').sum()
-                    dis_first_date = df[df[gg].str.contains('_Dis')].index[0].strftime('%Y-%m-%d')
 
                     if dis_count > 0:
+                        dis_first_date = df[df[gg].str.contains('_Dis')].index[0].strftime('%Y-%m-%d')
                         # Dis  Record has been discontinued at the measurement site.
                         # Streamgage has values when the gage records were discontinued
                         self.logger.warning('{} has {} records marked _Dis (discontinued). '
                                             'First occurrence at {}. Suffix removed from values'.format(gg, dis_count,
                                                                                                         dis_first_date))
                         df[gg].replace('_Dis', '', regex=True, inplace=True)
+
+                    # Check for ice-flagged records
+                    ice_count = df[gg].str.contains('_Ice').sum()
+
+                    if ice_count > 0:
+                        ice_first_date = df[df[gg].str.contains('_Ice')].index[0].strftime('%Y-%m-%d')
+                        # Ice  Record which has been ice-flagged at the measurement site.
+                        self.logger.warning('{} has {} records marked _Ice (Ice-flagged). '
+                                            'First occurrence at {}. Suffix removed from values'.format(gg, ice_count,
+                                                                                                        ice_first_date))
+                        df[gg].replace('_Ice', '', regex=True, inplace=True)
+
+                    # Check for eqp-flagged records (Equipment malfunction)
+                    eqp_count = df[gg].str.contains('_Eqp').sum()
+
+                    if eqp_count > 0:
+                        eqp_first_date = df[df[gg].str.contains('_Eqp')].index[0].strftime('%Y-%m-%d')
+                        # Eqp  Record which has been eqp-flagged at the measurement site.
+                        self.logger.warning('{} has {} records marked _Eqp (equipment malfunction). '
+                                            'First occurrence at {}. Suffix removed from values'.format(gg, eqp_count,
+                                                                                                        eqp_first_date))
+                        df[gg].replace('_Eqp', '', regex=True, inplace=True)
 
                 # Resample to daily to fill in the missing days with NaN
                 # df = df.resample('D').mean()
