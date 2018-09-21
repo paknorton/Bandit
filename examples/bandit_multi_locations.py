@@ -9,8 +9,7 @@ import sys
 from collections import OrderedDict
 from Bandit import bandit_cfg as bc
 
-
-import time
+# import time
 import threading
 import Queue
 
@@ -77,32 +76,84 @@ class WorkerThread(threading.Thread):
 
 
 def main():
-    jobdir = '/media/scratch/PRMS/bandit/jobs/hw_jobs'
-    hw_src = '/media/scratch/PRMS/bandit/jobs/hw_jobs/hwSegsVll.csv'
-    default_config_file = '/media/scratch/PRMS/bandit/jobs/hw_jobs/bandit.cfg'
-    cmd_bandit = '/media/scratch/PRMS/bandit/Bandit/bandit.py'
+    import argparse
+    from distutils.spawn import find_executable
 
-    hwdir = 'hw_{:04d}'
+    # Command line arguments
+    parser = argparse.ArgumentParser(description='Batch script for Bandit extractions')
 
-    hw_file = open(hw_src, 'r')
+    # parser.add_argument('-j', '--jobdir', help='Job directory to work in')
+    parser.add_argument('-s', '--segoutlets', help='File containing segment outlets by location')
+    parser.add_argument('-n', '--nrhrus', help='File containing non-routed HRUs by location')
+
+    # parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
+
+    args = parser.parse_args()
+
+    # Should be in the current job directory
+    job_dir = os.getcwd()
+
+    # Read the default configuration file
+    config = bc.Cfg('{}/bandit.cfg'.format(job_dir))
+
+    if args.segoutlets:
+        seg_src = '{}/{}'.format(job_dir, args.segoutlets)
+    else:
+        print('ERROR: Must specify the segment outlets file.')
+        exit(1)
+
+    if args.nrhrus:
+        nrhru_src = '{}/{}'.format(job_dir, args.nrhrus)
+    else:
+        nrhru_src = None
+
+    # jobdir = '/media/scratch/PRMS/bandit/jobs/hw_jobs'
+    # default_config_file = '{}/bandit.cfg'.format(jobdir)
+
+    # cmd_bandit = '/media/scratch/PRMS/bandit/Bandit/bandit.py'
+    cmd_bandit = find_executable('bandit')
+
+    if not cmd_bandit:
+        print('ERROR: Unable to find bandit.py')
+        exit(1)
+
+    seg_file = open(seg_src, 'r')
 
     # Skip the header information
     # NOTE: If file has no header the first entry will be skipped
-    hw_file.next()
+    seg_file.next()
 
     # First column is hwAreaId
     # Second and following columns are seg_id_nat
-    head_waters = OrderedDict()
+    segments_by_loc = OrderedDict()
 
-    for line in hw_file:
+    # Read the segment outlets by location
+    for line in seg_file:
         cols = line.strip().replace(" ", "").split(',')
         try:
             # Assume first column is a number
             cols = [int(xx) for xx in cols]
-            head_waters[cols[0]] = cols[1:]
+            segments_by_loc[cols[0]] = cols[1:]
         except ValueError:
             # First column is probably a string
-            head_waters[cols[0]] = [int(xx) for xx in cols[1:]]
+            segments_by_loc[cols[0]] = [int(xx) for xx in cols[1:]]
+
+    if nrhru_src:
+        nrhru_file = open(nrhru_src, 'r')
+        nrhru_file.next()
+
+        noroute_hrus_by_loc = OrderedDict()
+
+        # Read in the non-routed HRUs by location
+        for line in nrhru_file:
+            cols = line.strip().replace(" ", "").split(',')
+            try:
+                # Assume first column is a number
+                cols = [int(xx) for xx in cols]
+                noroute_hrus_by_loc[cols[0]] = cols[1:]
+            except ValueError:
+                # First column is probably a string
+                noroute_hrus_by_loc[cols[0]] = [int(xx) for xx in cols[1:]]
 
     num_threads = 8
 
@@ -129,23 +180,27 @@ def main():
     # - run bandit on the directory
     #
 
-    if not os.path.exists(jobdir):
+    if not os.path.exists(job_dir):
         try:
-            os.makedirs(jobdir)
+            os.makedirs(job_dir)
         except OSError as err:
             print("\tError creating directory: {}".format(err))
             exit(1)
 
-    st_dir = os.getcwd()
-    os.chdir(jobdir)
+    # st_dir = os.getcwd()
+    os.chdir(job_dir)
 
     # Read the default configuration file
-    config = bc.Cfg(default_config_file)
+    # config = bc.Cfg(default_config_file)
 
     work_count = 0
 
-    for kk, vv in iteritems(head_waters):
-        cdir = hwdir.format(kk)
+    for kk, vv in iteritems(segments_by_loc):
+        try:
+            # Try for integer formatted output directories first
+            cdir = '{:04d}'.format(kk)
+        except ValueError:
+            cdir = '{}'.format(kk)
 
         # Create the headwater directory if needed
         if not os.path.exists(cdir):
@@ -157,17 +212,21 @@ def main():
 
         # Update the outlets in the basin.cfg file and write into the headwater directory
         config.update_value('outlets', vv)
-        config.update_value('output_dir', '{}/{}'.format(jobdir, cdir))
+
+        if nrhru_src and kk in noroute_hrus_by_loc:
+            config.update_value('hru_noroute', noroute_hrus_by_loc[kk])
+
+        config.update_value('output_dir', '{}/{}'.format(job_dir, cdir))
         config.write('{}/bandit.cfg'.format(cdir))
 
         # Run bandit
         # Add the command to queue for processing
         work_count += 1
-        cmd = '{} -j {}/{}'.format(cmd_bandit, jobdir, cdir)
+        cmd = '{} -j {}/{}'.format(cmd_bandit, job_dir, cdir)
 
         os.chdir(cdir)
         cmd_q.put(cmd)
-        os.chdir(jobdir)
+        os.chdir(job_dir)
 
     #    if work_count == 6:
     #        break
