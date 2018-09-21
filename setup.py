@@ -115,7 +115,7 @@ setup(
             'git_version=Bandit.git_version:main',
             'create_bandit_job=Bandit.utilities.create_bandit_job:main',
             'check_nhmparamdb=Bandit.utilities.check_nhmparamdb:main',
-            'bandit_multi_locations=examples.bandit_multi_locations:main'
+            'bandit_multi_locations=Bandit.bandit_multi_locations:main'
         ],
     },
 )
