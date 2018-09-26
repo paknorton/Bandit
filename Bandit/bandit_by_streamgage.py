@@ -734,6 +734,7 @@ def main():
                     # Output a shapefile of the selected HRUs
                     print('\tHRUs')
                     geo_shp.select_layer('nhruNationalIdentifier')
+                    # geo_shp.write_shapefile3('{}/GIS/HRU_stuff.gpkg'.format(outdir), 'hru_id_nat', hru_order_subset)
                     geo_shp.write_shapefile('{}/HRU_subset.shp'.format(gis_dir), 'hru_id_nat', hru_order_subset)
                     # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
                     # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))

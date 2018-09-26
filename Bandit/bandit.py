@@ -340,12 +340,12 @@ def main():
 
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
 
-    #print('edges')
-    #for xx in dag_ds_subset.adjacency_iter():
+    # print('edges')
+    # for xx in dag_ds_subset.adjacency_iter():
     #    print(xx)
 
-    #print('toseg_idx')
-    #print(toseg_idx)
+    # print('toseg_idx')
+    # print(toseg_idx)
 
     hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
@@ -366,8 +366,8 @@ def main():
             bandit_log.warning('Stream segment {} has no HRUs connected to it.'.format(xx))
             # raise ValueError('Stream segment has no HRUs connected to it.')
 
-    #print('hru_order_subset')
-    #print(hru_order_subset)
+    # print('hru_order_subset')
+    # print(hru_order_subset)
 
     # Append the additional non-routed HRUs to the list
     if len(hru_noroute) > 0:
@@ -398,8 +398,8 @@ def main():
             # Outlets should be assigned zero
             new_tosegment.append(0)
 
-    #print('new_tosegment')
-    #print(new_tosegment)
+    # print('new_tosegment')
+    # print(new_tosegment)
 
     # Renumber the hru_segments for the subset
     new_hru_segment = []
@@ -412,8 +412,8 @@ def main():
                 new_hru_segment.append(toseg_idx.index(xx)+1)
                 # print(xx, yy)
 
-    #print('new_hru_segment')
-    #print(new_hru_segment)
+    # print('new_hru_segment')
+    # print(new_hru_segment)
 
     # Append zeroes to new_hru_segment for each additional non-routed HRU
     if len(hru_noroute) > 0:
@@ -435,15 +435,15 @@ def main():
     uniq_deplcrv = list(set(hru_deplcrv_subset))
     uniq_deplcrv0 = [xx - 1 for xx in uniq_deplcrv]
 
-    #print('hru_deplcrv_subset')
-    #print(hru_deplcrv_subset)
+    # print('hru_deplcrv_subset')
+    # print(hru_deplcrv_subset)
 
     # Create new hru_deplcrv and renumber
     new_hru_deplcrv = [uniq_deplcrv.index(cc)+1 for cc in hru_deplcrv_subset]
     bandit_log.info('Size of hru_deplcrv for subset: {}'.format(len(new_hru_deplcrv)))
 
-    #print('new_hru_deplcrv')
-    #print(new_hru_deplcrv)
+    # print('new_hru_deplcrv')
+    # print(new_hru_deplcrv)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
@@ -708,6 +708,9 @@ def main():
             print('\tHRUs')
             geo_shp.select_layer('nhruNationalIdentifier')
             geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+
+            # geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
+
             # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
             # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
             # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
@@ -716,6 +719,7 @@ def main():
             print('\tSegments')
             geo_shp.select_layer('nsegmentNationalIdentifier')
             geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+
             # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
             # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 
