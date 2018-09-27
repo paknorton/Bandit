@@ -138,6 +138,18 @@ class NWIS(object):
             self.__gageids = [gage_ids]
         self.__outdata = None
 
+    def check_for_flag(self, pat, data, col_id):
+        # Check for pattern in data, log error if found and remove from data
+        pat_count = data[col_id].str.contains(pat).sum()
+
+        if pat_count > 0:
+            pat_first_date = data[data[col_id].str.contains(pat)].index[0].strftime('%Y-%m-%d')
+
+            self.logger.warning('{} has {} records marked {}. '
+                                'First occurrence at {}. Suffix removed from values'.format(col_id, pat_count, pat,
+                                                                                            pat_first_date))
+            data[col_id].replace(pat, '', regex=True, inplace=True)
+
     def initialize_dataframe(self):
         """Clears downloaded data and initializes the output dataframe"""
         if not self.__endate:
@@ -247,38 +259,56 @@ class NWIS(object):
                     # means some string is appended to one or more of the values.
 
                     # Check for discontinued flagged records
-                    dis_count = df[gg].str.contains('_Dis').sum()
-
-                    if dis_count > 0:
-                        dis_first_date = df[df[gg].str.contains('_Dis')].index[0].strftime('%Y-%m-%d')
-                        # Dis  Record has been discontinued at the measurement site.
-                        # Streamgage has values when the gage records were discontinued
-                        self.logger.warning('{} has {} records marked _Dis (discontinued). '
-                                            'First occurrence at {}. Suffix removed from values'.format(gg, dis_count,
-                                                                                                        dis_first_date))
-                        df[gg].replace('_Dis', '', regex=True, inplace=True)
+                    self.check_for_flag('_Dis', df, gg)
+                    # dis_count = df[gg].str.contains('_Dis').sum()
+                    #
+                    # if dis_count > 0:
+                    #     dis_first_date = df[df[gg].str.contains('_Dis')].index[0].strftime('%Y-%m-%d')
+                    #     # Dis  Record has been discontinued at the measurement site.
+                    #     # Streamgage has values when the gage records were discontinued
+                    #     self.logger.warning('{} has {} records marked _Dis (discontinued). '
+                    #                         'First occurrence at {}. Suffix removed from values'.format(gg, dis_count,
+                    #                                                                                     dis_first_date))
+                    #     df[gg].replace('_Dis', '', regex=True, inplace=True)
 
                     # Check for ice-flagged records
-                    ice_count = df[gg].str.contains('_Ice').sum()
+                    self.check_for_flag('_Ice', df, gg)
 
-                    if ice_count > 0:
-                        ice_first_date = df[df[gg].str.contains('_Ice')].index[0].strftime('%Y-%m-%d')
-                        # Ice  Record which has been ice-flagged at the measurement site.
-                        self.logger.warning('{} has {} records marked _Ice (Ice-flagged). '
-                                            'First occurrence at {}. Suffix removed from values'.format(gg, ice_count,
-                                                                                                        ice_first_date))
-                        df[gg].replace('_Ice', '', regex=True, inplace=True)
+                    # ice_count = df[gg].str.contains('_Ice').sum()
+                    #
+                    # if ice_count > 0:
+                    #     ice_first_date = df[df[gg].str.contains('_Ice')].index[0].strftime('%Y-%m-%d')
+                    #     # Ice  Record which has been ice-flagged at the measurement site.
+                    #     self.logger.warning('{} has {} records marked _Ice (Ice-flagged). '
+                    #                         'First occurrence at {}. Suffix removed from values'.format(gg, ice_count,
+                    #                                                                                     ice_first_date))
+                    #     df[gg].replace('_Ice', '', regex=True, inplace=True)
 
                     # Check for eqp-flagged records (Equipment malfunction)
-                    eqp_count = df[gg].str.contains('_Eqp').sum()
+                    self.check_for_flag('_Eqp', df, gg)
+                    # eqp_count = df[gg].str.contains('_Eqp').sum()
+                    #
+                    # if eqp_count > 0:
+                    #     eqp_first_date = df[df[gg].str.contains('_Eqp')].index[0].strftime('%Y-%m-%d')
+                    #     # Eqp  Record which has been eqp-flagged at the measurement site.
+                    #     self.logger.warning('{} has {} records marked _Eqp (equipment malfunction). '
+                    #                         'First occurrence at {}. Suffix removed from values'.format(gg, eqp_count,
+                    #                                                                                     eqp_first_date))
+                    #     df[gg].replace('_Eqp', '', regex=True, inplace=True)
 
-                    if eqp_count > 0:
-                        eqp_first_date = df[df[gg].str.contains('_Eqp')].index[0].strftime('%Y-%m-%d')
-                        # Eqp  Record which has been eqp-flagged at the measurement site.
-                        self.logger.warning('{} has {} records marked _Eqp (equipment malfunction). '
-                                            'First occurrence at {}. Suffix removed from values'.format(gg, eqp_count,
-                                                                                                        eqp_first_date))
-                        df[gg].replace('_Eqp', '', regex=True, inplace=True)
+                    # Common bad data: set(['Eqp', 'Ice', 'Ssn', 'Rat', 'Bkw', '***', 'Dis'])
+
+                    # Check for _Ssn (parameter monitored seasonally)
+                    self.check_for_flag('_Ssn', df, gg)
+
+                    # Check for _Rat (rating being developed)
+                    self.check_for_flag('_Rat', df, gg)
+
+                    # Check for _Bkw (Value is affected by backwater at the measurement site)
+                    self.check_for_flag('_Bkw', df, gg)
+
+                    # Check for 1 or more astericks
+                    self.check_for_flag('_\*+', df, gg)
 
                 # Resample to daily to fill in the missing days with NaN
                 # df = df.resample('D').mean()
