@@ -85,6 +85,7 @@ def main():
     # parser.add_argument('-j', '--jobdir', help='Job directory to work in')
     parser.add_argument('-s', '--segoutlets', help='File containing segment outlets by location')
     parser.add_argument('-n', '--nrhrus', help='File containing non-routed HRUs by location')
+    parser.add_argument('-p', '--prefix', help='Directory prefix to add')
 
     # parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
 
@@ -198,7 +199,10 @@ def main():
     for kk, vv in iteritems(segments_by_loc):
         try:
             # Try for integer formatted output directories first
-            cdir = '{:04d}'.format(kk)
+            if args.prefix:
+                cdir = '{}{:04d}'.format(args.prefix, kk)
+            else:
+                cdir = '{:04d}'.format(kk)
         except ValueError:
             cdir = '{}'.format(kk)
 
