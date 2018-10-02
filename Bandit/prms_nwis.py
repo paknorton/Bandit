@@ -178,7 +178,7 @@ class NWIS(object):
         url_pieces['siteStatus'] = 'all'
         url_pieces['parameterCd'] = '00060'  # Discharge
         url_pieces['siteType'] = 'ST'
-        url_pieces['access'] = '3'  # Allows download of observations for restricted sites/parameters
+        # url_pieces['access'] = '3'  # Allows download of observations for restricted sites/parameters
 
         if not self.__gageids:
             # If no streamgages are provided then create a single dummy column filled with noData
@@ -244,74 +244,56 @@ class NWIS(object):
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
-                    self.logger.warning('{} had more than one Q-col returned; using {}'.format(gg, rename_col[0]))
+                    self.logger.warning('{} had more than one Q-col returned; empty dataset used.'.format(gg))
+                    df = pd.DataFrame(index=self.__date_range, columns=[gg])
+                    df.index.name = 'date'
 
-                    # Keep the first TS column and drop the others
-                    while len(rename_col) > 1:
-                        curr_col = rename_col.pop()
-                        df.drop([curr_col], axis=1, inplace=True)
-
-                df.rename(columns={rename_col[0]: gg}, inplace=True)
-
-                # Check for discontinued gage records
-                if df[gg].dtype == np.object_:
-                    # If the datatype of the streamgage values is np.object_ that
-                    # means some string is appended to one or more of the values.
-
-                    # Check for discontinued flagged records
-                    self.check_for_flag('_Dis', df, gg)
-                    # dis_count = df[gg].str.contains('_Dis').sum()
+                    # self.logger.warning('{} had more than one Q-col returned; using {}'.format(gg, rename_col[0]))
                     #
-                    # if dis_count > 0:
-                    #     dis_first_date = df[df[gg].str.contains('_Dis')].index[0].strftime('%Y-%m-%d')
-                    #     # Dis  Record has been discontinued at the measurement site.
-                    #     # Streamgage has values when the gage records were discontinued
-                    #     self.logger.warning('{} has {} records marked _Dis (discontinued). '
-                    #                         'First occurrence at {}. Suffix removed from values'.format(gg, dis_count,
-                    #                                                                                     dis_first_date))
-                    #     df[gg].replace('_Dis', '', regex=True, inplace=True)
+                    # # Keep the first TS column and drop the others
+                    # while len(rename_col) > 1:
+                    #     curr_col = rename_col.pop()
+                    #     df.drop([curr_col], axis=1, inplace=True)
+                else:
+                    df.rename(columns={rename_col[0]: gg}, inplace=True)
 
-                    # Check for ice-flagged records
-                    self.check_for_flag('_Ice', df, gg)
+                    try:
+                        # If no flags are present the column should already be float
+                        pd.to_numeric(df[gg], errors='raise')
+                    except ValueError:
+                        self.logger.warning('{} had one or more flagged values; flagged values converted to NaN.'.format(gg))
+                        df[gg] = pd.to_numeric(df[gg], errors='coerce')
 
-                    # ice_count = df[gg].str.contains('_Ice').sum()
+                    # Check for discontinued gage records
+                    # if df[gg].dtype == np.object_:
+                    #     # If the datatype of the streamgage values is np.object_ that
+                    #     # means some string is appended to one or more of the values.
                     #
-                    # if ice_count > 0:
-                    #     ice_first_date = df[df[gg].str.contains('_Ice')].index[0].strftime('%Y-%m-%d')
-                    #     # Ice  Record which has been ice-flagged at the measurement site.
-                    #     self.logger.warning('{} has {} records marked _Ice (Ice-flagged). '
-                    #                         'First occurrence at {}. Suffix removed from values'.format(gg, ice_count,
-                    #                                                                                     ice_first_date))
-                    #     df[gg].replace('_Ice', '', regex=True, inplace=True)
-
-                    # Check for eqp-flagged records (Equipment malfunction)
-                    self.check_for_flag('_Eqp', df, gg)
-                    # eqp_count = df[gg].str.contains('_Eqp').sum()
+                    #     # Common bad data: set(['Eqp', 'Ice', 'Ssn', 'Rat', 'Bkw', '***', 'Dis'])
                     #
-                    # if eqp_count > 0:
-                    #     eqp_first_date = df[df[gg].str.contains('_Eqp')].index[0].strftime('%Y-%m-%d')
-                    #     # Eqp  Record which has been eqp-flagged at the measurement site.
-                    #     self.logger.warning('{} has {} records marked _Eqp (equipment malfunction). '
-                    #                         'First occurrence at {}. Suffix removed from values'.format(gg, eqp_count,
-                    #                                                                                     eqp_first_date))
-                    #     df[gg].replace('_Eqp', '', regex=True, inplace=True)
+                    #     # Check for discontinued flagged records
+                    #     self.check_for_flag('_?Dis', df, gg)
+                    #
+                    #     # Check for ice-flagged records
+                    #     self.check_for_flag('_?Ice', df, gg)
+                    #
+                    #     # Check for eqp-flagged records (Equipment malfunction)
+                    #     self.check_for_flag('_?Eqp', df, gg)
+                    #
+                    #     # Check for _Ssn (parameter monitored seasonally)
+                    #     self.check_for_flag('_?Ssn', df, gg)
+                    #
+                    #     # Check for _Rat (rating being developed)
+                    #     self.check_for_flag('_?Rat', df, gg)
+                    #
+                    #     # Check for _Bkw (Value is affected by backwater at the measurement site)
+                    #     self.check_for_flag('_?Bkw', df, gg)
+                    #
+                    #     # Check for 1 or more astericks
+                    #     self.check_for_flag('_?\*+', df, gg)
 
-                    # Common bad data: set(['Eqp', 'Ice', 'Ssn', 'Rat', 'Bkw', '***', 'Dis'])
-
-                    # Check for _Ssn (parameter monitored seasonally)
-                    self.check_for_flag('_Ssn', df, gg)
-
-                    # Check for _Rat (rating being developed)
-                    self.check_for_flag('_Rat', df, gg)
-
-                    # Check for _Bkw (Value is affected by backwater at the measurement site)
-                    self.check_for_flag('_Bkw', df, gg)
-
-                    # Check for 1 or more astericks
-                    self.check_for_flag('_\*+', df, gg)
-
-                # Resample to daily to fill in the missing days with NaN
-                # df = df.resample('D').mean()
+                    # Resample to daily to fill in the missing days with NaN
+                    # df = df.resample('D').mean()
 
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append(gg)
