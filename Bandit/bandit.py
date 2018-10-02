@@ -307,8 +307,15 @@ def main():
     uniq_seg_us = set()
     if dsmost_seg:
         for xx in dsmost_seg:
-            pred = nx.dfs_predecessors(dag_us, xx)
-            uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
+            try:
+                pred = nx.dfs_predecessors(dag_us, xx)
+                uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
+            except KeyError:
+                print('KeyError: Segment {} does not exist in stream network'.format(xx))
+
+        if len(uniq_seg_us) == 0:
+            print('ERROR: No segments were selected for extraction.')
+            exit(1)
 
         # Get a subgraph in the dag_ds graph and return the edges
         dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
