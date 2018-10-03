@@ -297,7 +297,7 @@ def main():
                         print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
     except TypeError:
         bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType')
-        exit(-1)
+        exit(200)
 
     bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
     bandit_log.debug('Number of NHM upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
@@ -320,7 +320,7 @@ def main():
 
         if len(uniq_seg_us) == 0:
             print('ERROR: No segments were selected for extraction.')
-            exit(-1)
+            exit(200)
 
         # Get a subgraph in the dag_ds graph and return the edges
         dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
