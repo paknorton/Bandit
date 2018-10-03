@@ -157,7 +157,7 @@ def main():
         if os.path.exists(args.job):
             # Change into job directory before running extraction
             os.chdir(args.job)
-            print('Working in directory: {}'.format(args.job))
+            # print('Working in directory: {}'.format(args.job))
         else:
             print('ERROR: Invalid jobs directory: {}'.format(args.job))
             exit(-1)

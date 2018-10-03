@@ -233,9 +233,6 @@ def main():
         cmd_q.put(cmd)
         os.chdir(job_dir)
 
-    #    if work_count == 6:
-    #        break
-
     print("work_count = {:d}".format(work_count))
 
     # Output results
@@ -250,6 +247,7 @@ def main():
 
         if result[2] != 0:
             # An error occurred running the command
+            print("Thread %s return code = %d" % (result[0], result[2]))
             work_count = 0
 
     # Ask for the threads to die and wait for them to do it
