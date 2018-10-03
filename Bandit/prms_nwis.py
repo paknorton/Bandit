@@ -51,7 +51,7 @@ class NWIS(object):
     # As written this class provides fucntions for downloading daily streamgage observations
     # Additional functionality (e.g. monthyly, annual, other statistics) may be added at a future time.
 
-    def __init__(self, gage_ids=None, st_date=None, en_date=None):
+    def __init__(self, gage_ids=None, st_date=None, en_date=None, verbose=False):
         """Init method for NWIS class.
 
         Args:
@@ -69,6 +69,7 @@ class NWIS(object):
         self.__outdata = None
         self.__date_range = None
         self.__final_outorder = None
+        self.__verbose = verbose
 
         # Regex's for stripping unneeded clutter from the rdb file
         self.__t1 = re.compile('^#.*$\n?', re.MULTILINE)  # remove comment lines
@@ -191,9 +192,10 @@ class NWIS(object):
 
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
         for gidx, gg in enumerate(self.__gageids):
-            sys.stdout.write('\r                                       ')
-            sys.stdout.write('\rStreamgage: {} ({}/{}) '.format(gg, gidx + 1, len(self.__gageids)))
-            sys.stdout.flush()
+            if self.__verbose:
+                sys.stdout.write('\r                                       ')
+                sys.stdout.write('\rStreamgage: {} ({}/{}) '.format(gg, gidx + 1, len(self.__gageids)))
+                sys.stdout.flush()
 
             url_pieces['sites'] = gg
             url_final = '&'.join(['{}={}'.format(kk, vv) for kk, vv in iteritems(url_pieces)])
@@ -337,6 +339,8 @@ class NWIS(object):
 
         self.__outdata.to_csv(outhdl, sep=' ', columns=self.__final_outorder, index=False, header=False)
         outhdl.close()
-        sys.stdout.write('\r                                       ')
-        sys.stdout.write('\r\tStreamflow data written to: {}\n'.format(filename))
-        sys.stdout.flush()
+
+        if self.__verbose:
+            sys.stdout.write('\r                                       ')
+            sys.stdout.write('\r\tStreamflow data written to: {}\n'.format(filename))
+            sys.stdout.flush()

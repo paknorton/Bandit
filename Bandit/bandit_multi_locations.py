@@ -172,6 +172,7 @@ def main():
             thread.start()
         except (KeyboardInterrupt, SystemExit):
             # Shutdown the threads when the program is terminated
+            print('Program terminated.')
             thread.join()
             sys.exit(1)
 

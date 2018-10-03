@@ -143,6 +143,7 @@ def main():
     parser.add_argument('-C', '--cbh_dir', help='Location of CBH files')
     parser.add_argument('-g', '--geodatabase_filename', help='Full path to NHM geodatabase')
     parser.add_argument('-j', '--job', help='Job directory to work in')
+    parser.add_argument('-v', '--verbose', help='Output additional information', action='store_true')
     parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
     parser.add_argument('--output_cbh', help='Output CBH files for subset', action='store_true')
     parser.add_argument('--output_shapefiles', help='Output shapefiles for subset', action='store_true')
@@ -257,7 +258,9 @@ def main():
     # Read tosegment_nhm
     tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
-    print('Generating stream network from tosegment_nhm')
+    if args.verbose:
+        print('Generating stream network from tosegment_nhm')
+
     dag_ds = nx.DiGraph()
     for ii, vv in enumerate(tosegment):
         #     dag_ds.add_edge(ii+1, vv)
@@ -301,7 +304,8 @@ def main():
 
     # =======================================
     # Given a d/s segment (dsmost_seg) create a subset of u/s segments
-    print('\tExtracting model subset')
+    if args.verbose:
+        print('\tExtracting model subset')
 
     # Get all unique segments u/s of the starting segment
     uniq_seg_us = set()
@@ -311,6 +315,7 @@ def main():
                 pred = nx.dfs_predecessors(dag_us, xx)
                 uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
             except KeyError:
+                bandit_log.error('KeyError: Segment {} does not exist in stream network'.format(xx))
                 print('KeyError: Segment {} does not exist in stream network'.format(xx))
 
         if len(uniq_seg_us) == 0:
@@ -540,9 +545,10 @@ def main():
         cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
 
         ndims = len(cparam['dimensions'])
-        sys.stdout.write('\r                                       ')
-        sys.stdout.write('\rProcessing {} '.format(cparam['name']))
-        sys.stdout.flush()
+        if args.verbose:
+            sys.stdout.write('\r                                       ')
+            sys.stdout.write('\rProcessing {} '.format(cparam['name']))
+            sys.stdout.flush()
 
         # Get order of dimensions and total size for parameter
         dim_order = [None] * ndims
@@ -637,9 +643,11 @@ def main():
                 outhdl.write('{}\n'.format(xx))
 
     outhdl.close()
-    sys.stdout.write('\r                                       ')
-    sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
-    sys.stdout.flush()
+
+    if args.verbose:
+        sys.stdout.write('\r                                       ')
+        sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
+        sys.stdout.flush()
 
     if output_cbh:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -653,11 +661,14 @@ def main():
             for kk in hru_order_subset:
                 hru_order_ss[kk] = hru_nhm_to_local[kk]
 
-            print('Processing CBH files')
+            if args.verbose:
+                print('Processing CBH files')
 
             # for vv in ['prcp']:
             for vv in CBH_VARNAMES:
-                print(vv)
+                if args.verbose:
+                    print(vv)
+
                 # For out_order the first six columns contain the time information and
                 # are always output for the cbh files
                 out_order = [kk for kk in hru_order_subset]
@@ -667,10 +678,14 @@ def main():
                 cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
                               st_date=st_date, en_date=en_date)
 
-                print('\tReading {}'.format(vv))
+                if args.verbose:
+                    print('\tReading {}'.format(vv))
+
                 cbh_hdl.read_cbh_multifile(cbh_dir)
 
-                print('\tWriting {} CBH file'.format(vv))
+                if args.verbose:
+                    print('\tWriting {} CBH file'.format(vv))
+
                 out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
                 out_cbh.write('Written by Bandit\n')
                 out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
@@ -686,7 +701,9 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Download the streamgage information from NWIS
     if output_streamflow:
-        print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+        if args.verbose:
+            print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+
         streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
         streamflow.get_daily_streamgage_observations()
         streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
@@ -694,8 +711,10 @@ def main():
     # *******************************************
     # Create a shapefile of the selected HRUs
     if output_shapefiles:
-        print('-'*40)
-        print('Writing shapefiles for model subset')
+        if args.verbose:
+            print('-'*40)
+            print('Writing shapefiles for model subset')
+
         if not os.path.isdir(geo_file):
             bandit_log.error('File geodatabase, {}, does not exist. Shapefiles will not be created'.format(geo_file))
         else:
@@ -712,7 +731,7 @@ def main():
                     pass
 
             # Output a shapefile of the selected HRUs
-            print('\tHRUs')
+            # print('\tHRUs')
             geo_shp.select_layer('nhruNationalIdentifier')
             geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
 
@@ -723,7 +742,7 @@ def main():
             # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
 
             # Output a shapefile of the selected stream segments
-            print('\tSegments')
+            # print('\tSegments')
             geo_shp.select_layer('nsegmentNationalIdentifier')
             geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
 
