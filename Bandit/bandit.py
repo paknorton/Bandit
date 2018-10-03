@@ -296,7 +296,7 @@ def main():
             except KeyError:
                         print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
     except TypeError:
-        bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType. ({})'.format(outdir))
+        bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType. ({})'.format(outdir))
         exit(200)
 
     bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
@@ -316,11 +316,7 @@ def main():
                 uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
             except KeyError:
                 bandit_log.error('KeyError: Segment {} does not exist in stream network'.format(xx))
-                print('KeyError: Segment {} does not exist in stream network'.format(xx))
-
-        if len(uniq_seg_us) == 0:
-            print('ERROR: No segments were selected for extraction. ({})'.format(outdir))
-            exit(200)
+                print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
 
         # Get a subgraph in the dag_ds graph and return the edges
         dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
@@ -351,6 +347,10 @@ def main():
     toseg_idx0 = [xx-1 for xx in toseg_idx]  # 0-based version of toseg_idx
 
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
+
+    # if len(toseg_idx) == 0:
+    #     print('\nERROR: No segments were selected for extraction. ({})'.format(outdir))
+    #     exit(200)
 
     # print('edges')
     # for xx in dag_ds_subset.adjacency_iter():
