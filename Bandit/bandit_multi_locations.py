@@ -245,9 +245,9 @@ def main():
     #     print "Thread %s return code = %d" % (result[0], result[2])
         work_count -= 1
 
-        if result[2] != 0:
+        if result[2] > 0:
             # An error occurred running the command
-            print("Thread %s return code = %d" % (result[0], result[2]))
+            print("\nThread %s return code = %d (%s)" % (result[0], result[2], result[1]))
             work_count = 0
 
     # Ask for the threads to die and wait for them to do it
