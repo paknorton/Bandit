@@ -187,7 +187,7 @@ def main():
 
     # Override configuration variables with any command line parameters
     for kk, vv in iteritems(args.__dict__):
-        if kk not in ['job']:
+        if kk not in ['job', 'verbose']:
             if vv:
                 bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
                 config.update_value(kk, vv)
@@ -261,6 +261,13 @@ def main():
     if args.verbose:
         print('Generating stream network from tosegment_nhm')
 
+    # First check is any of the requested stream segments exist in the NHM.
+    # An intersection of 0 elements can occur when all stream segments are
+    # not included in the NHM (e.g. segments in Alaska).
+    if len(set(dsmost_seg).intersection(tosegment)) == 0:
+        bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
+        exit(200)
+
     dag_ds = nx.DiGraph()
     for ii, vv in enumerate(tosegment):
         #     dag_ds.add_edge(ii+1, vv)
@@ -316,7 +323,7 @@ def main():
                 uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
             except KeyError:
                 bandit_log.error('KeyError: Segment {} does not exist in stream network'.format(xx))
-                print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
+                # print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
 
         # Get a subgraph in the dag_ds graph and return the edges
         dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
