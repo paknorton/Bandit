@@ -133,6 +133,41 @@ def get_parameter(filename):
         return msgpack.load(ff, use_list=False)
 
 
+def parse_gage(s):
+    """
+    Parse a streamgage key, value pair, separated by '='
+    That's the reverse of ShellArgs.
+
+    On the command line (argparse) a declaration will typically look like:
+        foo=hello
+    or
+        foo="hello world"
+    """
+    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
+
+    items = s.split('=')
+    key = items[0].strip()  # we remove blanks around keys, as is logical
+    if len(items) > 1:
+        # rejoin the rest:
+        value = '='.join(items[1:])
+    return (key, value)
+
+
+def parse_gages(items):
+    """
+    Parse a series of key-value pairs and return a dictionary
+    """
+    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
+
+    d = {}
+
+    if items:
+        for item in items:
+            key, value = parse_gage(item)
+            d[key] = int(value)
+    return d
+
+
 def main():
     # Command line arguments
     parser = argparse.ArgumentParser(description='Extract model subsets from the National Hydrologic Model')
@@ -150,6 +185,7 @@ def main():
     parser.add_argument('--output_shapefiles', help='Output shapefiles for subset', action='store_true')
     parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
     parser.add_argument('--cbh_netcdf', help='Enable netCDF output for CBH files', action='store_true')
+    parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+', help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must exist in the model subset. Additional streamgages are marked as poi_type=0.')
 
     args = parser.parse_args()
 
@@ -185,11 +221,15 @@ def main():
 
     bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
 
+    if args.add_gages:
+        addl_gages = parse_gages(args.add_gages)
+        bandit_log.info('Additionals streamgages specified on command line')
+
     config = bc.Cfg('bandit.cfg')
 
     # Override configuration variables with any command line parameters
     for kk, vv in iteritems(args.__dict__):
-        if kk not in ['job', 'verbose', 'cbh_netcdf']:
+        if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages']:
             if vv:
                 bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
                 config.update_value(kk, vv)
@@ -491,6 +531,23 @@ def main():
             new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
             new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
 
+    # Add any valid user-specified streamgage, nhm_seg pairs
+    for ss, vv in iteritems(addl_gages):
+        if ss in new_poi_gage_id:
+            idx = new_poi_gage_id.index(ss)
+            bandit_log.warn(
+                'Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
+                                                                                          toseg_idx.index(vv)+1))
+            new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
+            new_poi_type[idx] = 0
+        elif vv not in seg_to_hru.keys():
+            bandit_log.warn('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+        else:
+            new_poi_gage_id.append(ss)
+            new_poi_gage_segment.append(toseg_idx.index(vv)+1)
+            new_poi_type.append(0)
+            bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
+
     # ==================================================================
     # ==================================================================
     # Process the parameters and create a parameter file for the subset
@@ -702,10 +759,6 @@ def main():
                     # The extraneous yr, mon, day, etc columns won't be in the
                     # resulting dataframe so it's not necessary to drop them.
                     df2 = cbh_hdl.data[out_order]
-                    # print(df2.head())
-
-                    # df2.drop(columns=['second', 'minute', 'hour', 'day', 'month', 'year'], inplace=True)
-                    # df2.drop(['second', 'minute', 'hour', 'day', 'month', 'year'], axis=1, inplace=True)
 
                     # Create a netCDF file for the CBH data
                     nco = netCDF4.Dataset('{}/{}.nc'.format(outdir, vv), 'w', clobber=True)
