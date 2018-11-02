@@ -4,5 +4,5 @@ pyyaml
 future
 pandas
 numpy
-networkx
+networkx=1.11
 msgpack-python

@@ -9,6 +9,7 @@ import errno
 import logging
 import networkx as nx
 import msgpack
+import netCDF4
 import numpy as np
 import os
 import re
@@ -132,6 +133,41 @@ def get_parameter(filename):
         return msgpack.load(ff, use_list=False)
 
 
+def parse_gage(s):
+    """
+    Parse a streamgage key, value pair, separated by '='
+    That's the reverse of ShellArgs.
+
+    On the command line (argparse) a declaration will typically look like:
+        foo=hello
+    or
+        foo="hello world"
+    """
+    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
+
+    items = s.split('=')
+    key = items[0].strip()  # we remove blanks around keys, as is logical
+    if len(items) > 1:
+        # rejoin the rest:
+        value = '='.join(items[1:])
+    return (key, value)
+
+
+def parse_gages(items):
+    """
+    Parse a series of key-value pairs and return a dictionary
+    """
+    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
+
+    d = {}
+
+    if items:
+        for item in items:
+            key, value = parse_gage(item)
+            d[key] = int(value)
+    return d
+
+
 def main():
     # Command line arguments
     parser = argparse.ArgumentParser(description='Extract model subsets from the National Hydrologic Model')
@@ -143,10 +179,13 @@ def main():
     parser.add_argument('-C', '--cbh_dir', help='Location of CBH files')
     parser.add_argument('-g', '--geodatabase_filename', help='Full path to NHM geodatabase')
     parser.add_argument('-j', '--job', help='Job directory to work in')
+    parser.add_argument('-v', '--verbose', help='Output additional information', action='store_true')
     parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
     parser.add_argument('--output_cbh', help='Output CBH files for subset', action='store_true')
     parser.add_argument('--output_shapefiles', help='Output shapefiles for subset', action='store_true')
     parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
+    parser.add_argument('--cbh_netcdf', help='Enable netCDF output for CBH files', action='store_true')
+    parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+', help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must exist in the model subset. Additional streamgages are marked as poi_type=0.')
 
     args = parser.parse_args()
 
@@ -156,10 +195,10 @@ def main():
         if os.path.exists(args.job):
             # Change into job directory before running extraction
             os.chdir(args.job)
-            print('Working in directory: {}'.format(args.job))
+            # print('Working in directory: {}'.format(args.job))
         else:
             print('ERROR: Invalid jobs directory: {}'.format(args.job))
-            exit(-1)
+            exit(1)
 
     # Setup the logging
     bandit_log = logging.getLogger('bandit')
@@ -182,11 +221,15 @@ def main():
 
     bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
 
+    if args.add_gages:
+        addl_gages = parse_gages(args.add_gages)
+        bandit_log.info('Additionals streamgages specified on command line')
+
     config = bc.Cfg('bandit.cfg')
 
     # Override configuration variables with any command line parameters
     for kk, vv in iteritems(args.__dict__):
-        if kk not in ['job']:
+        if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages']:
             if vv:
                 bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
                 config.update_value(kk, vv)
@@ -257,7 +300,16 @@ def main():
     # Read tosegment_nhm
     tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
-    print('Generating stream network from tosegment_nhm')
+    if args.verbose:
+        print('Generating stream network from tosegment_nhm')
+
+    # First check is any of the requested stream segments exist in the NHM.
+    # An intersection of 0 elements can occur when all stream segments are
+    # not included in the NHM (e.g. segments in Alaska).
+    if len(set(dsmost_seg).intersection(tosegment)) == 0:
+        bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
+        exit(200)
+
     dag_ds = nx.DiGraph()
     for ii, vv in enumerate(tosegment):
         #     dag_ds.add_edge(ii+1, vv)
@@ -293,22 +345,27 @@ def main():
             except KeyError:
                         print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
     except TypeError:
-        bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType')
-        exit(1)
+        bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType. ({})'.format(outdir))
+        exit(200)
 
     bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
     bandit_log.debug('Number of NHM upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
 
     # =======================================
     # Given a d/s segment (dsmost_seg) create a subset of u/s segments
-    print('\tExtracting model subset')
+    if args.verbose:
+        print('\tExtracting model subset')
 
     # Get all unique segments u/s of the starting segment
     uniq_seg_us = set()
     if dsmost_seg:
         for xx in dsmost_seg:
-            pred = nx.dfs_predecessors(dag_us, xx)
-            uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
+            try:
+                pred = nx.dfs_predecessors(dag_us, xx)
+                uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
+            except KeyError:
+                bandit_log.error('KeyError: Segment {} does not exist in stream network'.format(xx))
+                # print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
 
         # Get a subgraph in the dag_ds graph and return the edges
         dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
@@ -340,6 +397,17 @@ def main():
 
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
 
+    # if len(toseg_idx) == 0:
+    #     print('\nERROR: No segments were selected for extraction. ({})'.format(outdir))
+    #     exit(200)
+
+    # print('edges')
+    # for xx in dag_ds_subset.adjacency_iter():
+    #    print(xx)
+
+    # print('toseg_idx')
+    # print(toseg_idx)
+
     hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
     bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
@@ -358,6 +426,9 @@ def main():
         else:
             bandit_log.warning('Stream segment {} has no HRUs connected to it.'.format(xx))
             # raise ValueError('Stream segment has no HRUs connected to it.')
+
+    # print('hru_order_subset')
+    # print(hru_order_subset)
 
     # Append the additional non-routed HRUs to the list
     if len(hru_noroute) > 0:
@@ -388,15 +459,22 @@ def main():
             # Outlets should be assigned zero
             new_tosegment.append(0)
 
+    # print('new_tosegment')
+    # print(new_tosegment)
+
     # Renumber the hru_segments for the subset
     new_hru_segment = []
 
     for xx in toseg_idx:
         # if DAG_subds.neighbors(xx)[0] in toseg_idx:
         if xx in seg_to_hru:
-            for _ in seg_to_hru[xx]:
+            for yy in seg_to_hru[xx]:
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
+                # print(xx, yy)
+
+    # print('new_hru_segment')
+    # print(new_hru_segment)
 
     # Append zeroes to new_hru_segment for each additional non-routed HRU
     if len(hru_noroute) > 0:
@@ -418,9 +496,15 @@ def main():
     uniq_deplcrv = list(set(hru_deplcrv_subset))
     uniq_deplcrv0 = [xx - 1 for xx in uniq_deplcrv]
 
+    # print('hru_deplcrv_subset')
+    # print(hru_deplcrv_subset)
+
     # Create new hru_deplcrv and renumber
     new_hru_deplcrv = [uniq_deplcrv.index(cc)+1 for cc in hru_deplcrv_subset]
     bandit_log.info('Size of hru_deplcrv for subset: {}'.format(len(new_hru_deplcrv)))
+
+    # print('new_hru_deplcrv')
+    # print(new_hru_deplcrv)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
@@ -446,6 +530,23 @@ def main():
             new_poi_gage_segment.append(toseg_idx.index(ss)+1)
             new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
             new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
+
+    # Add any valid user-specified streamgage, nhm_seg pairs
+    for ss, vv in iteritems(addl_gages):
+        if ss in new_poi_gage_id:
+            idx = new_poi_gage_id.index(ss)
+            bandit_log.warn(
+                'Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
+                                                                                          toseg_idx.index(vv)+1))
+            new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
+            new_poi_type[idx] = 0
+        elif vv not in seg_to_hru.keys():
+            bandit_log.warn('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+        else:
+            new_poi_gage_id.append(ss)
+            new_poi_gage_segment.append(toseg_idx.index(vv)+1)
+            new_poi_type.append(0)
+            bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
 
     # ==================================================================
     # ==================================================================
@@ -503,13 +604,17 @@ def main():
     # Write out parameters section
     outhdl.write('** Parameters **\n')
 
-    for pp, pv in iteritems(params):
+    # for pp, pv in iteritems(params):
+    params = params.keys()
+    params.sort()
+    for pp in params:
         cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
 
         ndims = len(cparam['dimensions'])
-        sys.stdout.write('\r                                       ')
-        sys.stdout.write('\rProcessing {} '.format(cparam['name']))
-        sys.stdout.flush()
+        if args.verbose:
+            sys.stdout.write('\r                                       ')
+            sys.stdout.write('\rProcessing {} '.format(cparam['name']))
+            sys.stdout.flush()
 
         # Get order of dimensions and total size for parameter
         dim_order = [None] * ndims
@@ -604,9 +709,11 @@ def main():
                 outhdl.write('{}\n'.format(xx))
 
     outhdl.close()
-    sys.stdout.write('\r                                       ')
-    sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
-    sys.stdout.flush()
+
+    if args.verbose:
+        sys.stdout.write('\r                                       ')
+        sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
+        sys.stdout.flush()
 
     if output_cbh:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -620,32 +727,88 @@ def main():
             for kk in hru_order_subset:
                 hru_order_ss[kk] = hru_nhm_to_local[kk]
 
-            print('Processing CBH files')
+            if args.verbose:
+                print('Processing CBH files')
+
+            # NetCDF-related variables
+            NC_FILL_DOUBLE = 9.9692099683868690e+36
+            NC_FILL_FLOAT = 9.9692099683868690e+36
+            var_desc = {'tmax': 'Maximum Temperature', 'tmin': 'Minimum temperature', 'prcp': 'Precipitation'}
+            var_units = {'tmax': 'C', 'tmin': 'C', 'prcp': 'inches'}
 
             # for vv in ['prcp']:
             for vv in CBH_VARNAMES:
-                print(vv)
-                # For out_order the first six columns contain the time information and
-                # are always output for the cbh files
-                out_order = [kk for kk in hru_order_subset]
-                for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
-                    out_order.insert(0, cc)
+                if args.verbose:
+                    print(vv)
 
                 cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
                               st_date=st_date, en_date=en_date)
 
-                print('\tReading {}'.format(vv))
+                if args.verbose:
+                    print('\tReading {}'.format(vv))
+
                 cbh_hdl.read_cbh_multifile(cbh_dir)
 
-                print('\tWriting {} CBH file'.format(vv))
-                out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
-                out_cbh.write('Written by Bandit\n')
-                out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
-                out_cbh.write('########################################\n')
-                cbh_hdl.data.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False,
-                                    encoding=None, chunksize=50)
-                out_cbh.close()
-                bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
+                if args.verbose:
+                    print('\tWriting {} CBH file'.format(vv))
+
+                if args.cbh_netcdf:
+                    out_order = [kk for kk in hru_order_subset]
+
+                    # Get a pandas dataframe in the order originally specified
+                    # The extraneous yr, mon, day, etc columns won't be in the
+                    # resulting dataframe so it's not necessary to drop them.
+                    df2 = cbh_hdl.data[out_order]
+
+                    # Create a netCDF file for the CBH data
+                    nco = netCDF4.Dataset('{}/{}.nc'.format(outdir, vv), 'w', clobber=True)
+                    nco.createDimension('hru', len(df2.columns))
+                    nco.createDimension('time', None)
+
+                    timeo = nco.createVariable('time', 'f4', ('time'))
+                    hruo = nco.createVariable('hru', 'i4', ('hru'))
+
+                    varo = nco.createVariable(vv, 'f4', ('time', 'hru'), fill_value=NC_FILL_FLOAT, zlib=True)
+
+                    nco.setncattr('Description', 'Climate by HRU')
+                    nco.setncattr('Bandit_version', __version__)
+                    nco.setncattr('NHM_version', nhmparamdb_revision)
+
+                    timeo.calendar = 'standard'
+                    # timeo.bounds = 'time_bnds'
+                    timeo.units = 'days since 1980-01-01 00:00:00'
+
+                    hruo.long_name = 'Hydrologic Response Unit ID (HRU)'
+
+                    varo.long_name = var_desc[vv]
+                    varo.units = var_units[vv]
+
+                    # Write the HRU ids
+                    hruo[:] = df2.columns.values
+
+                    timeo[:] = netCDF4.date2num(df2.index.tolist(), units='days since 1980-01-01 00:00:00',
+                                                calendar='standard')
+
+                    # Write the CBH values
+                    varo[:, :] = df2.values
+
+                    nco.close()
+                else:
+                    # For out_order the first six columns contain the time information and
+                    # are always output for the cbh files
+                    out_order = [kk for kk in hru_order_subset]
+                    for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
+                        out_order.insert(0, cc)
+
+                    # Output ASCII CBH files
+                    out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
+                    out_cbh.write('Written by Bandit\n')
+                    out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
+                    out_cbh.write('########################################\n')
+                    cbh_hdl.data.to_csv(out_cbh, columns=out_order, sep=' ', index=False, header=False,
+                                        encoding=None, chunksize=50)
+                    out_cbh.close()
+                    bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
         else:
             bandit_log.error('No HRUs associated with the segments')
 
@@ -653,7 +816,9 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Download the streamgage information from NWIS
     if output_streamflow:
-        print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+        if args.verbose:
+            print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+
         streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date)
         streamflow.get_daily_streamgage_observations()
         streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
@@ -661,8 +826,10 @@ def main():
     # *******************************************
     # Create a shapefile of the selected HRUs
     if output_shapefiles:
-        print('-'*40)
-        print('Writing shapefiles for model subset')
+        if args.verbose:
+            print('-'*40)
+            print('Writing shapefiles for model subset')
+
         if not os.path.isdir(geo_file):
             bandit_log.error('File geodatabase, {}, does not exist. Shapefiles will not be created'.format(geo_file))
         else:
@@ -679,17 +846,22 @@ def main():
                     pass
 
             # Output a shapefile of the selected HRUs
-            print('\tHRUs')
-            geo_shp.select_layer('nhruNationalIdentifier')
+            # print('\tHRUs')
+            # geo_shp.select_layer('nhruNationalIdentifier')
+            geo_shp.select_layer('nhru')
             geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+
+            # geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
+
             # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
             # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
             # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
 
             # Output a shapefile of the selected stream segments
-            print('\tSegments')
+            # print('\tSegments')
             geo_shp.select_layer('nsegmentNationalIdentifier')
             geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+
             # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
             # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 

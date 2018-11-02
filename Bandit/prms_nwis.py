@@ -51,7 +51,7 @@ class NWIS(object):
     # As written this class provides fucntions for downloading daily streamgage observations
     # Additional functionality (e.g. monthyly, annual, other statistics) may be added at a future time.
 
-    def __init__(self, gage_ids=None, st_date=None, en_date=None):
+    def __init__(self, gage_ids=None, st_date=None, en_date=None, verbose=False):
         """Init method for NWIS class.
 
         Args:
@@ -69,6 +69,7 @@ class NWIS(object):
         self.__outdata = None
         self.__date_range = None
         self.__final_outorder = None
+        self.__verbose = verbose
 
         # Regex's for stripping unneeded clutter from the rdb file
         self.__t1 = re.compile('^#.*$\n?', re.MULTILINE)  # remove comment lines
@@ -138,6 +139,18 @@ class NWIS(object):
             self.__gageids = [gage_ids]
         self.__outdata = None
 
+    def check_for_flag(self, pat, data, col_id):
+        # Check for pattern in data, log error if found and remove from data
+        pat_count = data[col_id].str.contains(pat).sum()
+
+        if pat_count > 0:
+            pat_first_date = data[data[col_id].str.contains(pat)].index[0].strftime('%Y-%m-%d')
+
+            self.logger.warning('{} has {} records marked {}. '
+                                'First occurrence at {}. Suffix removed from values'.format(col_id, pat_count, pat,
+                                                                                            pat_first_date))
+            data[col_id].replace(pat, '', regex=True, inplace=True)
+
     def initialize_dataframe(self):
         """Clears downloaded data and initializes the output dataframe"""
         if not self.__endate:
@@ -166,10 +179,10 @@ class NWIS(object):
         url_pieces['siteStatus'] = 'all'
         url_pieces['parameterCd'] = '00060'  # Discharge
         url_pieces['siteType'] = 'ST'
-        url_pieces['access'] = '3'  # Allows download of observations for restricted sites/parameters
+        # url_pieces['access'] = '3'  # Allows download of observations for restricted sites/parameters
 
         if not self.__gageids:
-            # If do streamgages are provided then create a single dummy column filled with noData
+            # If no streamgages are provided then create a single dummy column filled with noData
             self.logger.warning('No streamgages provided - dummy entry created.')
             df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
             df.index.name = 'date'
@@ -179,9 +192,10 @@ class NWIS(object):
 
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
         for gidx, gg in enumerate(self.__gageids):
-            sys.stdout.write('\r                                       ')
-            sys.stdout.write('\rStreamgage: {} ({}/{}) '.format(gg, gidx + 1, len(self.__gageids)))
-            sys.stdout.flush()
+            if self.__verbose:
+                sys.stdout.write('\r                                       ')
+                sys.stdout.write('\rStreamgage: {} ({}/{}) '.format(gg, gidx + 1, len(self.__gageids)))
+                sys.stdout.flush()
 
             url_pieces['sites'] = gg
             url_final = '&'.join(['{}={}'.format(kk, vv) for kk, vv in iteritems(url_pieces)])
@@ -232,17 +246,56 @@ class NWIS(object):
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
-                    self.logger.warning('{} had more than one Q-col returned; using {}'.format(gg, rename_col[0]))
+                    self.logger.warning('{} had more than one Q-col returned; empty dataset used.'.format(gg))
+                    df = pd.DataFrame(index=self.__date_range, columns=[gg])
+                    df.index.name = 'date'
 
-                    # Keep the first TS column and drop the others
-                    while len(rename_col) > 1:
-                        curr_col = rename_col.pop()
-                        df.drop([curr_col], axis=1, inplace=True)
+                    # self.logger.warning('{} had more than one Q-col returned; using {}'.format(gg, rename_col[0]))
+                    #
+                    # # Keep the first TS column and drop the others
+                    # while len(rename_col) > 1:
+                    #     curr_col = rename_col.pop()
+                    #     df.drop([curr_col], axis=1, inplace=True)
+                else:
+                    df.rename(columns={rename_col[0]: gg}, inplace=True)
 
-                df.rename(columns={rename_col[0]: gg}, inplace=True)
+                    try:
+                        # If no flags are present the column should already be float
+                        pd.to_numeric(df[gg], errors='raise')
+                    except ValueError:
+                        self.logger.warning('{} had one or more flagged values; flagged values converted to NaN.'.format(gg))
+                        df[gg] = pd.to_numeric(df[gg], errors='coerce')
 
-                # Resample to daily to fill in the missing days with NaN
-                # df = df.resample('D').mean()
+                    # Check for discontinued gage records
+                    # if df[gg].dtype == np.object_:
+                    #     # If the datatype of the streamgage values is np.object_ that
+                    #     # means some string is appended to one or more of the values.
+                    #
+                    #     # Common bad data: set(['Eqp', 'Ice', 'Ssn', 'Rat', 'Bkw', '***', 'Dis'])
+                    #
+                    #     # Check for discontinued flagged records
+                    #     self.check_for_flag('_?Dis', df, gg)
+                    #
+                    #     # Check for ice-flagged records
+                    #     self.check_for_flag('_?Ice', df, gg)
+                    #
+                    #     # Check for eqp-flagged records (Equipment malfunction)
+                    #     self.check_for_flag('_?Eqp', df, gg)
+                    #
+                    #     # Check for _Ssn (parameter monitored seasonally)
+                    #     self.check_for_flag('_?Ssn', df, gg)
+                    #
+                    #     # Check for _Rat (rating being developed)
+                    #     self.check_for_flag('_?Rat', df, gg)
+                    #
+                    #     # Check for _Bkw (Value is affected by backwater at the measurement site)
+                    #     self.check_for_flag('_?Bkw', df, gg)
+                    #
+                    #     # Check for 1 or more astericks
+                    #     self.check_for_flag('_?\*+', df, gg)
+
+                    # Resample to daily to fill in the missing days with NaN
+                    # df = df.resample('D').mean()
 
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append(gg)
@@ -286,6 +339,8 @@ class NWIS(object):
 
         self.__outdata.to_csv(outhdl, sep=' ', columns=self.__final_outorder, index=False, header=False)
         outhdl.close()
-        sys.stdout.write('\r                                       ')
-        sys.stdout.write('\r\tStreamflow data written to: {}\n'.format(filename))
-        sys.stdout.flush()
+
+        if self.__verbose:
+            sys.stdout.write('\r                                       ')
+            sys.stdout.write('\r\tStreamflow data written to: {}\n'.format(filename))
+            sys.stdout.flush()

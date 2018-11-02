@@ -323,7 +323,7 @@ def main():
                         # Also remove the cutoff segment itself
                         dag_us.remove_node(xx)
                     except KeyError:
-                        print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
+                        print('WARNING: Specified cutoff segment {} does not exist in stream network'.format(xx))
             except TypeError:
                 bandit_log.error('Selected cutoffs should at least be an empty list instead of NoneType')
                 exit(1)
@@ -334,8 +334,17 @@ def main():
             # Lookup the outlet for the current streamgage
             try:
                 dsmost_seg = [poi_id_to_seg[sg]]
+
+                if dsmost_seg[0] == 0:
+                    # POI stream segment was never properly assigned in paramdb
+                    bandit_log.error('Streamgage {} has segment = 0. Skipping.'.format(sg))
+                    break
+                elif len(dsmost_seg) > 1:
+                    # Should never have more than one segment per streamgage
+                    bandit_log.info('Streamgage {} has more than one stream segment.'.format(sg))
+                    break
             except KeyError:
-                bandit_log.info('Streamgage {} does not exist in poi_gage_id'.format(sg))
+                bandit_log.error('Streamgage {} does not exist in poi_gage_id'.format(sg))
                 break
 
             sg_dir = '{}/{}'.format(outdir, sg)
@@ -725,6 +734,7 @@ def main():
                     # Output a shapefile of the selected HRUs
                     print('\tHRUs')
                     geo_shp.select_layer('nhruNationalIdentifier')
+                    # geo_shp.write_shapefile3('{}/GIS/HRU_stuff.gpkg'.format(outdir), 'hru_id_nat', hru_order_subset)
                     geo_shp.write_shapefile('{}/HRU_subset.shp'.format(gis_dir), 'hru_id_nat', hru_order_subset)
                     # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
                     # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
