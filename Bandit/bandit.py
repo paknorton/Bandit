@@ -533,21 +533,22 @@ def main():
             new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
 
     # Add any valid user-specified streamgage, nhm_seg pairs
-    for ss, vv in iteritems(addl_gages):
-        if ss in new_poi_gage_id:
-            idx = new_poi_gage_id.index(ss)
-            bandit_log.warn(
-                'Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
-                                                                                          toseg_idx.index(vv)+1))
-            new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
-            new_poi_type[idx] = 0
-        elif vv not in seg_to_hru.keys():
-            bandit_log.warn('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
-        else:
-            new_poi_gage_id.append(ss)
-            new_poi_gage_segment.append(toseg_idx.index(vv)+1)
-            new_poi_type.append(0)
-            bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
+    if addl_gages:
+        for ss, vv in iteritems(addl_gages):
+            if ss in new_poi_gage_id:
+                idx = new_poi_gage_id.index(ss)
+                bandit_log.warn(
+                    'Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
+                                                                                              toseg_idx.index(vv)+1))
+                new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
+                new_poi_type[idx] = 0
+            elif vv not in seg_to_hru.keys():
+                bandit_log.warn('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+            else:
+                new_poi_gage_id.append(ss)
+                new_poi_gage_segment.append(toseg_idx.index(vv)+1)
+                new_poi_type.append(0)
+                bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
 
     # ==================================================================
     # ==================================================================
