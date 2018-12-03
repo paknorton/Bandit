@@ -221,6 +221,7 @@ def main():
 
     bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
 
+    addl_gages = None
     if args.add_gages:
         addl_gages = parse_gages(args.add_gages)
         bandit_log.info('Additionals streamgages specified on command line')
