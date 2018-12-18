@@ -301,13 +301,19 @@ def main():
     # Read tosegment_nhm
     tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
+    nhm_seg = get_parameter('{}/nhm_seg.msgpack'.format(merged_paramdb_dir))['data']
+
     if args.verbose:
         print('Generating stream network from tosegment_nhm')
 
-    # First check is any of the requested stream segments exist in the NHM.
+    # First check if any of the requested stream segments exist in the NHM.
     # An intersection of 0 elements can occur when all stream segments are
     # not included in the NHM (e.g. segments in Alaska).
-    if len(set(dsmost_seg).intersection(tosegment)) == 0:
+    # NOTE: It's possible to have a stream segment that does not exist in
+    #       tosegment but does exist in nhm_seg (e.g. standalone segment). So
+    #       we use nhm_seg to verify at least one of the given segment(s) exist.
+    # if len(set(dsmost_seg).intersection(tosegment)) == 0:
+    if len(set(dsmost_seg).intersection(nhm_seg)) == 0:
         bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
         exit(200)
 
