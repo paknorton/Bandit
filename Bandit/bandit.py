@@ -313,7 +313,7 @@ def main():
     #       tosegment but does exist in nhm_seg (e.g. standalone segment). So
     #       we use nhm_seg to verify at least one of the given segment(s) exist.
     # if len(set(dsmost_seg).intersection(tosegment)) == 0:
-    if len(set(dsmost_seg).intersection(nhm_seg)) == 0:
+    if dsmost_seg and len(set(dsmost_seg).intersection(nhm_seg)) == 0:
         bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
         exit(200)
 
