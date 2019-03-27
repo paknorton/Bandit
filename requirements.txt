@@ -1,8 +1,9 @@
 gdal
-yaml
 pyyaml
+ruamel.yaml
 future
 pandas
 numpy
+netcdf4
 networkx=1.11
-msgpack-python
+msgpack
