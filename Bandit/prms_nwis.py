@@ -337,7 +337,8 @@ class NWIS(object):
         outhdl.write('runoff {}\n'.format(len(self.__gageids)))
         outhdl.write('#########################################################\n')
 
-        self.__outdata.to_csv(outhdl, sep=' ', columns=self.__final_outorder, index=False, header=False)
+        self.__outdata.to_csv(outhdl, sep=' ', columns=self.__final_outorder, index=False, header=False,
+                              float_format='%.2f')
         outhdl.close()
 
         if self.__verbose:
