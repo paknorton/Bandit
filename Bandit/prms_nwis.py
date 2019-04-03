@@ -314,6 +314,8 @@ class NWIS(object):
             self.__outdata['minute'] = self.__outdata.index.minute
             self.__outdata['second'] = self.__outdata.index.second
             self.__outdata.fillna(-999, inplace=True)
+
+            # TODO: 2019-04-03 PAN - Make sure all streamflow data is of type float
         except AttributeError:
             print('AttributeError')
             print(self.__outdata.head())
@@ -337,8 +339,7 @@ class NWIS(object):
         outhdl.write('runoff {}\n'.format(len(self.__gageids)))
         outhdl.write('#########################################################\n')
 
-        self.__outdata.to_csv(outhdl, sep=' ', columns=self.__final_outorder, index=False, header=False,
-                              float_format='%.2f')
+        self.__outdata.to_csv(outhdl, sep=' ', columns=self.__final_outorder, index=False, header=False)
         outhdl.close()
 
         if self.__verbose:
