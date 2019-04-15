@@ -13,13 +13,15 @@ __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 def main():
     parser = argparse.ArgumentParser(description='Setup new job for Bandit extraction')
+    parser.add_argument('-c', '--config', help='Name of configuration file', nargs='?', default='bandit.cfg', type=str)
     parser.add_argument('jobdir', help='Name of new job directory')
 
     args = parser.parse_args()
 
-    config = bc.Cfg('bandit.cfg')
+    config = bc.Cfg(args.config)
 
     print('Creating new job for Bandit extraction')
+    print('Config file: {}'.format(args.config))
 
     # Check that the various required directories and files defined in bandit.cfg exist
     if not os.path.exists(config.cbh_dir):
