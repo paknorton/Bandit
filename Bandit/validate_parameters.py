@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import (absolute_import, division, print_function)
 
 import argparse
@@ -12,19 +13,19 @@ __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 def main():
     parser = argparse.ArgumentParser(description='Validate parameter file or paramdb parameters')
-    parser.add_argument('-c', '--control', help='Name of control file', nargs='?', default='control.default', type=str)
+    parser.add_argument('-c', '--control', required=True, help='Name of control file', nargs='?', default='control.default', type=str)
     parser.add_argument('-x', '--xml', help='Parameter xml file', type=str)
     # parser.add_argument('-x', '--xml', help='Parameter xml file', nargs='?', default='parameters.xml', type=str)
-    parser.add_argument('-p', '--params', help='Parameter file or paramdb')
+    parser.add_argument('-p', '--param_src', required=True, help='Parameter file or paramdb')
 
     args = parser.parse_args()
 
-    if os.path.splitext(args.params)[1] == '.param':
-        print('Reading {}'.format(args.params))
-        pdb = pfile.ParameterFile(args.params)
-    elif os.path.isdir(args.params):
-        print('Reading {}'.format(args.params))
-        pdb = nhm.NhmParamDb(args.params)
+    if os.path.splitext(args.param_src)[1] == '.param':
+        print('Reading {}'.format(args.param_src))
+        pdb = pfile.ParameterFile(args.param_src)
+    elif os.path.isdir(args.param_src):
+        print('Reading {}'.format(args.param_src))
+        pdb = nhm.NhmParamDb(args.param_src)
     else:
         print('ERROR: No valid parameter set specified')
         exit(1)
