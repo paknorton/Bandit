@@ -3,7 +3,7 @@ from __future__ import (absolute_import, division, print_function)
 
 import argparse
 import os
-from pyPRMS import Control
+from pyPRMS.ControlFile import ControlFile
 import pyPRMS.ValidParams_v2 as vparm
 import pyPRMS.NhmParamDb as nhm
 import pyPRMS.ParameterFile as pfile
@@ -31,19 +31,19 @@ def main():
         exit(1)
 
     print('Reading {}'.format(args.control))
-    ctl = Control.Control(args.control)
+    ctl = ControlFile(args.control)
 
     modules_used = []
 
     for xx in ctl.modules.keys():
-        if len(ctl.modules[xx]) > 1:
-            for yy in ctl.modules[xx]:
-                if yy == 'precip_module':
-                    modules_used.append('precipitation_hru')
-                elif yy == 'temp_module':
-                    modules_used.append('temperature_hru')
+        if xx == 'precip_module':
+            if ctl.modules[xx] == 'climate_hru':
+                modules_used.append('precipitation_hru')
+        elif xx == 'temp_module':
+            if ctl.modules[xx] == 'climate_hru':
+                modules_used.append('temperature_hru')
         else:
-            modules_used.append(xx)
+            modules_used.append(ctl.modules[xx])
 
     # Read the full set of possible parameters
     if args.xml:
@@ -54,7 +54,7 @@ def main():
         vpdb = vparm.ValidParams_v2()
 
     print()
-    # Build dictionary of parameters by module
+    # Build dictionary of parameters by module from the set of master parameters
     params_by_module = {}
 
     for xx in vpdb.parameters.values():
@@ -67,6 +67,8 @@ def main():
         if xx in modules_used:
             print(xx)
 
+            # Output parameters that are required by the selected modules
+            # but missing from the parameter file or paramdb
             for yy in params_by_module[xx]:
                 if not pdb.parameters.exists(yy):
                     if yy in ['basin_solsta', 'hru_solsta', 'rad_conv']:
