@@ -1,9 +1,9 @@
-gdal
+gdal >= 2
 pyyaml
 ruamel.yaml
 future
 pandas
 numpy
 netcdf4
-networkx=1.11
+networkx >= 2
 msgpack

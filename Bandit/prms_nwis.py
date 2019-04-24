@@ -204,14 +204,29 @@ class NWIS(object):
             attempts = 0
             while attempts < RETRIES:
                 try:
-                    streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
+                    response = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
+
+                    try:
+                        # Python 2.7.x
+                        encoding = response.info().getparam('charset')
+                    except AttributeError:
+                        # Python 3.x
+                        encoding = response.info().get_param('charset', failobj='utf8')
+
+                    streamgage_obs_page = response.read().decode(encoding)
+
+                    # with urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final)) as response:
+                    #     encoding = response.info().get_param('charset', 'utf8')
+                    #     streamgage_obs_page = response.read().decode(encoding)
+
+                    # streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
                     break
                 except (HTTPError, URLError) as err:
                     attempts += 1
                     self.logger.warning('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
                     # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
 
-            if streamgage_obs_page.readline().strip() == '#  No sites found matching all criteria':
+            if streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
                 self.logger.warning('{} has no data for {} to {}'.format(gg,
@@ -221,11 +236,12 @@ class NWIS(object):
                 df = pd.DataFrame(index=self.__date_range, columns=[gg])
                 df.index.name = 'date'
             else:
-                streamgage_observations = streamgage_obs_page.read()
+                streamgage_observations = streamgage_obs_page
+                # streamgage_observations = streamgage_obs_page.read()
 
                 # Strip the comment lines and field length lines from the result using regex
-                streamgage_observations = self.__t1.sub('', streamgage_observations, 0)
-                streamgage_observations = self.__t2.sub('', streamgage_observations, 0)
+                streamgage_observations = self.__t1.sub('', streamgage_observations, count=0)
+                streamgage_observations = self.__t2.sub('', streamgage_observations, count=0)
 
                 # Have to enforce site_no as string/text
                 col_names = ['site_no']
