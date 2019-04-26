@@ -40,11 +40,15 @@ except ImportError:
 import Bandit.bandit_cfg as bc
 import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
+import Bandit.dynamic_parameters as dyn_params
 from Bandit.git_version import git_version
 from Bandit import __version__
 
 from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
 from pyPRMS.Cbh import Cbh, CBH_VARNAMES
+from pyPRMS.ControlFile import ControlFile
+from pyPRMS.ParameterSet import ParameterSet
+from pyPRMS.ValidParams_v2 import ValidParams_v2
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -130,7 +134,7 @@ def get_parameter(filename):
     """
 
     with open(filename, 'rb') as ff:
-        return msgpack.load(ff, use_list=False)
+        return msgpack.load(ff, use_list=False, raw=False)
 
 
 def parse_gage(s):
@@ -185,6 +189,7 @@ def main():
     parser.add_argument('--output_shapefiles', help='Output shapefiles for subset', action='store_true')
     parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
     parser.add_argument('--cbh_netcdf', help='Enable netCDF output for CBH files', action='store_true')
+    parser.add_argument('--param_netcdf', help='Enable netCDF output for parameter file', action='store_true')
     parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+', help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must exist in the model subset. Additional streamgages are marked as poi_type=0.')
 
     args = parser.parse_args()
@@ -230,13 +235,16 @@ def main():
 
     # Override configuration variables with any command line parameters
     for kk, vv in iteritems(args.__dict__):
-        if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages']:
+        if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf']:
             if vv:
                 bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
                 config.update_value(kk, vv)
 
     # Where to output the subset
     outdir = config.output_dir
+
+    # The control file to use
+    control_filename = config.control_filename
 
     # What to name the output parameter file
     param_filename = config.param_filename
@@ -270,6 +278,30 @@ def main():
     output_cbh = config.output_cbh
     output_streamflow = config.output_streamflow
     output_shapefiles = config.output_shapefiles
+
+    # Load the control file
+    ctl = ControlFile(control_filename)
+
+    if ctl.has_dynamic_parameters:
+        if config.dyn_params_dir:
+            if os.path.exists(config.dyn_params_dir):
+                dyn_params_dir = config.dyn_params_dir
+            else:
+                bandit_log.error('dyn_params_dir: {}, does not exist.'.format(config.dyn_params_dir))
+                exit(2)
+        else:
+            bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified in the config file')
+            exit(2)
+
+    # Load master list of valid parameters
+    vpdb = ValidParams_v2()
+
+    # Build list of parameters required for the select control file modules
+    required_params = vpdb.get_params_for_modules(modules=ctl.modules.values())
+
+    # TODO: make sure dynamic parameter filenames are correct
+    # Write an updated control file
+    # ctl.write('somefile')
 
     # Date range for pulling NWIS streamgage observations
     if isinstance(config.start_date, datetime.date):
@@ -317,6 +349,7 @@ def main():
         bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
         exit(200)
 
+    # Build the stream network
     dag_ds = nx.DiGraph()
     for ii, vv in enumerate(tosegment):
         #     dag_ds.add_edge(ii+1, vv)
@@ -350,7 +383,7 @@ def main():
                 # Also remove the cutoff segment itself
                 dag_us.remove_node(xx)
             except KeyError:
-                        print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
+                print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
     except TypeError:
         bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType. ({})'.format(outdir))
         exit(200)
@@ -375,7 +408,7 @@ def main():
                 # print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
 
         # Get a subgraph in the dag_ds graph and return the edges
-        dag_ds_subset = dag_ds.subgraph(uniq_seg_us)
+        dag_ds_subset = dag_ds.subgraph(uniq_seg_us).copy()
 
         # 2018-02-13 PAN: It is possible to have outlets specified which are not truly
         #                 outlets in the most conservative sense (e.g. a point where
@@ -399,7 +432,13 @@ def main():
         dag_ds_subset = dag_ds
 
     # Create list of toseg ids for the model subset
-    toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges_iter()))
+    try:
+        # networkx 1.x
+        toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges_iter()))
+    except AttributeError:
+        # networkx 2.x
+        toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
+
     toseg_idx0 = [xx-1 for xx in toseg_idx]  # 0-based version of toseg_idx
 
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
@@ -460,8 +499,8 @@ def main():
 
     # Map old DAG_subds indices to new
     for xx in toseg_idx:
-        if dag_ds_subset.neighbors(xx)[0] in toseg_idx:
-            new_tosegment.append(toseg_idx.index(dag_ds_subset.neighbors(xx)[0]) + 1)
+        if list(dag_ds_subset.neighbors(xx))[0] in toseg_idx:
+            new_tosegment.append(toseg_idx.index(list(dag_ds_subset.neighbors(xx))[0]) + 1)
         else:
             # Outlets should be assigned zero
             new_tosegment.append(0)
@@ -475,7 +514,7 @@ def main():
     for xx in toseg_idx:
         # if DAG_subds.neighbors(xx)[0] in toseg_idx:
         if xx in seg_to_hru:
-            for yy in seg_to_hru[xx]:
+            for __ in seg_to_hru[xx]:
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
                 # print(xx, yy)
@@ -532,20 +571,28 @@ def main():
     new_poi_type = []
 
     # for ss in uniq_seg_us:
-    for ss in nx.nodes_iter(dag_ds_subset):
-        if ss in poi_gage_segment:
-            new_poi_gage_segment.append(toseg_idx.index(ss)+1)
-            new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
-            new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
+    try:
+        # networkx 1.x
+        for ss in nx.nodes_iter(dag_ds_subset):
+            if ss in poi_gage_segment:
+                new_poi_gage_segment.append(toseg_idx.index(ss)+1)
+                new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
+                new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
+    except AttributeError:
+        # networkx 2.x
+        for ss in dag_ds_subset.nodes:
+            if ss in poi_gage_segment:
+                new_poi_gage_segment.append(toseg_idx.index(ss)+1)
+                new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
+                new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
 
     # Add any valid user-specified streamgage, nhm_seg pairs
     if addl_gages:
         for ss, vv in iteritems(addl_gages):
             if ss in new_poi_gage_id:
                 idx = new_poi_gage_id.index(ss)
-                bandit_log.warn(
-                    'Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
-                                                                                              toseg_idx.index(vv)+1))
+                bandit_log.warn('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
+                                                                                                          toseg_idx.index(vv)+1))
                 new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
                 new_poi_type[idx] = 0
             elif vv not in seg_to_hru.keys():
@@ -559,7 +606,7 @@ def main():
     # ==================================================================
     # ==================================================================
     # Process the parameters and create a parameter file for the subset
-    # TODO: We should have the list of params and dimensions in the merged_params directory
+    # TODO: Possibly have the list of params and dimensions in the merged_params directory
     params = get_global_params(params_file)
 
     # Remove the POI-related parameters if we have no POIs
@@ -586,37 +633,53 @@ def main():
         elif dd == 'npoigages':
             dims[dd] = len(new_poi_gage_segment)
 
-    # Open output file
-    outhdl = open('{}/{}'.format(outdir, param_filename), 'w')
-
-    # Write header lines
-    outhdl.write('Written by Bandit version {}\n'.format(__version__))
-    outhdl.write('NhmParamDb revision: {}\n'.format(nhmparamdb_revision))
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Write out dimensions section
-    outhdl.write('** Dimensions **\n')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Build a ParameterSet for output
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    new_ps = ParameterSet()
 
     for dd, dv in iteritems(dims):
-        outhdl.write('####\n')
-        outhdl.write('{}\n'.format(dd))
-        outhdl.write('{}\n'.format(dv))
+        new_ps.dimensions.add(dd, dv)
 
         if dd == 'npoigages':
             # 20170217 PAN: nobs is missing from the paramdb but is necessary
-            outhdl.write('####\n')
-            outhdl.write('{}\n'.format('nobs'))
-            outhdl.write('{}\n'.format(dv))
+            new_ps.dimensions.add('nobs', dv)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Write out parameters section
-    outhdl.write('** Parameters **\n')
+    params = list(required_params)
 
-    # for pp, pv in iteritems(params):
-    params = params.keys()
+    # WARNING: 2019-04-23 PAN
+    #          Very hacky way to remove parameters that shouldn't always get
+    #          included. Need to figure out a better way.
+    check_list = ['basin_solsta', 'gvr_hru_id', 'hru_solsta', 'humidity_percent',
+                  'irr_type', 'obsout_segment', 'rad_conv', 'rain_code']
+
+    for xx in check_list:
+        if xx in params:
+            if xx in ['basin_solsta', 'hru_solsta', 'rad_conv']:
+                if not new_ps.dimensions.exists('nsol'):
+                    params.remove(xx)
+                elif new_ps.dimensions.get('nsol') == 0:
+                    params.remove(xx)
+            elif xx == 'humidity_percent':
+                if not new_ps.dimensions.exists('nhumid'):
+                    params.remove(xx)
+                elif new_ps.dimensions.get('nhumid') == 0:
+                    params.remove(xx)
+            elif xx == 'irr_type':
+                if not new_ps.dimensions.exists('nwateruse'):
+                    params.remove(xx)
+                elif new_ps.dimensions.get('nwateruse') == 0:
+                    params.remove(xx)
+            elif xx == 'gvr_hru_id':
+                if ctl.get('mapOutON_OFF').values == 0:
+                    params.remove(xx)
+
     params.sort()
     for pp in params:
-        cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
+        if os.path.exists('{}/{}.msgpack'.format(merged_paramdb_dir, pp)):
+            cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
+
+            new_ps.parameters.add(cparam['name'])
 
         ndims = len(cparam['dimensions'])
         if args.verbose:
@@ -626,26 +689,15 @@ def main():
 
         # Get order of dimensions and total size for parameter
         dim_order = [None] * ndims
-        dim_total_size = 1
 
         for dd, dv in iteritems(cparam['dimensions']):
             dim_order[dv['position']] = dd
-            dim_total_size *= dims[dd]
 
-        outhdl.write('####\n')
-        outhdl.write('{}\n'.format(cparam['name']))     # Parameter name
-        outhdl.write('{}\n'.format(ndims))  # Number of dimensions
-
-        # Write out dimension names in order
         for dd in dim_order:
-            outhdl.write('{}\n'.format(dd))
+            # self.parameters.get(varname).dimensions.add(dd, self.dimensions.get(dd).size)
+            new_ps.parameters.get(cparam['name']).dimensions.add(dd, new_ps.dimensions.get(dd).size)
 
-        # Write out the total size for the parameter
-        outhdl.write('{}\n'.format(dim_total_size))
-
-        # Write out the datatype for the parameter
-        # outhdl.write('{}\n'.format(param_types[cparam['datatype']]))
-        outhdl.write('{}\n'.format(cparam['datatype']))
+            new_ps.parameters.get(cparam['name']).datatype = cparam['datatype']
 
         first_dimension = dim_order[0]
 
@@ -702,25 +754,26 @@ def main():
         else:
             outlist = outdata.ravel(order='F').tolist()
 
-        for xx in outlist:
-            if cparam['datatype'] in [2, 3]:
-                # Float and double types have to be formatted specially so
-                # they aren't written in exponential notation or with
-                # extraneous zeroes
-                tmp = '{:<20f}'.format(xx).rstrip('0 ')
-                if tmp[-1] == '.':
-                    tmp += '0'
+        new_ps.parameters.get(cparam['name']).data = outlist
+    else:
+        bandit_log.warning('Source file does not exist: {}/{}.msgpack'.format(merged_paramdb_dir, pp))
 
-                outhdl.write('{}\n'.format(tmp))
-                # outhdl.write('{:f}\n'.format(xx))
-            else:
-                outhdl.write('{}\n'.format(xx))
+    # Write the new parameter file
+    header = ['Written by Bandit version {}'.format(__version__),
+              'NhmParamDb revision: {}'.format(nhmparamdb_revision)]
+    if args.param_netcdf:
+        base_filename = os.path.splitext(param_filename)[0]
+        param_filename = '{}.nc'.format(base_filename)
+        new_ps.write_netcdf('{}/{}'.format(outdir, param_filename))
+    else:
+        new_ps.write_parameter_file('{}/{}'.format(outdir, param_filename), header=header)
 
-    outhdl.close()
+    ctl.get('param_file').values = param_filename
 
     if args.verbose:
-        sys.stdout.write('\r                                       ')
-        sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
+        sys.stdout.write('\n')
+    #     sys.stdout.write('\r                                       ')
+    #     sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
         sys.stdout.flush()
 
     if output_cbh:
@@ -820,10 +873,73 @@ def main():
         else:
             bandit_log.error('No HRUs associated with the segments')
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Download the streamgage information from NWIS
+    if ctl.has_dynamic_parameters:
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Add dynamic parameters
+        for cparam in ctl.dynamic_parameters:
+            param_name = 'dyn_{}'.format(cparam)
+            input_file = '{}/{}.nc'.format(dyn_params_dir, param_name)
+            output_file = '{}/{}.param'.format(outdir, param_name)
+
+            if not os.path.exists(input_file):
+                bandit_log.warning('WARNING: CONUS dynamic parameter file: {}, does not exist... skipping'.format(input_file))
+            else:
+                if args.verbose:
+                    print('Writing dynamic parameter {}'.format(cparam))
+
+                mydyn = dyn_params.DynamicParameters(input_file, cparam, st_date, en_date, hru_order_subset)
+
+                mydyn.read_netcdf()
+                out_order = [kk for kk in hru_order_subset]
+                for cc in ['day', 'month', 'year']:
+                    out_order.insert(0, cc)
+
+                header = ' '.join(map(str, out_order))
+
+                # Output ASCII files
+                out_ascii = open(output_file, 'w')
+                out_ascii.write('{}\n'.format(cparam))
+                out_ascii.write('{}\n'.format(header))
+                out_ascii.write('####\n')
+                mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
+                                  sep=' ', index=False, header=False, encoding=None, chunksize=50)
+                out_ascii.close()
+
+
+        # TODO: Always use default filenames for *_dynamic control file variables
+
+    # Write an updated control file to the output directory
+    ctl.write('{}.new'.format(control_filename))
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Output model output variables
+    # outvar = 'tmaxf'
+    # workdir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/NHM_output'
+    # input_file = '{}/{}.nc'.format(workdir, outvar)
+    # output_file = '{}/{}.nc'.format(outdir, outvar)
+    #
+    # if not os.path.exists(input_file):
+    #     bandit_log.warning('WARNING: CONUS output variable file: {}, does not exist... skipping'.format(input_file))
+    # else:
+    #     if args.verbose:
+    #         print('Writing NHM model output variable {}'.format(outvar))
+    #
+    #     model_out_var = ModelOutput(input_file, outvar, st_date, en_date, hru_order_subset)
+    #     model_out_var.read_netcdf()
+    #     out_order = [kk for kk in hru_order_subset]
+    #
+    #     model_out_var.data.to_csv('{}/{}.csv'.format(outdir, outvar), columns=out_order, na_rep='-999',
+    #                       sep=',', index=True, header=True, encoding=None, chunksize=50)
+    #
+    #     model_out_var.dataarray.to_netcdf('{}/{}.nc'.format(outdir, outvar),
+    #                                       encoding={'time': {'_FillValue': None,
+    #                                                          'calendar': 'standard'}})
+
     if output_streamflow:
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Download the streamgage information from NWIS
         if args.verbose:
             print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
 
