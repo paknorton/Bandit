@@ -45,7 +45,8 @@ from Bandit.git_version import git_version
 from Bandit import __version__
 
 from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
-from pyPRMS.Cbh import Cbh, CBH_VARNAMES
+from pyPRMS.CbhNetcdf import CbhNetcdf
+from pyPRMS.CbhAscii import CbhAscii
 from pyPRMS.ControlFile import ControlFile
 from pyPRMS.ParameterSet import ParameterSet
 from pyPRMS.ValidParams_v2 import ValidParams_v2
@@ -203,7 +204,7 @@ def main():
             # print('Working in directory: {}'.format(args.job))
         else:
             print('ERROR: Invalid jobs directory: {}'.format(args.job))
-            exit(1)
+            exit(-1)
 
     # Setup the logging
     bandit_log = logging.getLogger('bandit')
@@ -614,7 +615,11 @@ def main():
         bandit_log.warning('No POI gages found for subset; removing POI-related parameters.')
 
         for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
-            params.pop(rp, None)
+            # params.pop(rp, None)
+            try:
+                params.remove(rp)
+            except ValueError:
+                pass
 
     dims = get_global_dimensions(params, REGIONS, paramdb_dir)
 
@@ -781,95 +786,32 @@ def main():
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Subset the cbh files for the selected HRUs
-
         if len(hru_order_subset) > 0:
-            # Subset the hru_nhm_to_local mapping
-            hru_order_ss = OrderedDict()
-            for kk in hru_order_subset:
-                hru_order_ss[kk] = hru_nhm_to_local[kk]
-
             if args.verbose:
                 print('Processing CBH files')
 
-            # NetCDF-related variables
-            NC_FILL_DOUBLE = 9.9692099683868690e+36
-            NC_FILL_FLOAT = 9.9692099683868690e+36
-            var_desc = {'tmax': 'Maximum Temperature', 'tmin': 'Minimum temperature', 'prcp': 'Precipitation'}
-            var_units = {'tmax': 'C', 'tmin': 'C', 'prcp': 'inches'}
+            if os.path.splitext(cbh_dir)[1] == '.nc':
+                cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
+                              nhm_hrus=hru_order_subset)
+            else:
+                # Subset the hru_nhm_to_local mapping
+                hru_order_ss = OrderedDict()
+                for kk in hru_order_subset:
+                    hru_order_ss[kk] = hru_nhm_to_local[kk]
 
-            # for vv in ['prcp']:
-            for vv in CBH_VARNAMES:
-                if args.verbose:
-                    print(vv)
+                cbh_hdl = CbhAscii(src_path=cbh_dir, st_date=st_date, en_date=en_date,
+                                   nhm_hrus=hru_order_subset, indices=hru_order_ss,
+                                   mapping=hru_nhm_to_region)
 
-                cbh_hdl = Cbh(indices=hru_order_ss, mapping=hru_nhm_to_region, var=vv,
-                              st_date=st_date, en_date=en_date)
-
-                if args.verbose:
-                    print('\tReading {}'.format(vv))
-
-                cbh_hdl.read_cbh_multifile(cbh_dir)
-
-                if args.verbose:
-                    print('\tWriting {} CBH file'.format(vv))
-
-                if args.cbh_netcdf:
-                    out_order = [kk for kk in hru_order_subset]
-
-                    # Get a pandas dataframe in the order originally specified
-                    # The extraneous yr, mon, day, etc columns won't be in the
-                    # resulting dataframe so it's not necessary to drop them.
-                    df2 = cbh_hdl.data[out_order]
-
-                    # Create a netCDF file for the CBH data
-                    nco = netCDF4.Dataset('{}/{}.nc'.format(outdir, vv), 'w', clobber=True)
-                    nco.createDimension('hru', len(df2.columns))
-                    nco.createDimension('time', None)
-
-                    timeo = nco.createVariable('time', 'f4', ('time'))
-                    hruo = nco.createVariable('hru', 'i4', ('hru'))
-
-                    varo = nco.createVariable(vv, 'f4', ('time', 'hru'), fill_value=NC_FILL_FLOAT, zlib=True)
-
-                    nco.setncattr('Description', 'Climate by HRU')
-                    nco.setncattr('Bandit_version', __version__)
-                    nco.setncattr('NHM_version', nhmparamdb_revision)
-
-                    timeo.calendar = 'standard'
-                    # timeo.bounds = 'time_bnds'
-                    timeo.units = 'days since 1980-01-01 00:00:00'
-
-                    hruo.long_name = 'Hydrologic Response Unit ID (HRU)'
-
-                    varo.long_name = var_desc[vv]
-                    varo.units = var_units[vv]
-
-                    # Write the HRU ids
-                    hruo[:] = df2.columns.values
-
-                    timeo[:] = netCDF4.date2num(df2.index.tolist(), units='days since 1980-01-01 00:00:00',
-                                                calendar='standard')
-
-                    # Write the CBH values
-                    varo[:, :] = df2.values
-
-                    nco.close()
-                else:
-                    # For out_order the first six columns contain the time information and
-                    # are always output for the cbh files
-                    out_order = [kk for kk in hru_order_subset]
-                    for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
-                        out_order.insert(0, cc)
-
-                    # Output ASCII CBH files
-                    out_cbh = open('{}/{}.cbh'.format(outdir, vv), 'w')
-                    out_cbh.write('Written by Bandit\n')
-                    out_cbh.write('{} {}\n'.format(vv, len(hru_order_subset)))
-                    out_cbh.write('########################################\n')
-                    cbh_hdl.data.to_csv(out_cbh, columns=out_order, na_rep='-999', float_format='%0.3f',
-                                        sep=' ', index=False, header=False, encoding=None, chunksize=50)
-                    out_cbh.close()
-                    bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
+            if args.cbh_netcdf:
+                cbh_outfile = '{}/daymet_v3_cbh.nc'.format(outdir)
+                cbh_hdl.write_netcdf(cbh_outfile)
+                ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
+                ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
+                ctl.get('precip_day').values = os.path.basename(cbh_outfile)
+            else:
+                cbh_hdl.write_ascii()
+            # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
         else:
             bandit_log.error('No HRUs associated with the segments')
 
