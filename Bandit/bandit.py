@@ -792,7 +792,7 @@ def main():
 
             if os.path.splitext(cbh_dir)[1] == '.nc':
                 cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
-                              nhm_hrus=hru_order_subset)
+                                    nhm_hrus=hru_order_subset)
             else:
                 # Subset the hru_nhm_to_local mapping
                 hru_order_ss = OrderedDict()
@@ -852,7 +852,7 @@ def main():
         # TODO: Always use default filenames for *_dynamic control file variables
 
     # Write an updated control file to the output directory
-    ctl.write('{}.new'.format(control_filename))
+    ctl.write('{}.bandit'.format(control_filename))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Output model output variables

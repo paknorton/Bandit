@@ -18,8 +18,6 @@ from Bandit.git_version import git_version
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 
-
-
 def main():
     parser = argparse.ArgumentParser(description='Create merged database from nhmparamdb for bandit')
     parser.add_argument('-c', '--config', help='Name of configuration file', nargs='?', default='bandit.cfg', type=str)
