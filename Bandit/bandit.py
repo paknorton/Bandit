@@ -9,7 +9,6 @@ import errno
 import logging
 import networkx as nx
 import msgpack
-import netCDF4
 import numpy as np
 import os
 import re
@@ -515,7 +514,7 @@ def main():
     for xx in toseg_idx:
         # if DAG_subds.neighbors(xx)[0] in toseg_idx:
         if xx in seg_to_hru:
-            for __ in seg_to_hru[xx]:
+            for _ in seg_to_hru[xx]:
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
                 # print(xx, yy)
@@ -590,14 +589,20 @@ def main():
     # Add any valid user-specified streamgage, nhm_seg pairs
     if addl_gages:
         for ss, vv in iteritems(addl_gages):
+            print(ss, vv)
             if ss in new_poi_gage_id:
                 idx = new_poi_gage_id.index(ss)
-                bandit_log.warn('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
+                bandit_log.warning('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
                                                                                                           toseg_idx.index(vv)+1))
                 new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
                 new_poi_type[idx] = 0
+            elif toseg_idx.index(vv)+1 in new_poi_gage_segment:
+                sidx = new_poi_gage_segment.index(toseg_idx.index(vv)+1)
+                bandit_log.warning('User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'.format(ss, toseg_idx.index(vv)+1, new_poi_gage_id[sidx]))
+                new_poi_gage_id[sidx] = ss
+                new_poi_type[sidx] = 0
             elif vv not in seg_to_hru.keys():
-                bandit_log.warn('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+                bandit_log.warning('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
             else:
                 new_poi_gage_id.append(ss)
                 new_poi_gage_segment.append(toseg_idx.index(vv)+1)
@@ -683,7 +688,6 @@ def main():
     for pp in params:
         if os.path.exists('{}/{}.msgpack'.format(merged_paramdb_dir, pp)):
             cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
-
             new_ps.parameters.add(cparam['name'])
 
         ndims = len(cparam['dimensions'])
