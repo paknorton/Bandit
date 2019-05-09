@@ -966,7 +966,7 @@ def main():
                     # print('\tHRUs')
                     # geo_shp.select_layer('nhruNationalIdentifier')
                     geo_shp.select_layer('nhru')
-                    geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
+                    geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(sg_dir), 'hru_id_nat', hru_order_subset,
                                             included_fields=['nhm_id', 'model_idx', 'region', 'hru_id_nat'])
 
                     # geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
@@ -978,7 +978,7 @@ def main():
                     # Output a shapefile of the selected stream segments
                     # print('\tSegments')
                     geo_shp.select_layer('nsegmentNationalIdentifier')
-                    geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx,
+                    geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(sg_dir), 'seg_id_nat', toseg_idx,
                                             included_fields=['seg_id_nat', 'model_idx', 'region'])
 
                     # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
