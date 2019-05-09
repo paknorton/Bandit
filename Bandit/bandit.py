@@ -586,10 +586,10 @@ def main():
                 new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
                 new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Add any valid user-specified streamgage, nhm_seg pairs
     if addl_gages:
         for ss, vv in iteritems(addl_gages):
-            print(ss, vv)
             if ss in new_poi_gage_id:
                 idx = new_poi_gage_id.index(ss)
                 bandit_log.warning('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
@@ -919,7 +919,8 @@ def main():
             # print('\tHRUs')
             # geo_shp.select_layer('nhruNationalIdentifier')
             geo_shp.select_layer('nhru')
-            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset)
+            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
+                                    included_fields=['nhm_id', 'model_idx', 'region', 'hru_id_nat'])
 
             # geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
 
@@ -930,7 +931,8 @@ def main():
             # Output a shapefile of the selected stream segments
             # print('\tSegments')
             geo_shp.select_layer('nsegmentNationalIdentifier')
-            geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx)
+            geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', toseg_idx,
+                                    included_fields=['seg_id_nat', 'model_idx', 'region'])
 
             # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
             # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))

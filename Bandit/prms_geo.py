@@ -78,6 +78,8 @@ class Geo(object):
         # Create a shapefile for the current selected layer
         # If a filter is set then a subset of features is written
 
+        limit_fields = included_fields is not None
+
         out_driver = ogr.GetDriverByName('ESRI Shapefile')
 
         out_ds = out_driver.CreateDataSource(filename)
@@ -86,13 +88,21 @@ class Geo(object):
         # Copy field definitions from input to output file
         in_layer_def = self.__selected_layer.GetLayerDefn()
 
+        orig_fld_names = []
         for ii in range(in_layer_def.GetFieldCount()):
             fld_def = in_layer_def.GetFieldDefn(ii)
             fld_name = fld_def.GetName()
 
-            if included_fields and fld_name not in included_fields:
+            if limit_fields and fld_name not in included_fields:
                 continue
+
+            orig_fld_names.append(fld_name)
             out_layer.CreateField(fld_def)
+
+        # Add model_idx field
+        fld_def = ogr.FieldDefn('model_idx', ogr.OFTInteger)
+        orig_fld_names.append('model_idx')
+        out_layer.CreateField(fld_def)
 
         # Get feature definitions for the output layer
         out_layer_def = out_layer.GetLayerDefn()
@@ -108,9 +118,11 @@ class Geo(object):
                     fld_def = out_layer_def.GetFieldDefn(ii)
                     fld_name = fld_def.GetName()
 
-                    if included_fields and fld_name not in included_fields:
-                        continue
-                    out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(), in_feat.GetField(ii))
+                    if fld_name == 'model_idx':
+                        # Output a 1-based array index value
+                        out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(), attr_values.index(in_feat.GetField(attr_name))+1)
+                    else:
+                        out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(), in_feat.GetField(orig_fld_names[ii]))
 
                 # Set geometry as centroid
                 # geom = in_feat.GetGeometryRef
