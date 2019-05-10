@@ -3,15 +3,20 @@
 from __future__ import (absolute_import, division, print_function)
 from future.utils import iteritems
 
-import os
-import subprocess32 as subprocess
-import sys
-from collections import OrderedDict
 from Bandit import bandit_cfg as bc
 
+import os
+import sys
+from collections import OrderedDict
 # import time
 import threading
-import Queue
+from queue import Queue
+
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
+
 
 """Example of code used to generate model extractions for headwaters in the NHM
 
