@@ -48,7 +48,7 @@ from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.CbhAscii import CbhAscii
 from pyPRMS.ControlFile import ControlFile
 from pyPRMS.ParameterSet import ParameterSet
-from pyPRMS.ValidParams_v2 import ValidParams_v2
+from pyPRMS.ValidParams import ValidParams
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -300,7 +300,7 @@ def main():
             exit(2)
 
     # Load master list of valid parameters
-    vpdb = ValidParams_v2()
+    vpdb = ValidParams()
 
     # Build list of parameters required for the select control file modules
     required_params = vpdb.get_params_for_modules(modules=ctl.modules.values())
@@ -889,7 +889,7 @@ def main():
                         mydyn.read_netcdf()
                         out_order = [kk for kk in hru_order_subset]
                         for cc in ['day', 'month', 'year']:
-                           out_order.insert(0, cc)
+                            out_order.insert(0, cc)
 
                         header = ' '.join(map(str, out_order))
 
