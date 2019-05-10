@@ -4,7 +4,7 @@ from __future__ import (absolute_import, division, print_function)
 import argparse
 import os
 from pyPRMS.ControlFile import ControlFile
-import pyPRMS.ValidParams_v2 as vparm
+import pyPRMS.ValidParams as vparm
 import pyPRMS.NhmParamDb as nhm
 import pyPRMS.ParameterFile as pfile
 
@@ -48,10 +48,10 @@ def main():
     # Read the full set of possible parameters
     if args.xml:
         print('Reading {}'.format(args.xml))
-        vpdb = vparm.ValidParams_v2(args.xml)
+        vpdb = vparm.ValidParams(args.xml)
     else:
         print('Reading default parameters.xml')
-        vpdb = vparm.ValidParams_v2()
+        vpdb = vparm.ValidParams()
 
     print()
     # Build dictionary of parameters by module from the set of master parameters
