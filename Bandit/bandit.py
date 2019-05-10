@@ -48,7 +48,7 @@ from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.CbhAscii import CbhAscii
 from pyPRMS.ControlFile import ControlFile
 from pyPRMS.ParameterSet import ParameterSet
-from pyPRMS.ValidParams_v2 import ValidParams_v2
+from pyPRMS.ValidParams import ValidParams
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -294,7 +294,7 @@ def main():
             exit(2)
 
     # Load master list of valid parameters
-    vpdb = ValidParams_v2()
+    vpdb = ValidParams()
 
     # Build list of parameters required for the select control file modules
     required_params = vpdb.get_params_for_modules(modules=ctl.modules.values())
@@ -851,9 +851,6 @@ def main():
                 mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
                                   sep=' ', index=False, header=False, encoding=None, chunksize=50)
                 out_ascii.close()
-
-
-        # TODO: Always use default filenames for *_dynamic control file variables
 
     # Write an updated control file to the output directory
     ctl.write('{}.bandit'.format(control_filename))
