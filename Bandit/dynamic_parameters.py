@@ -7,26 +7,6 @@ import numpy as np
 import xarray as xr
 
 
-# def __init__(self, filename=None, st_date=None, en_date=None, indices=None, nhm_hrus=None, mapping=None,
-#              var=None, regions=REGIONS):
-#     # def __init__(self, cbhdb_dir, st_date=None, en_date=None, indices=None, nhm_hrus=None, mapping=None):
-#     #     self.__cbhdb_dir = cbhdb_dir
-#     self.__filename = filename
-#
-#     # self.__indices = [str(kk) for kk in indices]
-#     self.__indices = indices  # OrdereDict: nhm_ids -> local_ids
-#
-#     self.__stdate = st_date
-#     self.__endate = en_date
-#     self.__nhm_hrus = nhm_hrus
-#     self.__mapping = mapping
-#     self.__date_range = None
-#     self.__data = None
-#     self.__final_outorder = None
-#     self.__var = var
-#     self.__regions = regions
-
-
 class DynamicParameters(object):
     def __init__(self, filename, varname, startdate=None, enddate=None, nhm_hrus=None):
         self.__filename = filename
@@ -110,6 +90,4 @@ class DynamicParameters(object):
         self.__data['month'] = self.__data.index.month
         self.__data['day'] = self.__data.index.day
         self.ds = ds
-        # self.__data['hour'] = 0
-        # self.__data['minute'] = 0
-        # self.__data['second'] = 0
+
