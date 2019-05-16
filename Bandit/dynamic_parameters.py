@@ -8,7 +8,13 @@ import xarray as xr
 
 
 class DynamicParameters(object):
+
+    """Class for handling dynamic parameters.
+    """
+
     def __init__(self, filename, varname, startdate=None, enddate=None, nhm_hrus=None):
+        """Create the DynamicParameters object."""
+
         self.__filename = filename
         self.__varname = varname
         self.__stdate = startdate
@@ -18,13 +24,18 @@ class DynamicParameters(object):
 
     @property
     def data(self):
+        """Get the data for dynamic parameter
+
+        :returns: dynamic parameter data
+        """
+
         return self.__data
 
     def nearest(self, items, pivot):
         return min(items, key=lambda x: abs(x - pivot))
 
     def read(self):
-        """Read a netcdf dynamic parameter file"""
+        """Read a netcdf dynamic parameter file."""
 
         fhdl = nc.Dataset(self.__filename)
 
@@ -69,7 +80,9 @@ class DynamicParameters(object):
         fhdl.close()
 
     def read_netcdf(self):
-        """Read dynamic parameter files stored in netCDF format"""
+        """Read dynamic parameter files stored in netCDF format.
+        """
+
         if self.__nhm_hrus:
             # print('\t\tOpen dataarray')
             ds = xr.open_dataarray(self.__filename, chunks={'hru': 1000})

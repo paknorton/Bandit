@@ -10,22 +10,42 @@ import gdal
 
 
 class GdalErrorHandler(object):
+
+    """Error handling class for GDAL."""
+
     # See: https://trac.osgeo.org/gdal/wiki/PythonGotchas
     # We define this class and add error handling code to class Geo
     # so that warnings can be intercepted by Python's exception handling
     def __init__(self):
+        """Create the GdalErrorHandler object."""
+
         self.err_level = gdal.CE_None
         self.err_no = 0
         self.err_msg = ''
 
     def handler(self, err_level, err_no, err_msg):
+        """Set error message information.
+
+        :param int err_level: error level
+        :param int err_no: error number
+        :param str err_msg: error message
+        """
+
         self.err_level = err_level
         self.err_no = err_no
         self.err_msg = err_msg
 
 
 class Geo(object):
+
+    """Class for subsetting GIS files."""
+
     def __init__(self, filename):
+        """Create the Geo object.
+
+        :param str filename: name of file
+        """
+
         err = GdalErrorHandler()
         handler = err.handler
 
@@ -45,6 +65,12 @@ class Geo(object):
 
     @property
     def layers(self):
+        """Get dictionary mapping layer names to their index.
+
+        :returns: dictionary of layer name to index value
+        :rtype: dict[str, int]
+        """
+
         # Returns a dictionary mapping layer names to their index
         if not self.__layers:
             self.__layers = OrderedDict()
@@ -56,13 +82,30 @@ class Geo(object):
 
     @property
     def selected_layer(self):
+        """Get the currently selected layer.
+
+        :returns: selected layer
+        :rtype: int or None
+        """
+
         return self.__selected_layer
 
     def select_layer(self, layer_name):
+        """Set the selected layer.
+
+        :param str layer_name: name of layer to select
+        """
+
         # Select a layer from the file geodatabase
         self.__selected_layer = self.__gdb.GetLayerByName(layer_name)
 
     def filter_by_attribute(self, attr_name, attr_values):
+        """Filter current layer by attribute name and values.
+
+        :param str attr_name: name of attribute
+        :param list attr_values: list of attribute values
+        """
+
         # Filter a layer by attribute name and values
 
         # Make sure the attr_values elements are strings
@@ -75,6 +118,15 @@ class Geo(object):
         self.__selected_layer.SetAttributeFilter('{} in ({})'.format(attr_name, attr_args))
 
     def write_shapefile(self, filename, attr_name, attr_values, included_fields=None):
+        """Write subset to shapefile format.
+
+        :param str filename: name of shapefile to create
+        :param str attr_name: name of attribute for filtering
+        :param list attr_values: list of attribute values to include in subset
+        :param included_fields: list of attribute field names from source shapefile to include in new shapefile
+        :type included_fields: None or list[str]
+        """
+
         # Create a shapefile for the current selected layer
         # If a filter is set then a subset of features is written
 
