@@ -127,7 +127,8 @@ def main():
 
     # Skip the header information
     # NOTE: If file has no header the first entry will be skipped
-    seg_file.next()
+    seg_file.readline()
+    # seg_file.next()
 
     # First column is hwAreaId
     # Second and following columns are seg_id_nat
