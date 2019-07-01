@@ -10,7 +10,7 @@ import sys
 from collections import OrderedDict
 # import time
 import threading
-from queue import Queue
+import queue
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
@@ -59,7 +59,7 @@ class WorkerThread(threading.Thread):
                 thecmd = self.input_q.get(True, 0.05)
                 retcode = self.run_cmd(thecmd)
                 self.result_q.put((self.name, thecmd, retcode))
-            except Queue.Empty:
+            except queue.Empty:
                 continue
 
     def join(self, timeout=None):
@@ -166,8 +166,8 @@ def main():
 
     # ****************************************************************************
     # Initialize the threads
-    cmd_q = Queue.Queue()
-    result_q = Queue.Queue()
+    cmd_q = queue.Queue()
+    result_q = queue.Queue()
 
     # Create pool of threads
     pool = [WorkerThread(input_q=cmd_q, result_q=result_q) for __ in range(num_threads)]
@@ -227,6 +227,7 @@ def main():
         if nrhru_src and kk in noroute_hrus_by_loc:
             config.update_value('hru_noroute', noroute_hrus_by_loc[kk])
 
+        config.update_value('control_filename', '{}/control.default'.format(job_dir))
         config.update_value('output_dir', '{}/{}'.format(job_dir, cdir))
         config.write('{}/bandit.cfg'.format(cdir))
 
