@@ -804,6 +804,7 @@ def main():
                                    mapping=hru_nhm_to_region)
 
             if args.cbh_netcdf:
+                # TODO: fix the hardcoded daymet_v3 filename
                 cbh_outfile = '{}/daymet_v3_cbh.nc'.format(outdir)
                 cbh_hdl.write_netcdf(cbh_outfile)
                 ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
