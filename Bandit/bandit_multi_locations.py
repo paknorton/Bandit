@@ -227,6 +227,8 @@ def main():
         if nrhru_src and kk in noroute_hrus_by_loc:
             config.update_value('hru_noroute', noroute_hrus_by_loc[kk])
 
+        # TODO: This causes the control_filename to be rewritten in the parent
+        #       directory; so this happens for each location. Need to fix.
         config.update_value('control_filename', '{}/control.default'.format(job_dir))
         config.update_value('output_dir', '{}/{}'.format(job_dir, cdir))
         config.write('{}/bandit.cfg'.format(cdir))
