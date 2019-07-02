@@ -439,10 +439,6 @@ def main():
 
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
 
-    # if len(toseg_idx) == 0:
-    #     print('\nERROR: No segments were selected for extraction. ({})'.format(outdir))
-    #     exit(200)
-
     # print('edges')
     # for xx in dag_ds_subset.adjacency_iter():
     #    print(xx)
@@ -657,7 +653,7 @@ def main():
     #          Very hacky way to remove parameters that shouldn't always get
     #          included. Need to figure out a better way.
     check_list = ['basin_solsta', 'gvr_hru_id', 'hru_solsta', 'humidity_percent',
-                  'irr_type', 'obsout_segment', 'rad_conv', 'rain_code']
+                  'irr_type', 'obsout_segment', 'rad_conv', 'rain_code', 'hru_lon']
 
     for xx in check_list:
         if xx in params:
