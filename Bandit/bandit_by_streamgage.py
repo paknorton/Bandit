@@ -56,14 +56,12 @@ __author__ = 'Parker Norton (pnorton@usgs.gov)'
 def get_global_dimensions(params, regions, workdir):
     """Build dictionary of global dimensions for given list of parameters from the NHM parameter database.
 
-    Args:
-        params (:obj:`list` of :obj:`str`: List of parameters.
-        regions (:obj:`list` of :obj:`str`: List of regions to include.
-        workdir (str): Location of NHM parameter database.
+    :param list[str] params: list of parameter names
+    :param list[str] regions: list of regions to include
+    :param str workdir: path to NHM parameter database
 
-    Returns:
-        Dictionary of dimensions and sizes.
-
+    :returns: dictionary of dimensions and sizes
+    :rtype: dict[str, int]
     """
 
     # This builds a dictionary of total dimension sizes for the concatenated parameters
@@ -98,14 +96,12 @@ def get_global_dimensions(params, regions, workdir):
 
 
 def get_global_params(params_file):
-    """Retrieve dictionary of parameters with associated unit and type information.
+    """Get dictionary of parameter names with associated unit and datatype information.
 
-    Args:
-        params_file (str): Name of parameter xml file from the NHM parameter database.
+    :param str params_file: parameter XML filename from NHM parameter database
 
-    Returns:
-        Dictionary of parameters with associated unit and type information.
-
+    :returns: dictionary of parameter names with unit and datatype information
+    :rtype: dict[str, dict[str, str]]
     """
 
     # Read in the parameters.xml file
@@ -125,12 +121,9 @@ def get_global_params(params_file):
 def get_parameter(filename):
     """Load a msgpack file.
 
-    Args:
-        filename (str): Name of msgpack file.
+    :param str filename: name of msgpack file
 
-    Returns:
-        Object from msgpack file.
-
+    :returns: object from the msgpack file
     """
 
     with open(filename, 'rb') as ff:
@@ -138,17 +131,16 @@ def get_parameter(filename):
 
 
 def parse_gage(s):
-    """
-    Parse a streamgage key, value pair, separated by '='
-    That's the reverse of ShellArgs.
+    """Parse a streamgage key-value pair.
 
-    On the command line (argparse) a declaration will typically look like:
-        foo=hello
-    or
-        foo="hello world"
+    Parse a streamgage key-value pair, separated by '='; that's the reverse of ShellArgs.
+    On the command line (argparse) a declaration will typically look like::
+        foo=hello or foo="hello world"
+
+    :param s: tuple(key, value)
     """
+
     # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
-
     items = s.split('=')
     key = items[0].strip()  # we remove blanks around keys, as is logical
     if len(items) > 1:
@@ -158,11 +150,15 @@ def parse_gage(s):
 
 
 def parse_gages(items):
-    """
-    Parse a series of key-value pairs and return a dictionary
-    """
-    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
+    """Parse a list of key-value pairs and return a dictionary.
 
+    :param list[(str, str)] items: list of key-value tuples
+
+    :returns: key-value dictionary
+    :rtype: dict[str, str]
+    """
+
+    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
     d = {}
 
     if items:
@@ -636,6 +632,7 @@ def main():
                         new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
                         new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Add any valid user-specified streamgage, nhm_seg pairs
             if addl_gages:
                 for ss, vv in iteritems(addl_gages):
