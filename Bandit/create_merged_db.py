@@ -9,7 +9,7 @@ import os
 import sys
 
 import Bandit.bandit_cfg as bc
-from pyPRMS.NhmParamDb import NhmParamDb
+from pyPRMS.ParamDbRegion import ParamDbRegion
 
 # from dimension_class import Parameter
 from Bandit.git_version import git_version
@@ -49,7 +49,7 @@ def main():
         fhdl.write('{}\n'.format(git_version(paramdb_dir)))
 
     # Create NhmParamDb object and retrieve the parameters
-    pdb = NhmParamDb(paramdb_dir)
+    pdb = ParamDbRegion(paramdb_dir)
     param_info = pdb.available_parameters
 
     # =======================================================================

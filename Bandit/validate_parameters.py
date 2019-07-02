@@ -5,7 +5,7 @@ import argparse
 import os
 from pyPRMS.ControlFile import ControlFile
 import pyPRMS.ValidParams as vparm
-import pyPRMS.NhmParamDb as nhm
+import pyPRMS.ParamDbRegion as nhm
 import pyPRMS.ParameterFile as pfile
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
