@@ -147,7 +147,8 @@ def main():
 
     if nrhru_src:
         nrhru_file = open(nrhru_src, 'r')
-        nrhru_file.next()
+        nrhru_file.readline()
+        # nrhru_file.next()
 
         noroute_hrus_by_loc = OrderedDict()
 
