@@ -110,6 +110,7 @@ setup(
     entry_points={
         'console_scripts': [
             'bandit=Bandit.bandit:main',
+            'bandit_v2=Bandit.bandit_v2:main',
             'bandit_by_streamgage=Bandit.bandit_by_streamgage:main',
             'create_merged_db=Bandit.create_merged_db:main',
             'git_version=Bandit.git_version:main',
