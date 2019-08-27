@@ -4,7 +4,8 @@ from __future__ import (absolute_import, division, print_function)
 # from future.utils import iteritems    # , iterkeys
 
 # import argparse
-import msgpack
+# import msgpack
+import argparse
 import os
 import sys
 
@@ -18,11 +19,16 @@ from Bandit.git_version import git_version
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
-config = bc.Cfg('bandit.cfg')
+
 
 
 def main():
-    # TODO: Automatically update the paramdb from git before creating merged params
+    parser = argparse.ArgumentParser(description='Setup new job for Bandit extraction')
+    parser.add_argument('-c', '--config', help='Name of configuration file', nargs='?', default='bandit.cfg', type=str)
+
+    args = parser.parse_args()
+
+    config = bc.Cfg(args.config)
 
     paramdb_dir = config.paramdb_dir
     merged_paramdb_dir = config.merged_paramdb_dir
