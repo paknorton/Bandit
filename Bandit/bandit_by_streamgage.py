@@ -6,6 +6,7 @@ from future.utils import iteritems, iterkeys
 
 import argparse
 import errno
+import glob
 import logging
 import networkx as nx
 import msgpack
@@ -43,6 +44,9 @@ import Bandit.dynamic_parameters as dyn_params
 from Bandit.git_version import git_version
 from Bandit import __version__
 
+# import pyPRMS.NhmParamDb_v2 as nhm
+from pyPRMS.ParamDb import ParamDb
+from pyPRMS.ParameterFile import ParameterFile
 from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
 from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.CbhAscii import CbhAscii
@@ -320,22 +324,39 @@ def main():
     params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
-    bandit_log.debug('Current NhmParamDb revision: {}'.format(git_version(paramdb_dir)))
-    with open('{}/00-REVISION'.format(merged_paramdb_dir), 'r') as fhdl:
-        nhmparamdb_revision = fhdl.readline().strip()
-        bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
+    nhmparamdb_revision = git_version(paramdb_dir)
+    bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
+
+    # bandit_log.debug('Using nhmparamdb revision: {}'.format(nhmparamdb_revision))
+    # with open('{}/00-REVISION'.format(merged_paramdb_dir), 'r') as fhdl:
+    #     nhmparamdb_revision = fhdl.readline().strip()
+    #     bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read hru_nhm_to_local and hru_nhm_to_region
     # Create segment_nhm_to_local and segment_nhm_to_region
-    hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(merged_paramdb_dir))
-    hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(merged_paramdb_dir))
+    # hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(merged_paramdb_dir))
+    # hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(merged_paramdb_dir))
+
+    # TODO: since hru_nhm_to_region and nhru_nhm_to_local are only needed for
+    #       CBH files we should 'soft-fail' if the files are missing and just
+    #       output a warning and turn off CBH output if it was selected.
+    # hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(cbh_dir))
+    # hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(cbh_dir))
+
+    # Load the NHMparamdb
+    print('Loading NHM ParamDb')
+    pdb = ParamDb(merged_paramdb_dir)
+    nhm_params = pdb.parameters
+    nhm_global_dimensions = pdb.dimensions
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Read tosegment_nhm
-    tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(merged_paramdb_dir))['data']
+    # Get tosegment_nhm
+    # tosegment = get_parameter('{}/tosegment_nhm.msgpack'.format(merged_paramdb_dir))['data']
 
-    nhm_seg = get_parameter('{}/nhm_seg.msgpack'.format(merged_paramdb_dir))['data']
+    # NOTE: tosegment is now tosegment_nhm and the regional tosegment is gone.
+    tosegment = nhm_params.get('tosegment').data
+    nhm_seg = nhm_params.get('nhm_seg').data
 
     if args.verbose:
         print('Generating stream network from tosegment_nhm')
@@ -362,8 +383,10 @@ def main():
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Build dictionary which maps poi_gage_id to poi_gage_segment
-    poi_gage_segment_tmp = get_parameter('{}/poi_gage_segment.msgpack'.format(merged_paramdb_dir))['data']
-    poi_gage_id_tmp = get_parameter('{}/poi_gage_id.msgpack'.format(merged_paramdb_dir))['data']
+    # poi_gage_segment_tmp = get_parameter('{}/poi_gage_segment.msgpack'.format(merged_paramdb_dir))['data']
+    # poi_gage_id_tmp = get_parameter('{}/poi_gage_id.msgpack'.format(merged_paramdb_dir))['data']
+    poi_gage_segment_tmp = nhm_params.get('poi_gage_segment').data
+    poi_gage_id_tmp = nhm_params.get('poi_gage_id').data
 
     # Create dictionary to lookup nhm_segment for a given poi_gage_id
     poi_id_to_seg = dict(zip(poi_gage_id_tmp, poi_gage_segment_tmp))
@@ -497,7 +520,10 @@ def main():
             # print('toseg_idx')
             # print(toseg_idx)
 
-            hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(merged_paramdb_dir))['data']
+            # hru_segment = get_parameter('{}/hru_segment_nhm.msgpack'.format(merged_paramdb_dir))['data']
+
+            # NOTE: With monolithic nhmParamDb files hru_segment becomes hru_segment_nhm and the regional hru_segments are gone.
+            hru_segment = nhm_params.get('hru_segment').data
 
             bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
 
@@ -575,7 +601,8 @@ def main():
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Subset hru_deplcrv
-            hru_deplcrv = get_parameter('{}/hru_deplcrv.msgpack'.format(merged_paramdb_dir))['data']
+            # hru_deplcrv = get_parameter('{}/hru_deplcrv.msgpack'.format(merged_paramdb_dir))['data']
+            hru_deplcrv = nhm_params.get('hru_deplcrv').data
 
             bandit_log.info('Size of NHM hru_deplcrv: {}'.format(len(hru_deplcrv)))
 
@@ -597,11 +624,14 @@ def main():
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Subset poi_gage_segment
-            poi_gage_segment = get_parameter('{}/poi_gage_segment.msgpack'.format(merged_paramdb_dir))['data']
+            # poi_gage_segment = get_parameter('{}/poi_gage_segment.msgpack'.format(merged_paramdb_dir))['data']
+            poi_gage_segment = nhm_params.get('poi_gage_segment').tolist()
             bandit_log.info('Size of NHM poi_gage_segment: {}'.format(len(poi_gage_segment)))
 
-            poi_gage_id = get_parameter('{}/poi_gage_id.msgpack'.format(merged_paramdb_dir))['data']
-            poi_type = get_parameter('{}/poi_type.msgpack'.format(merged_paramdb_dir))['data']
+            # poi_gage_id = get_parameter('{}/poi_gage_id.msgpack'.format(merged_paramdb_dir))['data']
+            # poi_type = get_parameter('{}/poi_type.msgpack'.format(merged_paramdb_dir))['data']
+            poi_gage_id = nhm_params.get('poi_gage_id').data
+            poi_type = nhm_params.get('poi_type').data
 
             # We want to get the indices of the poi_gage_segments that match the
             # segments that are part of the subset. We can then use these
@@ -658,8 +688,9 @@ def main():
             # ==================================================================
             # ==================================================================
             # Process the parameters and create a parameter file for the subset
-            # TODO: Possibly have the list of params and dimensions in the merged_params directory
-            params = get_global_params(params_file)
+            # TODO: We should have the list of params and dimensions in the merged_params directory
+            # params = get_global_params(params_file)
+            params = list(nhm_params.keys())
 
             # Remove the POI-related parameters if we have no POIs
             if len(new_poi_gage_segment) == 0:
@@ -670,9 +701,15 @@ def main():
                     try:
                         params.remove(rp)
                     except ValueError:
+                        print('ERROR: unable to remove {}'.format(rp))
                         pass
 
-            dims = get_global_dimensions(params, REGIONS, paramdb_dir)
+            params.sort()
+
+            # dims = get_global_dimensions(params, REGIONS, paramdb_dir)
+            dims = {}
+            for kk in nhm_global_dimensions.values():
+                dims[kk.name] = kk.size
 
             # Resize dimensions to the model subset
             crap_dims = dims.copy()  # need a copy since we modify dims
@@ -684,8 +721,8 @@ def main():
                     dims[dd] = len(toseg_idx0)
                 elif dd == 'ndeplval':
                     dims[dd] = len(uniq_deplcrv0) * 11
-                    if 'ndepl' not in dims:
-                        dims['ndepl'] = len(uniq_deplcrv0)
+                    # if 'ndepl' not in dims:
+                    dims['ndepl'] = len(uniq_deplcrv0)
                 elif dd == 'npoigages':
                     dims[dd] = len(new_poi_gage_segment)
 
@@ -701,39 +738,44 @@ def main():
                     # 20170217 PAN: nobs is missing from the paramdb but is necessary
                     new_ps.dimensions.add('nobs', dv)
 
-            params = list(required_params)
+            new_params = list(required_params)
 
             # WARNING: 2019-04-23 PAN
             #          Very hacky way to remove parameters that shouldn't always get
             #          included. Need to figure out a better way.
             check_list = ['basin_solsta', 'gvr_hru_id', 'hru_solsta', 'humidity_percent',
-                          'irr_type', 'obsout_segment', 'rad_conv', 'rain_code']
+                          'irr_type', 'obsout_segment', 'rad_conv', 'rain_code', 'hru_lon']
 
             for xx in check_list:
-                if xx in params:
+                if xx in new_params:
                     if xx in ['basin_solsta', 'hru_solsta', 'rad_conv']:
                         if not new_ps.dimensions.exists('nsol'):
-                            params.remove(xx)
+                            new_params.remove(xx)
                         elif new_ps.dimensions.get('nsol') == 0:
-                            params.remove(xx)
+                            new_params.remove(xx)
                     elif xx == 'humidity_percent':
                         if not new_ps.dimensions.exists('nhumid'):
-                            params.remove(xx)
+                            new_params.remove(xx)
                         elif new_ps.dimensions.get('nhumid') == 0:
-                            params.remove(xx)
+                            new_params.remove(xx)
                     elif xx == 'irr_type':
                         if not new_ps.dimensions.exists('nwateruse'):
-                            params.remove(xx)
+                            new_params.remove(xx)
                         elif new_ps.dimensions.get('nwateruse') == 0:
-                            params.remove(xx)
+                            new_params.remove(xx)
                     elif xx == 'gvr_hru_id':
                         if ctl.get('mapOutON_OFF').values == 0:
-                            params.remove(xx)
+                            new_params.remove(xx)
+                    elif xx in ['hru_lat', 'hru_lon', ]:
+                        if not nhm_params.exists(xx):
+                            new_params.remove(xx)
 
-            params.sort()
+            new_params.sort()
             for pp in params:
-                if os.path.exists('{}/{}.msgpack'.format(merged_paramdb_dir, pp)):
-                    cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
+                if pp in new_params:
+                    # cparam = get_parameter('{}/{}.msgpack'.format(merged_paramdb_dir, pp))
+                    cparam = nhm_params.get(pp).tostructure()
+
                     new_ps.parameters.add(cparam['name'])
 
                 ndims = len(cparam['dimensions'])
@@ -810,8 +852,6 @@ def main():
                     outlist = outdata.ravel(order='F').tolist()
 
                 new_ps.parameters.get(cparam['name']).data = outlist
-            else:
-                bandit_log.warning('Source file does not exist: {}/{}.msgpack'.format(merged_paramdb_dir, pp))
 
             # Write the new parameter file
             header = ['Written by Bandit version {}'.format(__version__),
@@ -846,6 +886,7 @@ def main():
                                             nhm_hrus=hru_order_subset)
                     else:
                         # Subset the hru_nhm_to_local mapping
+                        # TODO: This section will not work with the monolithic paramdb - remove
                         hru_order_ss = OrderedDict()
                         for kk in hru_order_subset:
                             hru_order_ss[kk] = hru_nhm_to_local[kk]
@@ -855,7 +896,12 @@ def main():
                                            mapping=hru_nhm_to_region)
 
                     if args.cbh_netcdf:
-                        cbh_outfile = '{}/daymet_v3_cbh.nc'.format(sg_dir)
+                        # Pull the filename prefix off of the first file found in the
+                        # source netcdf CBH directory.
+                        file_it = glob.iglob(cbh_dir)
+                        cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
+
+                        cbh_outfile = '{}/{}.nc'.format(outdir, cbh_prefix)
                         cbh_hdl.write_netcdf(cbh_outfile)
                         ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
                         ctl.get('tmin_day').values = os.path.basename(cbh_outfile)

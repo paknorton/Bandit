@@ -318,10 +318,8 @@ def main():
     params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
-    bandit_log.debug('Current NhmParamDb revision: {}'.format(git_version(paramdb_dir)))
-    with open('{}/00-REVISION'.format(merged_paramdb_dir), 'r') as fhdl:
-        nhmparamdb_revision = fhdl.readline().strip()
-        bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
+    nhmparamdb_revision = git_version(paramdb_dir)
+    bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read hru_nhm_to_local and hru_nhm_to_region
@@ -826,6 +824,7 @@ def main():
                                     nhm_hrus=hru_order_subset)
             else:
                 # Subset the hru_nhm_to_local mapping
+                # TODO: This section will not work with the monolithic paramdb - remove
                 hru_order_ss = OrderedDict()
                 for kk in hru_order_subset:
                     hru_order_ss[kk] = hru_nhm_to_local[kk]
