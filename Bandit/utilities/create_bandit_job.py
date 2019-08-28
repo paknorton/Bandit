@@ -24,7 +24,13 @@ def main():
     print('Config file: {}'.format(args.config))
 
     # Check that the various required directories and files defined in bandit.cfg exist
-    if not os.path.exists(config.cbh_dir):
+    if os.path.splitext(config.cbh_dir)[1] == '.nc':
+        print('INFO: Using netCDF format for CBH files')
+        cbh_dir_tmp = os.path.split(config.cbh_dir)[0]
+    else:
+        cbh_dir_tmp = config.cbh_dir
+
+    if not os.path.exists(cbh_dir_tmp):
         print("Location of the CBH files (cbh_dir) does not exist!")
         exit(2)
     elif not os.path.exists(config.paramdb_dir):
