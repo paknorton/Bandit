@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import re
 import sys
+import time
 
 from Bandit.pr_util import print_warning, print_error
 
@@ -26,7 +27,7 @@ try:
     # Try importing assuming Python 3.x first
     # from urllib.parse import urlparse, urlencode
     from urllib.request import urlopen, Request
-    from urllib.error import HTTPError
+    from urllib.error import HTTPError, URLError
 except ImportError:
     # Otherwise fallback to Python 2.x
     # from urlparse import urlparse
@@ -267,6 +268,10 @@ class NWIS(object):
                     attempts += 1
                     self.logger.warning('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
                     # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                except (ConnectionResetError) as err:
+                    attempts += 1
+                    self.logger.warning('ConnectionResetError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    time.sleep(10)
 
             if streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
