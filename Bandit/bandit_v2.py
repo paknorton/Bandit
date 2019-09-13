@@ -456,60 +456,62 @@ def main():
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
-    poi_gage_segment = nhm_params.get('poi_gage_segment').tolist()
-    bandit_log.info('Size of NHM poi_gage_segment: {}'.format(len(poi_gage_segment)))
-
-    poi_gage_id = nhm_params.get('poi_gage_id').data
-    poi_type = nhm_params.get('poi_type').data
-
-    # We want to get the indices of the poi_gage_segments that match the
-    # segments that are part of the subset. We can then use these
-    # indices to subset poi_gage_id and poi_type.
-    # The poi_gage_segment will need to be renumbered for the subset of segments.
-
-    # To subset poi_gage_segment we have to lookup each segment in the subset
     new_poi_gage_segment = []
     new_poi_gage_id = []
     new_poi_type = []
 
-    # for ss in uniq_seg_us:
-    try:
-        # networkx 1.x
-        for ss in nx.nodes_iter(dag_ds_subset):
-            if ss in poi_gage_segment:
-                new_poi_gage_segment.append(toseg_idx.index(ss)+1)
-                new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
-                new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
-    except AttributeError:
-        # networkx 2.x
-        for ss in dag_ds_subset.nodes:
-            if ss in poi_gage_segment:
-                new_poi_gage_segment.append(toseg_idx.index(ss)+1)
-                new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
-                new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
+    if nhm_params.exists('poi_gage_segment'):
+        poi_gage_segment = nhm_params.get('poi_gage_segment').tolist()
+        bandit_log.info('Size of NHM poi_gage_segment: {}'.format(len(poi_gage_segment)))
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Add any valid user-specified streamgage, nhm_seg pairs
-    if addl_gages:
-        for ss, vv in iteritems(addl_gages):
-            if ss in new_poi_gage_id:
-                idx = new_poi_gage_id.index(ss)
-                bandit_log.warning('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
-                                                                                                          toseg_idx.index(vv)+1))
-                new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
-                new_poi_type[idx] = 0
-            elif toseg_idx.index(vv)+1 in new_poi_gage_segment:
-                sidx = new_poi_gage_segment.index(toseg_idx.index(vv)+1)
-                bandit_log.warning('User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'.format(ss, toseg_idx.index(vv)+1, new_poi_gage_id[sidx]))
-                new_poi_gage_id[sidx] = ss
-                new_poi_type[sidx] = 0
-            elif vv not in seg_to_hru.keys():
-                bandit_log.warning('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
-            else:
-                new_poi_gage_id.append(ss)
-                new_poi_gage_segment.append(toseg_idx.index(vv)+1)
-                new_poi_type.append(0)
-                bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
+        poi_gage_id = nhm_params.get('poi_gage_id').data
+        poi_type = nhm_params.get('poi_type').data
+
+        # We want to get the indices of the poi_gage_segments that match the
+        # segments that are part of the subset. We can then use these
+        # indices to subset poi_gage_id and poi_type.
+        # The poi_gage_segment will need to be renumbered for the subset of segments.
+
+        # To subset poi_gage_segment we have to lookup each segment in the subset
+
+        # for ss in uniq_seg_us:
+        try:
+            # networkx 1.x
+            for ss in nx.nodes_iter(dag_ds_subset):
+                if ss in poi_gage_segment:
+                    new_poi_gage_segment.append(toseg_idx.index(ss)+1)
+                    new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
+                    new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
+        except AttributeError:
+            # networkx 2.x
+            for ss in dag_ds_subset.nodes:
+                if ss in poi_gage_segment:
+                    new_poi_gage_segment.append(toseg_idx.index(ss)+1)
+                    new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
+                    new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Add any valid user-specified streamgage, nhm_seg pairs
+        if addl_gages:
+            for ss, vv in iteritems(addl_gages):
+                if ss in new_poi_gage_id:
+                    idx = new_poi_gage_id.index(ss)
+                    bandit_log.warning('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
+                                                                                                              toseg_idx.index(vv)+1))
+                    new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
+                    new_poi_type[idx] = 0
+                elif toseg_idx.index(vv)+1 in new_poi_gage_segment:
+                    sidx = new_poi_gage_segment.index(toseg_idx.index(vv)+1)
+                    bandit_log.warning('User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'.format(ss, toseg_idx.index(vv)+1, new_poi_gage_id[sidx]))
+                    new_poi_gage_id[sidx] = ss
+                    new_poi_type[sidx] = 0
+                elif vv not in seg_to_hru.keys():
+                    bandit_log.warning('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+                else:
+                    new_poi_gage_id.append(ss)
+                    new_poi_gage_segment.append(toseg_idx.index(vv)+1)
+                    new_poi_type.append(0)
+                    bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
 
     # ==================================================================
     # ==================================================================
