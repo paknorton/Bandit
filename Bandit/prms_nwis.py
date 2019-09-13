@@ -11,6 +11,7 @@ import logging
 import numpy as np
 import pandas as pd
 import re
+import socket
 import sys
 import time
 
@@ -212,6 +213,10 @@ class NWIS(object):
 
         if not self.__outdata:
             self.initialize_dataframe()
+
+        # Set timeout in seconds - if not set defaults to infinite time for response
+        timeout = 30
+        socket.setdefaulttimeout(timeout)
 
         url_pieces = OrderedDict()
         url_pieces['?format'] = 'rdb'
