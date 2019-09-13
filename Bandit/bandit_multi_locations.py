@@ -117,7 +117,7 @@ def main():
     # default_config_file = '{}/bandit.cfg'.format(jobdir)
 
     # cmd_bandit = '/media/scratch/PRMS/bandit/Bandit/bandit.py'
-    cmd_bandit = find_executable('bandit')
+    cmd_bandit = find_executable('bandit_v2')
 
     if not cmd_bandit:
         print('ERROR: Unable to find bandit.py')
