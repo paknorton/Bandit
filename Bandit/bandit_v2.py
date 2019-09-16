@@ -372,16 +372,27 @@ def main():
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
 
     # NOTE: With monolithic nhmParamDb files hru_segment becomes hru_segment_nhm and the regional hru_segments are gone.
+    # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
+    #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
+    #                 needs to be loaded and used to map the nhm HRU ids to their
+    #                 respective indices.
     hru_segment = nhm_params.get('hru_segment').data
+    nhm_id = nhm_params.get('nhm_id').data
+
+    nhm_id_to_idx = {}
+    for ii, vv in enumerate(nhm_id):
+        # keys are 1-based, values are 0-based
+        nhm_id_to_idx[vv] = ii
 
     bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
 
     # Create a dictionary mapping segments to HRUs
     seg_to_hru = {}
     for ii, vv in enumerate(hru_segment):
+        # keys are 1-based, values in arrays are 1-based
         seg_to_hru.setdefault(vv, []).append(ii + 1)
 
-    # Get HRU ids ordered by the segments in the model subset
+    # Get HRU ids ordered by the segments in the model subset - entries are 1-based
     hru_order_subset = []
     for xx in toseg_idx:
         if xx in seg_to_hru:
@@ -394,12 +405,14 @@ def main():
     # Append the additional non-routed HRUs to the list
     if len(hru_noroute) > 0:
         for xx in hru_noroute:
-            if hru_segment[xx-1] == 0:
+            if hru_segment[nhm_id_to_idx[xx]] == 0:
+            # if hru_segment[xx-1] == 0:
                 bandit_log.info('User-supplied HRU {} is not connected to any stream segment'.format(xx))
-                hru_order_subset.append(xx)
+                hru_order_subset.append(nhm_id_to_idx[xx] + 1)
+                # hru_order_subset.append(xx)
             else:
                 bandit_log.error('User-supplied HRU {} routes to stream segment {} - Skipping.'.format(xx,
-                                                                                                       hru_segment[xx-1]))
+                                                                                                       hru_segment[nhm_id_to_idx[xx]]))
 
     hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
 
@@ -433,7 +446,8 @@ def main():
     # Append zeroes to new_hru_segment for each additional non-routed HRU
     if len(hru_noroute) > 0:
         for xx in hru_noroute:
-            if hru_segment[xx-1] == 0:
+            # if hru_segment[xx-1] == 0:
+            if hru_segment[nhm_id_to_idx[xx]] == 0:
                 new_hru_segment.append(0)
 
     bandit_log.info('Size of hru_segment for subset: {}'.format(len(new_hru_segment)))
@@ -695,6 +709,12 @@ def main():
     #     sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
     sys.stdout.flush()
 
+    # 2019-09-16 PAN: Nasty hack to handle parameter databases that may not have
+    #                 a one-to-one match between index value and nhm_id.
+    cparam = nhm_params.get('nhm_id').tostructure()
+    hru_order_subset_nhm_id = np.array(cparam['data'])[tuple(hru_order_subset0),].ravel(order='F').tolist()
+
+
     if output_cbh:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -706,7 +726,8 @@ def main():
 
             if os.path.splitext(cbh_dir)[1] == '.nc':
                 cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
-                                    nhm_hrus=hru_order_subset)
+                                    nhm_hrus=hru_order_subset_nhm_id)
+                                    # nhm_hrus=hru_order_subset)
             else:
                 # Subset the hru_nhm_to_local mapping
                 # TODO: This section will not work with the monolithic paramdb - remove
@@ -750,10 +771,12 @@ def main():
                 if args.verbose:
                     print('Writing dynamic parameter {}'.format(cparam))
 
-                mydyn = dyn_params.DynamicParameters(input_file, cparam, st_date, en_date, hru_order_subset)
+                mydyn = dyn_params.DynamicParameters(input_file, cparam, st_date, en_date, hru_order_subset_nhm_id)
+                # mydyn = dyn_params.DynamicParameters(input_file, cparam, st_date, en_date, hru_order_subset)
 
                 mydyn.read_netcdf()
-                out_order = [kk for kk in hru_order_subset]
+                out_order = [kk for kk in hru_order_subset_nhm_id]
+                # out_order = [kk for kk in hru_order_subset]
                 for cc in ['day', 'month', 'year']:
                     out_order.insert(0, cc)
 
@@ -833,7 +856,8 @@ def main():
             # print('\tHRUs')
             # geo_shp.select_layer('nhruNationalIdentifier')
             geo_shp.select_layer('nhru')
-            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
+            # geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
+            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset_nhm_id,
                                     included_fields=['nhm_id', 'model_idx', 'region', 'hru_id_nat'])
 
             # geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
