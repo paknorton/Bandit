@@ -847,8 +847,14 @@ def main():
                             sys.stdout.flush()
 
                         filename = f'{output_vars_dir}/{vv}.nc'
-                        mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                              nhm_hrus=hru_order_subset_nhm_id)
+
+                        if vv[0:3] == 'seg':
+                            mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                                  nhm_segs=toseg_idx)
+                        else:
+                            mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                                  nhm_hrus=hru_order_subset_nhm_id)
+
                         mod_out.write_csv(f'{sg_dir}/model_output')
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
