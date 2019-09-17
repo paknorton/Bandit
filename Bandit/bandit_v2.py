@@ -40,6 +40,7 @@ import Bandit.bandit_cfg as bc
 import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 import Bandit.dynamic_parameters as dyn_params
+from Bandit.model_output import ModelOutput
 from Bandit.git_version import git_version
 from Bandit import __version__
 
@@ -170,20 +171,11 @@ def main():
     # What to name the output parameter file
     param_filename = config.param_filename
 
-    # What to name the streamflow output file
-    obs_filename = config.streamflow_filename
-
     # Location of the NHM parameter database
     paramdb_dir = config.paramdb_dir
 
     # Location of the merged parameter database
     merged_paramdb_dir = config.merged_paramdb_dir
-
-    # Location of the NHM CBH files
-    cbh_dir = config.cbh_dir
-
-    # Full path and filename to the geodatabase to use for outputting shapefile subsets
-    geo_file = config.geodatabase_filename
 
     # List of outlets
     dsmost_seg = config.outlets
@@ -194,11 +186,40 @@ def main():
     # List of additional HRUs (have no route to segment within subset)
     hru_noroute = config.hru_noroute
 
+    # List of output variables to sbuset
+    try:
+        include_model_output = config.include_model_output
+        output_vars_dir = config.output_vars_dir
+        output_vars = config.output_vars
+    except KeyError:
+        include_model_output = False
+
     # Control what is checked and output for subset
     check_dag = config.check_DAG
-    output_cbh = config.output_cbh
-    output_streamflow = config.output_streamflow
-    output_shapefiles = config.output_shapefiles
+
+    try:
+        output_cbh = config.output_cbh
+
+        # Location of the NHM CBH files
+        cbh_dir = config.cbh_dir
+    except KeyError:
+        output_cbh = False
+
+    try:
+        output_streamflow = config.output_streamflow
+
+        # What to name the streamflow output file
+        obs_filename = config.streamflow_filename
+    except KeyError:
+        output_streamflow = False
+
+    try:
+        output_shapefiles = config.output_shapefiles
+
+        # Full path and filename to the geodatabase to use for outputting shapefile subsets
+        geo_file = config.geodatabase_filename
+    except KeyError:
+        output_shapefiles = False
 
     # Load the control file
     ctl = ControlFile(control_filename)
@@ -712,9 +733,11 @@ def main():
     # 2019-09-16 PAN: Nasty hack to handle parameter databases that may not have
     #                 a one-to-one match between index value and nhm_id.
     cparam = nhm_params.get('nhm_id').tostructure()
-    hru_order_subset_nhm_id = np.array(cparam['data'])[tuple(hru_order_subset0),].ravel(order='F').tolist()
+    hru_order_subset_nhm_id = np.array(cparam['data'])[tuple(hru_order_subset0), ].ravel(order='F').tolist()
 
-
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Write CBH files
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if output_cbh:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -756,6 +779,32 @@ def main():
         else:
             bandit_log.error('No HRUs associated with the segments')
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Write output variables
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # 2019-08-07 PAN: first prototype for extractions of output variables
+    if include_model_output:
+        if len(hru_order_subset) > 0:
+            try:
+                os.makedirs(f'{outdir}/model_output')
+                print('Creating directory model_output, for model output variables')
+            except OSError:
+                print('Using existing model_output directory for output variables')
+
+            for vv in output_vars:
+                if args.verbose:
+                    sys.stdout.write('\r                                                  ')
+                    sys.stdout.write(f'\rProcessing output variable: {vv} ')
+                    sys.stdout.flush()
+
+                filename = f'{output_vars_dir}/{vv}.nc'
+                mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                      nhm_hrus=hru_order_subset_nhm_id)
+                mod_out.write_csv(f'{outdir}/model_output')
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Write dynamic parameters
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if ctl.has_dynamic_parameters:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -793,30 +842,6 @@ def main():
 
     # Write an updated control file to the output directory
     ctl.write('{}.bandit'.format(control_filename))
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Output model output variables
-    # outvar = 'tmaxf'
-    # workdir = '/Users/pnorton/Projects/National_Hydrology_Model/datasets/NHM_output'
-    # input_file = '{}/{}.nc'.format(workdir, outvar)
-    # output_file = '{}/{}.nc'.format(outdir, outvar)
-    #
-    # if not os.path.exists(input_file):
-    #     bandit_log.warning('WARNING: CONUS output variable file: {}, does not exist... skipping'.format(input_file))
-    # else:
-    #     if args.verbose:
-    #         print('Writing NHM model output variable {}'.format(outvar))
-    #
-    #     model_out_var = ModelOutput(input_file, outvar, st_date, en_date, hru_order_subset)
-    #     model_out_var.read_netcdf()
-    #     out_order = [kk for kk in hru_order_subset]
-    #
-    #     model_out_var.data.to_csv('{}/{}.csv'.format(outdir, outvar), columns=out_order, na_rep='-999',
-    #                       sep=',', index=True, header=True, encoding=None, chunksize=50)
-    #
-    #     model_out_var.dataarray.to_netcdf('{}/{}.nc'.format(outdir, outvar),
-    #                                       encoding={'time': {'_FillValue': None,
-    #                                                          'calendar': 'standard'}})
 
     if output_streamflow:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
