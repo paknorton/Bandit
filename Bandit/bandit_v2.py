@@ -282,7 +282,7 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Get tosegment_nhm
     # NOTE: tosegment is now tosegment_nhm and the regional tosegment is gone.
-    tosegment = nhm_params.get('tosegment').data
+    tosegment = nhm_params.get('tosegment_nhm').data
     nhm_seg = nhm_params.get('nhm_seg').data
 
     if args.verbose:
@@ -303,9 +303,9 @@ def main():
     for ii, vv in enumerate(tosegment):
         #     dag_ds.add_edge(ii+1, vv)
         if vv == 0:
-            dag_ds.add_edge(ii + 1, 'Out_{}'.format(ii + 1))
+            dag_ds.add_edge(nhm_seg[ii], 'Out_{}'.format(nhm_seg[ii]))
         else:
-            dag_ds.add_edge(ii + 1, vv)
+            dag_ds.add_edge(nhm_seg[ii], vv)
 
     # nx.draw_networkx(dag_ds)
     bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
@@ -446,6 +446,7 @@ def main():
     # Renumber the tosegment list
     new_tosegment = []
 
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # Map old DAG_subds indices to new
     for xx in toseg_idx:
         if list(dag_ds_subset.neighbors(xx))[0] in toseg_idx:
@@ -454,6 +455,7 @@ def main():
             # Outlets should be assigned zero
             new_tosegment.append(0)
 
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # Renumber the hru_segments for the subset
     new_hru_segment = []
 
@@ -464,6 +466,7 @@ def main():
                 # The new indices should be 1-based from PRMS
                 new_hru_segment.append(toseg_idx.index(xx)+1)
 
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # Append zeroes to new_hru_segment for each additional non-routed HRU
     if len(hru_noroute) > 0:
         for xx in hru_noroute:
@@ -473,6 +476,7 @@ def main():
 
     bandit_log.info('Size of hru_segment for subset: {}'.format(len(new_hru_segment)))
 
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset hru_deplcrv
     hru_deplcrv = nhm_params.get('hru_deplcrv').data
@@ -485,10 +489,16 @@ def main():
     uniq_deplcrv = list(set(hru_deplcrv_subset))
     uniq_deplcrv0 = [xx - 1 for xx in uniq_deplcrv]
 
+    uniq_dict = {}
+    for ii, xx in enumerate(uniq_deplcrv):
+        uniq_dict[xx] = ii + 1
+
     # Create new hru_deplcrv and renumber
-    new_hru_deplcrv = [uniq_deplcrv.index(cc)+1 for cc in hru_deplcrv_subset]
+    new_hru_deplcrv = [uniq_dict[xx] for xx in hru_deplcrv_subset]
+    # new_hru_deplcrv = [uniq_deplcrv.index(cc)+1 for cc in hru_deplcrv_subset]
     bandit_log.info('Size of hru_deplcrv for subset: {}'.format(len(new_hru_deplcrv)))
 
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
     new_poi_gage_segment = []
