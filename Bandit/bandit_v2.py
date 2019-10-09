@@ -94,6 +94,109 @@ def parse_gages(items):
     return d
 
 
+def generate_stream_network(tosegment, nhm_seg):
+    dag_ds = nx.DiGraph()
+    for ii, vv in enumerate(tosegment):
+        #     dag_ds.add_edge(ii+1, vv)
+        if vv == 0:
+            dag_ds.add_edge(nhm_seg[ii], 'Out_{}'.format(nhm_seg[ii]))
+        else:
+            dag_ds.add_edge(nhm_seg[ii], vv)
+
+    bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
+    bandit_log.debug('Number of NHM downstream edges: {}'.format(dag_ds.number_of_edges()))
+
+    return dag_ds
+
+
+def subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg):
+    # Create the upstream graph
+    dag_us = dag_ds.reverse()
+    bandit_log.debug('Number of NHM upstream nodes: {}'.format(dag_us.number_of_nodes()))
+    bandit_log.debug('Number of NHM upstream edges: {}'.format(dag_us.number_of_edges()))
+
+    # Trim the u/s graph to remove segments above the u/s cutoff segments
+    try:
+        for xx in uscutoff_seg:
+            try:
+                dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
+
+                # Also remove the cutoff segment itself
+                dag_us.remove_node(xx)
+            except KeyError:
+                print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
+    except TypeError:
+        bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType. ({})'.format(outdir))
+        exit(200)
+
+    bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
+    bandit_log.debug('Number of NHM upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
+
+    # =======================================
+    # Given a d/s segment (dsmost_seg) create a subset of u/s segments
+
+    # Get all unique segments u/s of the starting segment
+    uniq_seg_us = set()
+    if dsmost_seg:
+        for xx in dsmost_seg:
+            try:
+                pred = nx.dfs_predecessors(dag_us, xx)
+                uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
+            except KeyError:
+                bandit_log.error('KeyError: Segment {} does not exist in stream network'.format(xx))
+                # print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
+
+        # Get a subgraph in the dag_ds graph and return the edges
+        dag_ds_subset = dag_ds.subgraph(uniq_seg_us).copy()
+
+        # 2018-02-13 PAN: It is possible to have outlets specified which are not truly
+        #                 outlets in the most conservative sense (e.g. a point where
+        #                 the stream network exits the study area). This occurs when
+        #                 doing headwater extractions where all segments for a headwater
+        #                 are specified in the configuration file. Instead of creating
+        #                 output edges for all specified 'outlets' the set difference
+        #                 between the specified outlets and nodes in the graph subset
+        #                 which have no edges is performed first to reduce the number of
+        #                 outlets to the 'true' outlets of the system.
+        node_outlets = [ee[0] for ee in dag_ds_subset.edges()]
+        true_outlets = set(dsmost_seg).difference(set(node_outlets))
+        bandit_log.debug('node_outlets: {}'.format(','.join(map(str, node_outlets))))
+        bandit_log.debug('true_outlets: {}'.format(','.join(map(str, true_outlets))))
+
+        # Add the downstream segments that exit the subgraph
+        for xx in true_outlets:
+            nhm_outlet = list(dag_ds.neighbors(xx))[0]
+            dag_ds_subset.nodes[xx]['style'] = 'filled'
+            dag_ds_subset.nodes[xx]['fontcolor'] = 'white'
+            dag_ds_subset.nodes[xx]['fillcolor'] = 'blue'
+            dag_ds_subset.add_node(nhm_outlet, style='filled', fontcolor='white', fillcolor='grey')
+            dag_ds_subset.add_edge(xx, nhm_outlet)
+    else:
+        # No outlets specified so pull the CONUS
+        dag_ds_subset = dag_ds
+
+    return dag_ds_subset
+
+# Setup the logging
+bandit_log = logging.getLogger('bandit')
+bandit_log.setLevel(logging.DEBUG)
+
+log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
+
+# Handler for file logs
+flog = logging.FileHandler('bandit.log')
+flog.setLevel(logging.DEBUG)
+flog.setFormatter(log_fmt)
+
+# Handler for console logs
+clog = logging.StreamHandler()
+clog.setLevel(logging.ERROR)
+clog.setFormatter(log_fmt)
+
+bandit_log.addHandler(flog)
+bandit_log.addHandler(clog)
+
+
 def main():
     # Command line arguments
     parser = argparse.ArgumentParser(description='Extract model subsets from the National Hydrologic Model')
@@ -118,6 +221,8 @@ def main():
 
     stdir = os.getcwd()
 
+    keep_hru_order = True
+
     if args.job:
         if os.path.exists(args.job):
             # Change into job directory before running extraction
@@ -126,25 +231,6 @@ def main():
         else:
             print('ERROR: Invalid jobs directory: {}'.format(args.job))
             exit(-1)
-
-    # Setup the logging
-    bandit_log = logging.getLogger('bandit')
-    bandit_log.setLevel(logging.DEBUG)
-
-    log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
-
-    # Handler for file logs
-    flog = logging.FileHandler('bandit.log')
-    flog.setLevel(logging.DEBUG)
-    flog.setFormatter(log_fmt)
-
-    # Handler for console logs
-    clog = logging.StreamHandler()
-    clog.setLevel(logging.ERROR)
-    clog.setFormatter(log_fmt)
-
-    bandit_log.addHandler(flog)
-    bandit_log.addHandler(clog)
 
     bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
 
@@ -282,8 +368,9 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Get tosegment_nhm
     # NOTE: tosegment is now tosegment_nhm and the regional tosegment is gone.
-    tosegment = nhm_params.get('tosegment_nhm').data
-    nhm_seg = nhm_params.get('nhm_seg').data
+    # Convert to list for fastest access to array
+    tosegment = nhm_params.get('tosegment_nhm').tolist()
+    nhm_seg = nhm_params.get('nhm_seg').tolist()
 
     if args.verbose:
         print('Generating stream network from tosegment_nhm')
@@ -299,17 +386,7 @@ def main():
         exit(200)
 
     # Build the stream network
-    dag_ds = nx.DiGraph()
-    for ii, vv in enumerate(tosegment):
-        #     dag_ds.add_edge(ii+1, vv)
-        if vv == 0:
-            dag_ds.add_edge(nhm_seg[ii], 'Out_{}'.format(nhm_seg[ii]))
-        else:
-            dag_ds.add_edge(nhm_seg[ii], vv)
-
-    # nx.draw_networkx(dag_ds)
-    bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
-    bandit_log.debug('Number of NHM downstream edges: {}'.format(dag_ds.number_of_edges()))
+    dag_ds = generate_stream_network(tosegment, nhm_seg)
 
     if check_dag:
         if not nx.is_directed_acyclic_graph(dag_ds):
@@ -318,67 +395,10 @@ def main():
             for xx in nx.simple_cycles(dag_ds):
                 bandit_log.error('Cycle found for segment {}'.format(xx))
 
-    # Create the upstream graph
-    dag_us = dag_ds.reverse()
-    bandit_log.debug('Number of NHM upstream nodes: {}'.format(dag_us.number_of_nodes()))
-    bandit_log.debug('Number of NHM upstream edges: {}'.format(dag_us.number_of_edges()))
-
-    # Trim the u/s graph to remove segments above the u/s cutoff segments
-    try:
-        for xx in uscutoff_seg:
-            try:
-                dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
-
-                # Also remove the cutoff segment itself
-                dag_us.remove_node(xx)
-            except KeyError:
-                print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
-    except TypeError:
-        bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType. ({})'.format(outdir))
-        exit(200)
-
-    bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
-    bandit_log.debug('Number of NHM upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
-
-    # =======================================
-    # Given a d/s segment (dsmost_seg) create a subset of u/s segments
     if args.verbose:
         print('\tExtracting model subset')
 
-    # Get all unique segments u/s of the starting segment
-    uniq_seg_us = set()
-    if dsmost_seg:
-        for xx in dsmost_seg:
-            try:
-                pred = nx.dfs_predecessors(dag_us, xx)
-                uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
-            except KeyError:
-                bandit_log.error('KeyError: Segment {} does not exist in stream network'.format(xx))
-                # print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
-
-        # Get a subgraph in the dag_ds graph and return the edges
-        dag_ds_subset = dag_ds.subgraph(uniq_seg_us).copy()
-
-        # 2018-02-13 PAN: It is possible to have outlets specified which are not truly
-        #                 outlets in the most conservative sense (e.g. a point where
-        #                 the stream network exits the study area). This occurs when
-        #                 doing headwater extractions where all segments for a headwater
-        #                 are specified in the configuration file. Instead of creating
-        #                 output edges for all specified 'outlets' the set difference
-        #                 between the specified outlets and nodes in the graph subset
-        #                 which have no edges is performed first to reduce the number of
-        #                 outlets to the 'true' outlets of the system.
-        node_outlets = [ee[0] for ee in dag_ds_subset.edges()]
-        true_outlets = set(dsmost_seg).difference(set(node_outlets))
-        bandit_log.debug('node_outlets: {}'.format(','.join(map(str, node_outlets))))
-        bandit_log.debug('true_outlets: {}'.format(','.join(map(str, true_outlets))))
-
-        # Add the downstream segments that exit the subgraph
-        for xx in true_outlets:
-            dag_ds_subset.add_edge(xx, 'Out_{}'.format(xx))
-    else:
-        # No outlets specified so pull the CONUS
-        dag_ds_subset = dag_ds
+    dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
     # Create list of toseg ids for the model subset
     try:
@@ -392,87 +412,127 @@ def main():
 
     bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
 
+    # Use the mapping to create subsets of nhm_seg, tosegment_nhm, and tosegment
+    # NOTE: toseg_idx and new_nhm_seg are the same thing
+    new_nhm_seg = [ee[0] for ee in dag_ds_subset.edges]
+
+    # Using a dictionary mapping nhm_seg to 1-based index for speed
+    new_nhm_seg_dict = OrderedDict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
+
+    # Generate the renumbered local tosegments (1-based with zero being an outlet)
+    new_tosegment = [new_nhm_seg_dict[ee[1]] if ee[1] in new_nhm_seg_dict else 0 for ee in dag_ds_subset.edges]
+
     # NOTE: With monolithic nhmParamDb files hru_segment becomes hru_segment_nhm and the regional hru_segments are gone.
     # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
     #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
     #                 needs to be loaded and used to map the nhm HRU ids to their
     #                 respective indices.
-    hru_segment = nhm_params.get('hru_segment').data
-    nhm_id = nhm_params.get('nhm_id').data
-
-    nhm_id_to_idx = {}
-    for ii, vv in enumerate(nhm_id):
-        # keys are 1-based, values are 0-based
-        nhm_id_to_idx[vv] = ii
-
+    hru_segment = nhm_params.get('hru_segment_nhm').tolist()
+    nhm_id = nhm_params.get('nhm_id').tolist()
+    nhm_id_to_idx = nhm_params.get('nhm_id').index_map
     bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
 
-    # Create a dictionary mapping segments to HRUs
-    seg_to_hru = {}
+    # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
+    # new_nhm_seg and hru_noroute.
+    seg_to_hru = OrderedDict()
+    hru_to_seg = OrderedDict()
+
     for ii, vv in enumerate(hru_segment):
+        # Contains both new_nhm_seg values and non-routed HRU values
         # keys are 1-based, values in arrays are 1-based
-        seg_to_hru.setdefault(vv, []).append(ii + 1)
-
-    # Get HRU ids ordered by the segments in the model subset - entries are 1-based
-    hru_order_subset = []
-    for xx in toseg_idx:
-        if xx in seg_to_hru:
-            for yy in seg_to_hru[xx]:
-                hru_order_subset.append(yy)
-        else:
-            bandit_log.warning('Stream segment {} has no HRUs connected to it.'.format(xx))
-            # raise ValueError('Stream segment has no HRUs connected to it.')
-
-    # Append the additional non-routed HRUs to the list
-    if len(hru_noroute) > 0:
-        for xx in hru_noroute:
-            if hru_segment[nhm_id_to_idx[xx]] == 0:
-            # if hru_segment[xx-1] == 0:
-                bandit_log.info('User-supplied HRU {} is not connected to any stream segment'.format(xx))
-                hru_order_subset.append(nhm_id_to_idx[xx] + 1)
-                # hru_order_subset.append(xx)
+        if vv in new_nhm_seg:
+            seg_to_hru.setdefault(vv, []).append(ii + 1)
+            hru_to_seg[ii+1] = vv
+        elif nhm_id[ii] in hru_noroute:
+            if vv != 0:
+                bandit_log.error('User-supplied non-routed HRU {} routes to stream segment {} - Skipping.'.format(nhm_id[ii], vv))
             else:
-                bandit_log.error('User-supplied HRU {} routes to stream segment {} - Skipping.'.format(xx,
-                                                                                                       hru_segment[nhm_id_to_idx[xx]]))
+                seg_to_hru.setdefault(vv, []).append(ii + 1)
+                hru_to_seg[ii+1] = vv
+    print(seg_to_hru)
+    print('-'*40)
+    print(hru_to_seg)
 
-    hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
+    # HRU-related parameters can either be output with the legacy, segment-orient order
+    # or can be output while maintaining their relative order from the parameter database.
+    if keep_hru_order:
+        hru_order_subset = [kk for kk in hru_to_seg.keys()]
 
+        # new_nhm_seg_idx_map = OrderedDict((nseg, idx+1) for idx, nseg in enumerate(new_nhm_seg))
+        new_hru_segment = [new_nhm_seg_dict[kk] if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in
+                           hru_to_seg.values()]
+    else:
+        # Get NHM HRU ids ordered by the segments in the model subset - entries are 1-based
+        hru_order_subset = []
+        for xx in toseg_idx:
+            if xx in seg_to_hru:
+                for yy in seg_to_hru[xx]:
+                    hru_order_subset.append(yy)
+            else:
+                bandit_log.warning('Stream segment {} has no HRUs connected to it.'.format(xx))
+
+        # Append the additional non-routed HRUs to the list
+        if len(hru_noroute) > 0:
+            for xx in hru_noroute:
+                if hru_segment[nhm_id_to_idx[xx]] == 0:
+                    bandit_log.info('User-supplied HRU {} is not connected to any stream segment'.format(xx))
+                    hru_order_subset.append(nhm_id_to_idx[xx] + 1)
+                else:
+                    bandit_log.error('User-supplied HRU {} routes to stream segment {} - Skipping.'.format(xx,
+                                                                                                           hru_segment[nhm_id_to_idx[xx]]))
+
+        # Renumber the hru_segments for the subset
+        new_hru_segment = []
+
+        for xx in toseg_idx:
+            # if DAG_subds.neighbors(xx)[0] in toseg_idx:
+            if xx in seg_to_hru:
+                for _ in seg_to_hru[xx]:
+                    # The new indices should be 1-based from PRMS
+                    new_hru_segment.append(toseg_idx.index(xx)+1)
+
+        # Append zeroes to new_hru_segment for each additional non-routed HRU
+        if len(hru_noroute) > 0:
+            for xx in hru_noroute:
+                # if hru_segment[xx-1] == 0:
+                if hru_segment[nhm_id_to_idx[xx]] == 0:
+                    new_hru_segment.append(0)
+
+    # print('-'*40)
+    # print(hru_order_subset)
+    hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
+    # print('-'*40)
+    # print(hru_order_subset0)
+    # print([xx - 1 for xx in hru_order_subset])
+    # hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
     bandit_log.info('Number of HRUs in subset: {}'.format(len(hru_order_subset)))
 
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
     # toseg_idx contains the in-order indices for the subset of tosegments
 
-    # Renumber the tosegment list
-    new_tosegment = []
+    # # Renumber the tosegment list
+    # new_tosegment = []
+    #
+    # # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    # # Map old DAG_subds indices to new
+    # for xx in toseg_idx:
+    #     if list(dag_ds_subset.neighbors(xx))[0] in toseg_idx:
+    #         new_tosegment.append(toseg_idx.index(list(dag_ds_subset.neighbors(xx))[0]) + 1)
+    #     else:
+    #         # Outlets should be assigned zero
+    #         new_tosegment.append(0)
 
-    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-    # Map old DAG_subds indices to new
-    for xx in toseg_idx:
-        if list(dag_ds_subset.neighbors(xx))[0] in toseg_idx:
-            new_tosegment.append(toseg_idx.index(list(dag_ds_subset.neighbors(xx))[0]) + 1)
-        else:
-            # Outlets should be assigned zero
-            new_tosegment.append(0)
 
-    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-    # Renumber the hru_segments for the subset
-    new_hru_segment = []
+    # Create map connecting nhm_id to hru_segment_nhm ids
+    # cc = OrderedDict((nhm, hru_seg) for nhm, hru_seg in zip(nhm_id, hru_segment_nhm))
 
-    for xx in toseg_idx:
-        # if DAG_subds.neighbors(xx)[0] in toseg_idx:
-        if xx in seg_to_hru:
-            for _ in seg_to_hru[xx]:
-                # The new indices should be 1-based from PRMS
-                new_hru_segment.append(toseg_idx.index(xx)+1)
-
-    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-    # Append zeroes to new_hru_segment for each additional non-routed HRU
-    if len(hru_noroute) > 0:
-        for xx in hru_noroute:
-            # if hru_segment[xx-1] == 0:
-            if hru_segment[nhm_id_to_idx[xx]] == 0:
-                new_hru_segment.append(0)
+    # Can we re-construct original arrays/order from the ordered dictionary? Yes
+    # new_nhm_id = [xx for xx in cc.keys()]
+    #
+    # new_hru_segment_nhm = [kk if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in cc.values()]
+    #
+    # new_hru_segment = [new_nhm_seg.index(kk) + 1 if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in cc.values()]
 
     bandit_log.info('Size of hru_segment for subset: {}'.format(len(new_hru_segment)))
 
@@ -529,11 +589,12 @@ def main():
                     new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
         except AttributeError:
             # networkx 2.x
-            for ss in dag_ds_subset.nodes:
+            for ss in new_nhm_seg:
                 if ss in poi_gage_segment:
-                    new_poi_gage_segment.append(toseg_idx.index(ss)+1)
-                    new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
-                    new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
+                    poi_idx = poi_gage_segment.index(ss)
+                    new_poi_gage_segment.append(new_nhm_seg_dict[ss])
+                    new_poi_gage_id.append(poi_gage_id[poi_idx])
+                    new_poi_type.append(poi_type[poi_idx])
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Add any valid user-specified streamgage, nhm_seg pairs
@@ -542,21 +603,40 @@ def main():
                 if ss in new_poi_gage_id:
                     idx = new_poi_gage_id.index(ss)
                     bandit_log.warning('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
-                                                                                                              toseg_idx.index(vv)+1))
-                    new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
+                                                                                                                 new_nhm_seg_dict[vv]))
+                    new_poi_gage_segment[idx] = new_nhm_seg_dict[vv]
+                    # bandit_log.warning('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
+                    #                                                                                           toseg_idx.index(vv)+1))
+                    # new_poi_gage_segment[idx] = toseg_idx.index(vv)+1
                     new_poi_type[idx] = 0
-                elif toseg_idx.index(vv)+1 in new_poi_gage_segment:
-                    sidx = new_poi_gage_segment.index(toseg_idx.index(vv)+1)
-                    bandit_log.warning('User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'.format(ss, toseg_idx.index(vv)+1, new_poi_gage_id[sidx]))
+                elif new_nhm_seg_dict[vv] in new_poi_gage_segment:
+                    sidx = new_poi_gage_segment.index(new_nhm_seg_dict[vv])
+                    bandit_log.warning(
+                        'User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'.format(
+                            ss, new_nhm_seg_dict[vv], new_poi_gage_id[sidx]))
                     new_poi_gage_id[sidx] = ss
                     new_poi_type[sidx] = 0
                 elif vv not in seg_to_hru.keys():
-                    bandit_log.warning('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+                    bandit_log.warning(
+                        'User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(
+                            ss, vv))
                 else:
                     new_poi_gage_id.append(ss)
-                    new_poi_gage_segment.append(toseg_idx.index(vv)+1)
+                    new_poi_gage_segment.append(new_nhm_seg_dict[vv])
                     new_poi_type.append(0)
                     bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
+                # elif toseg_idx.index(vv)+1 in new_poi_gage_segment:
+                #     sidx = new_poi_gage_segment.index(toseg_idx.index(vv)+1)
+                #     bandit_log.warning('User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'.format(ss, toseg_idx.index(vv)+1, new_poi_gage_id[sidx]))
+                #     new_poi_gage_id[sidx] = ss
+                #     new_poi_type[sidx] = 0
+                # elif vv not in seg_to_hru.keys():
+                #     bandit_log.warning('User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+                # else:
+                #     new_poi_gage_id.append(ss)
+                #     new_poi_gage_segment.append(toseg_idx.index(vv)+1)
+                #     new_poi_type.append(0)
+                #     bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
 
     # ==================================================================
     # ==================================================================
