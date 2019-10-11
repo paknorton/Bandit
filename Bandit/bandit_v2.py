@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-from __future__ import (absolute_import, division, print_function)
+# from __future__ import (absolute_import, division, print_function)
 # , unicode_literals)
-from future.utils import iteritems, iterkeys
+# from future.utils import iteritems
 
 import argparse
 import errno
@@ -13,28 +13,9 @@ import numpy as np
 import os
 import re
 import sys
-# import xml.etree.ElementTree as xmlET
 
 from collections import OrderedDict
 import datetime
-
-try:
-    # Python 2.x
-    from StringIO import StringIO
-except ImportError:
-    # Python 3.x
-    from io import StringIO
-
-try:
-    # Try importing assuming Python 3.x first
-    # from urllib.parse import urlparse, urlencode
-    from urllib.request import urlopen, Request
-    from urllib.error import HTTPError
-except ImportError:
-    # Otherwise fallback to Python 2.x
-    # from urlparse import urlparse
-    # from urllib import urlencode
-    from urllib2 import urlopen, Request, HTTPError
 
 import Bandit.bandit_cfg as bc
 import Bandit.prms_geo as prms_geo
@@ -45,8 +26,7 @@ from Bandit.git_version import git_version
 from Bandit import __version__
 
 from pyPRMS.ParamDb import ParamDb
-# from pyPRMS.ParameterFile import ParameterFile
-from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
+from pyPRMS.constants import HRU_DIMS
 from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.CbhAscii import CbhAscii
 from pyPRMS.ControlFile import ControlFile
@@ -63,22 +43,25 @@ def parse_gage(s):
     On the command line (argparse) a declaration will typically look like::
         foo=hello or foo="hello world"
 
-    :param s: tuple(key, value)
+    :param s: str
+    :rtype: tuple(key, value)
     """
 
     # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
     items = s.split('=')
     key = items[0].strip()  # we remove blanks around keys, as is logical
+    value = ''
+
     if len(items) > 1:
         # rejoin the rest:
         value = '='.join(items[1:])
-    return (key, value)
+    return key, value
 
 
 def parse_gages(items):
     """Parse a list of key-value pairs and return a dictionary.
 
-    :param list[(str, str)] items: list of key-value tuples
+    :param list[str] items: list of key-value pairs
 
     :returns: key-value dictionary
     :rtype: dict[str, str]
@@ -86,7 +69,6 @@ def parse_gages(items):
 
     # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
     d = {}
-
     if items:
         for item in items:
             key, value = parse_gage(item)
@@ -126,7 +108,7 @@ def subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg):
             except KeyError:
                 print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
     except TypeError:
-        bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType. ({})'.format(outdir))
+        bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType.')
         exit(200)
 
     bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
@@ -177,6 +159,7 @@ def subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg):
 
     return dag_ds_subset
 
+
 # Setup the logging
 bandit_log = logging.getLogger('bandit')
 bandit_log.setLevel(logging.DEBUG)
@@ -215,9 +198,12 @@ def main():
     parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
     parser.add_argument('--cbh_netcdf', help='Enable netCDF output for CBH files', action='store_true')
     parser.add_argument('--param_netcdf', help='Enable netCDF output for parameter file', action='store_true')
-    parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+', help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must exist in the model subset. Additional streamgages are marked as poi_type=0.')
-    parser.add_argument('--no_filter_params', help='Output all parameters regardless of modules selected', action='store_true')
-    parser.add_argument('--keep_hru_order', help='Keep HRUs in the relative order they occur in the paramdb', action='store_true')
+    parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+',
+                        help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must exist in the model subset. Additional streamgages are marked as poi_type=0.')
+    parser.add_argument('--no_filter_params',
+                        help='Output all parameters regardless of modules selected', action='store_true')
+    parser.add_argument('--keep_hru_order',
+                        help='Keep HRUs in the relative order they occur in the paramdb', action='store_true')
     args = parser.parse_args()
 
     stdir = os.getcwd()
@@ -241,7 +227,7 @@ def main():
     config = bc.Cfg('bandit.cfg')
 
     # Override configuration variables with any command line parameters
-    for kk, vv in iteritems(args.__dict__):
+    for kk, vv in args.__dict__.items():
         if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
                       'keep_hru_order']:
             if vv:
@@ -275,10 +261,12 @@ def main():
     # List of output variables to sbuset
     try:
         include_model_output = config.include_model_output
-        output_vars_dir = config.output_vars_dir
         output_vars = config.output_vars
+        output_vars_dir = config.output_vars_dir
     except KeyError:
         include_model_output = False
+        output_vars = []
+        output_vars_dir = ''
 
     # Control what is checked and output for subset
     check_dag = config.check_DAG
@@ -290,6 +278,7 @@ def main():
         cbh_dir = config.cbh_dir
     except KeyError:
         output_cbh = False
+        cbh_dir = ''
 
     try:
         output_streamflow = config.output_streamflow
@@ -298,6 +287,7 @@ def main():
         obs_filename = config.streamflow_filename
     except KeyError:
         output_streamflow = False
+        obs_filename = ''
 
     try:
         output_shapefiles = config.output_shapefiles
@@ -306,10 +296,12 @@ def main():
         geo_file = config.geodatabase_filename
     except KeyError:
         output_shapefiles = False
+        geo_file = ''
 
     # Load the control file
     ctl = ControlFile(control_filename)
 
+    dyn_params_dir = ''
     if ctl.has_dynamic_parameters:
         if config.dyn_params_dir:
             if os.path.exists(config.dyn_params_dir):
@@ -325,25 +317,23 @@ def main():
     vpdb = ValidParams()
 
     # Build list of parameters required for the selected control file modules
-    required_params = vpdb.get_params_for_modules(modules=ctl.modules.values())
-
-    # TODO: make sure dynamic parameter filenames are correct
-    # Write an updated control file
-    # ctl.write('somefile')
+    required_params = vpdb.get_params_for_modules(modules=list(ctl.modules.values()))
 
     # Date range for pulling NWIS streamgage observations
     if isinstance(config.start_date, datetime.date):
         st_date = config.start_date
     else:
-        st_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
+        st_date = datetime.datetime(*[int(x) for x in re.split('[- :]', config.start_date)])
+        # st_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
 
     if isinstance(config.end_date, datetime.date):
         en_date = config.end_date
     else:
-        en_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
+        en_date = datetime.datetime(*[int(x) for x in re.split('[- :]', config.end_date)])
+        # en_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
 
     # ===============================================================
-    params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
+    # params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
     nhmparamdb_revision = git_version(paramdb_dir)
@@ -446,7 +436,8 @@ def main():
             hru_to_seg[hid] = vv
         elif nhm_id[ii] in hru_noroute:
             if vv != 0:
-                bandit_log.error('User-supplied non-routed HRU {} routes to stream segment {} - Skipping.'.format(nhm_id[ii], vv))
+                err_txt = 'User-supplied non-routed HRU {} routes to stream segment {} - Skipping.'
+                bandit_log.error(err_txt.format(nhm_id[ii], vv))
             else:
                 hid = nhm_id[ii]
                 seg_to_hru.setdefault(vv, []).append(hid)
@@ -480,8 +471,8 @@ def main():
                     bandit_log.info('User-supplied HRU {} is not connected to any stream segment'.format(xx))
                     hru_order_subset.append(xx)
                 else:
-                    bandit_log.error('User-supplied HRU {} routes to stream segment {} - Skipping.'.format(xx,
-                                                                                                           hru_segment[nhm_id_to_idx[xx]]))
+                    err_txt = 'User-supplied HRU {} routes to stream segment {} - Skipping.'
+                    bandit_log.error(err_txt.format(xx, hru_segment[nhm_id_to_idx[xx]]))
 
         # Renumber the hru_segments for the subset
         new_hru_segment = []
@@ -553,43 +544,33 @@ def main():
         nhm_seg_dict = nhm_params.get('nhm_seg').index_map
         poi_gage_dict = nhm_params.get('poi_gage_segment').index_map
 
-        try:
-            # networkx 1.x
-            for ss in nx.nodes_iter(dag_ds_subset):
-                if ss in poi_gage_segment:
-                    new_poi_gage_segment.append(toseg_idx.index(ss)+1)
-                    new_poi_gage_id.append(poi_gage_id[poi_gage_segment.index(ss)])
-                    new_poi_type.append(poi_type[poi_gage_segment.index(ss)])
-        except AttributeError:
-            # networkx 2.x
-            for ss in new_nhm_seg:
-                sidx = nhm_seg_dict[ss] + 1
-                if sidx in poi_gage_segment:
-                    # print('   {}'.format(poi_gage_segment.index(sidx)))
-                    new_poi_gage_segment.append(new_nhm_seg_to_idx1[sidx])
-                    new_poi_gage_id.append(poi_gage_id[poi_gage_dict[sidx]])
-                    new_poi_type.append(poi_type[poi_gage_dict[sidx]])
+        for ss in new_nhm_seg:
+            sidx = nhm_seg_dict[ss] + 1
+            if sidx in poi_gage_segment:
+                # print('   {}'.format(poi_gage_segment.index(sidx)))
+                new_poi_gage_segment.append(new_nhm_seg_to_idx1[sidx])
+                new_poi_gage_id.append(poi_gage_id[poi_gage_dict[sidx]])
+                new_poi_type.append(poi_type[poi_gage_dict[sidx]])
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Add any valid user-specified streamgage, nhm_seg pairs
         if addl_gages:
-            for ss, vv in iteritems(addl_gages):
+            for ss, vv in addl_gages.items():
                 if ss in new_poi_gage_id:
                     idx = new_poi_gage_id.index(ss)
-                    bandit_log.warning('Existing NHM POI, {}, overridden on commandline (was {}, now {})'.format(ss, new_poi_gage_segment[idx],
-                                                                                                                 new_nhm_seg_to_idx1[vv]))
+                    warn_txt = 'Existing NHM POI, {}, overridden on commandline (was {}, now {})'
+                    bandit_log.warning(warn_txt.format(ss, new_poi_gage_segment[idx], new_nhm_seg_to_idx1[vv]))
                     new_poi_gage_segment[idx] = new_nhm_seg_to_idx1[vv]
                     new_poi_type[idx] = 0
                 elif new_nhm_seg_to_idx1[vv] in new_poi_gage_segment:
                     sidx = new_poi_gage_segment.index(new_nhm_seg_to_idx1[vv])
-                    bandit_log.warning(
-                        'User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'.format(
-                            ss, new_nhm_seg_to_idx1[vv], new_poi_gage_id[sidx]))
+                    warn_txt = 'User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'
+                    bandit_log.warning(warn_txt.format(ss, new_nhm_seg_to_idx1[vv], new_poi_gage_id[sidx]))
                     new_poi_gage_id[sidx] = ss
                     new_poi_type[sidx] = 0
                 elif vv not in seg_to_hru.keys():
-                    bandit_log.warning(
-                        'User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'.format(ss, vv))
+                    warn_txt = 'User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'
+                    bandit_log.warning(warn_txt.format(ss, vv))
                 else:
                     new_poi_gage_id.append(ss)
                     new_poi_gage_segment.append(new_nhm_seg_to_idx1[vv])
@@ -617,7 +598,7 @@ def main():
 
     # Resize dimensions to the model subset
     crap_dims = dims.copy()  # need a copy since we modify dims
-    for dd, dv in iteritems(crap_dims):
+    for dd, dv in crap_dims.items():
         # dimensions 'nmonths' and 'one' are never changed
         if dd in HRU_DIMS:
             dims[dd] = len(hru_order_subset0)
@@ -635,7 +616,7 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     new_ps = ParameterSet()
 
-    for dd, dv in iteritems(dims):
+    for dd, dv in dims.items():
         new_ps.dimensions.add(dd, dv)
 
         if dd == 'npoigages':
@@ -695,6 +676,7 @@ def main():
                 new_ps.parameters.get(src_param.name).datatype = src_param.datatype
 
             first_dimension = dim_order[0]
+            outdata = None
 
             # Write out the data for the parameter
             if ndims == 1:
@@ -735,8 +717,8 @@ def main():
                 elif first_dimension in HRU_DIMS:
                     outdata = nhm_params.get_subset(pp, hru_order_subset)
                 else:
-                    bandit_log.error('No rules to handle 2D parameter, {}, which contains dimension {}'.format(pp,
-                                                                                                               first_dimension))
+                    err_txt = 'No rules to handle 2D parameter, {}, which contains dimension {}'
+                    bandit_log.error(err_txt.format(pp, first_dimension))
 
             new_ps.parameters.get(src_param.name).data = outdata
 
@@ -773,7 +755,6 @@ def main():
             if os.path.splitext(cbh_dir)[1] == '.nc':
                 cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
                                     nhm_hrus=hru_order_subset)
-                                    # nhm_hrus=hru_order_subset)
             else:
                 # Subset the hru_nhm_to_local mapping
                 # TODO: This section will not work with the monolithic paramdb - remove
@@ -838,7 +819,8 @@ def main():
             output_file = '{}/{}.param'.format(outdir, param_name)
 
             if not os.path.exists(input_file):
-                bandit_log.warning('WARNING: CONUS dynamic parameter file: {}, does not exist... skipping'.format(input_file))
+                warn_txt = 'WARNING: CONUS dynamic parameter file: {}, does not exist... skipping'
+                bandit_log.warning(warn_txt.format(input_file))
             else:
                 if args.verbose:
                     print('Writing dynamic parameter {}'.format(cparam))
