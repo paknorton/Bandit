@@ -420,8 +420,6 @@ def main():
     nhm_id_to_idx = nhm_params.get('nhm_id').index_map
     bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
 
-    print('{0} new_nhm_seg {0}'.format('-'*15))
-    print(new_nhm_seg)
     # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
     # new_nhm_seg and hru_noroute.
     seg_to_hru = OrderedDict()
@@ -489,23 +487,15 @@ def main():
                 if hru_segment[nhm_id_to_idx[xx]] == 0:
                     new_hru_segment.append(0)
 
-    # print('{0} hru_order_subset {0}'.format('-'*15))
-    # print(hru_order_subset)
-
-    # print('{0} hru_order_subset0 {0}'.format('-'*15))
     hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
-    # print('{0} OLD: hru_order_subset0 {0}'.format('-'*15))
-    # print([xx - 1 for xx in hru_order_subset])
-
-    # hru_order_subset0 = [xx - 1 for xx in hru_order_subset]
     bandit_log.info('Number of HRUs in subset: {}'.format(len(hru_order_subset)))
-    # print('-'*40)
+    bandit_log.info('Size of hru_segment for subset: {}'.format(len(new_hru_segment)))
+
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
     # toseg_idx contains the in-order indices for the subset of tosegments
 
-    bandit_log.info('Size of hru_segment for subset: {}'.format(len(new_hru_segment)))
-
+    # ==========================================================================
     # Get subset of hru_deplcrv using hru_order
     # A single snarea_curve can be referenced by multiple HRUs
     hru_deplcrv_subset = nhm_params.get_subset('hru_deplcrv', hru_order_subset)
