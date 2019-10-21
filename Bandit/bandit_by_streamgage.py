@@ -856,6 +856,8 @@ def main():
                                                   nhm_hrus=hru_order_subset_nhm_id)
 
                         mod_out.write_csv(f'{sg_dir}/model_output')
+                    sys.stdout.write('\n')
+                    sys.stdout.flush()
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Write dynamic parameters
