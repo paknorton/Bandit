@@ -32,6 +32,8 @@ class ModelOutput(object):
         return min(items, key=lambda x: abs(x - pivot))
 
     def get_var(self, varname):
+        data = None
+
         if self.__stdate is not None and self.__endate is not None:
             if self.__nhm_hrus:
                 data = self.__dataset[varname].loc[self.__stdate:self.__endate, self.__nhm_hrus].to_pandas()
