@@ -57,7 +57,7 @@ class Cfg(object):
             varname (str): Configuration variable.
 
         Returns:
-             The value of the configuration variable or None if variable does not exist.
+             The value of the configuration variable or raise KeyError if variable does not exist.
 
         """
 
@@ -65,7 +65,8 @@ class Cfg(object):
             return self.__cfgdict[varname]
         except KeyError:
             print('Configuration variable, {}, does not exist'.format(varname))
-            return None
+            raise
+            # return None
 
     def load(self, filename):
         """Load the YAML-format configuration file.

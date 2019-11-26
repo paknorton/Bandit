@@ -11,7 +11,9 @@ import logging
 import numpy as np
 import pandas as pd
 import re
+import socket
 import sys
+import time
 
 from Bandit.pr_util import print_warning, print_error
 
@@ -26,7 +28,7 @@ try:
     # Try importing assuming Python 3.x first
     # from urllib.parse import urlparse, urlencode
     from urllib.request import urlopen, Request
-    from urllib.error import HTTPError
+    from urllib.error import HTTPError, URLError
 except ImportError:
     # Otherwise fallback to Python 2.x
     # from urlparse import urlparse
@@ -41,23 +43,24 @@ nwis_logger = logging.getLogger('bandit.NWIS')
 
 
 class NWIS(object):
+
     """Class for accessing and manipulating streamflow information from the
     National Water Information System (NWIS; https://waterdata.usgs.gov/) provided by the
     United States Geological Survey (USGS; https://www.usgs.gov/).
-
     """
 
-    # Class for NWIS streamgage observations
     # As written this class provides fucntions for downloading daily streamgage observations
     # Additional functionality (e.g. monthyly, annual, other statistics) may be added at a future time.
 
     def __init__(self, gage_ids=None, st_date=None, en_date=None, verbose=False):
-        """Init method for NWIS class.
+        """Create the NWIS object.
 
-        Args:
-            gage_ids (:obj:`list` of :obj:`str`): String or list of strings of streamgage IDs.
-            st_date (:obj:`datetime`, optional: Starting date for date range to retrieve streamgage observations.
-            en_date (:obj:`datetime`, optional: Ending date for date range to retrieve streamgage observations.
+        :param list[str] gage_ids: list of streamgages to retrieve
+        :param st_date: start date for retrieving streamgage observations
+        :type st_date: None or datetime
+        :param en_date: end date for retrieving streamgage observations
+        :type en_date: None or datetime
+        :param bool verbose: output additional debuggin information
         """
 
         self.logger = logging.getLogger('bandit.NWIS')
@@ -77,14 +80,22 @@ class NWIS(object):
 
     @property
     def start_date(self):
-        """:obj:`datetime`: The starting date of a date range for retrieving streamflow observations.
+        """Get the start date.
 
+        :returns: start date
+        :rtype: None or datetime
         """
 
         return self.__stdate
 
     @start_date.setter
     def start_date(self, st_date):
+        """Set the start date.
+
+        :param st_date: start date (either a datetime object or a string of the form YYYY-MM-DD)
+        :type st_date: datetime or str
+        """
+
         # Set the starting date for retrieval
         # As written this will clear any streamgage observations that have been downloaded.
         if isinstance(st_date, datetime.datetime):
@@ -101,14 +112,22 @@ class NWIS(object):
 
     @property
     def end_date(self):
-        """:obj:`datetime`: The ending date of a date range for retrieving streamflow observations.
+        """Get the end date.
 
+        :returns: end date
+        :rtype: None or datetime
         """
 
         return self.__endate
 
     @end_date.setter
     def end_date(self, en_date):
+        """Set the end date.
+
+        :param en_date: end date (either a datetime object or a string of the form YYYY-MM-DD)
+        :type en_date: datetime or str
+        """
+
         if isinstance(en_date, datetime.datetime):
             self.__endate = en_date
         else:
@@ -123,14 +142,22 @@ class NWIS(object):
 
     @property
     def gage_ids(self):
-        """:obj:`list` of :obj:`str`: Streamgage IDs for retrieval.
+        """Get list of streamgage IDs for retrieval.
 
+        :returns: list of streamgage IDs
+        :rtype: list[str]
         """
 
         return self.__gageids
 
     @gage_ids.setter
     def gage_ids(self, gage_ids):
+        """Set the streamgage ID(s) to retrieve from NWIS.
+
+        :param gage_ids: streamgage ID(s)
+        :type gage_ids: list or tuple or str
+        """
+
         # Set the gage ids for retrieval this will clear any downloaded observations
         if isinstance(gage_ids, (list, tuple)):
             self.__gageids = gage_ids
@@ -140,6 +167,15 @@ class NWIS(object):
         self.__outdata = None
 
     def check_for_flag(self, pat, data, col_id):
+        """Check for a given pattern in supplied data.
+
+        Checks for a given pattern in the data and log a warning if it occurs.
+
+        :param str pat: pattern to find
+        :param data: data for pattern matching
+        :param str col_id: column to search in data
+        """
+
         # Check for pattern in data, log error if found and remove from data
         pat_count = data[col_id].str.contains(pat).sum()
 
@@ -152,7 +188,9 @@ class NWIS(object):
             data[col_id].replace(pat, '', regex=True, inplace=True)
 
     def initialize_dataframe(self):
-        """Clears downloaded data and initializes the output dataframe"""
+        """Clears downloaded data and initializes the output dataframe.
+        """
+
         if not self.__endate:
             self.__endate = datetime.today()
         if not self.__stdate:
@@ -166,9 +204,19 @@ class NWIS(object):
         self.__final_outorder = ['year', 'month', 'day', 'hour', 'minute', 'second']
 
     def get_daily_streamgage_observations(self):
-        """Retrieves daily observations for a given date range and set of streamgage IDs"""
+        """Retrieves daily observations.
+
+        If gage_ids is set then retrieve observations for those streamgages; otherwise,
+        return a single dummy dataset. If st_date and en_date are set then observations
+        are restricted to the given date range.
+        """
+
         if not self.__outdata:
             self.initialize_dataframe()
+
+        # Set timeout in seconds - if not set defaults to infinite time for response
+        timeout = 30
+        socket.setdefaulttimeout(timeout)
 
         url_pieces = OrderedDict()
         url_pieces['?format'] = 'rdb'
@@ -204,14 +252,33 @@ class NWIS(object):
             attempts = 0
             while attempts < RETRIES:
                 try:
-                    streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
+                    response = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
+
+                    try:
+                        # Python 2.7.x
+                        encoding = response.info().getparam('charset')
+                    except AttributeError:
+                        # Python 3.x
+                        encoding = response.info().get_param('charset', failobj='utf8')
+
+                    streamgage_obs_page = response.read().decode(encoding)
+
+                    # with urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final)) as response:
+                    #     encoding = response.info().get_param('charset', 'utf8')
+                    #     streamgage_obs_page = response.read().decode(encoding)
+
+                    # streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
                     break
                 except (HTTPError, URLError) as err:
                     attempts += 1
                     self.logger.warning('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
                     # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                except (ConnectionResetError) as err:
+                    attempts += 1
+                    self.logger.warning('ConnectionResetError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    time.sleep(10)
 
-            if streamgage_obs_page.readline().strip() == '#  No sites found matching all criteria':
+            if streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
                 self.logger.warning('{} has no data for {} to {}'.format(gg,
@@ -221,11 +288,12 @@ class NWIS(object):
                 df = pd.DataFrame(index=self.__date_range, columns=[gg])
                 df.index.name = 'date'
             else:
-                streamgage_observations = streamgage_obs_page.read()
+                streamgage_observations = streamgage_obs_page
+                # streamgage_observations = streamgage_obs_page.read()
 
                 # Strip the comment lines and field length lines from the result using regex
-                streamgage_observations = self.__t1.sub('', streamgage_observations, 0)
-                streamgage_observations = self.__t2.sub('', streamgage_observations, 0)
+                streamgage_observations = self.__t1.sub('', streamgage_observations, count=0)
+                streamgage_observations = self.__t2.sub('', streamgage_observations, count=0)
 
                 # Have to enforce site_no as string/text
                 col_names = ['site_no']
@@ -301,10 +369,11 @@ class NWIS(object):
             self.__final_outorder.append(gg)
 
     def write_prms_data(self, filename):
-        """Writes streamgage observations that have been downloaded to a file in PRMS format
+        """Writes streamgage observations to a file in PRMS format.
 
-        Args:
-            filename: The name of the file for writing streamgage observations."""
+        :param str filename: name of the file to create
+        """
+
         # Create the year, month, day, hour, minute, second columns
         try:
             self.__outdata['year'] = self.__outdata.index.year
@@ -314,6 +383,8 @@ class NWIS(object):
             self.__outdata['minute'] = self.__outdata.index.minute
             self.__outdata['second'] = self.__outdata.index.second
             self.__outdata.fillna(-999, inplace=True)
+
+            # TODO: 2019-04-03 PAN - Make sure all streamflow data is of type float
         except AttributeError:
             print('AttributeError')
             print(self.__outdata.head())

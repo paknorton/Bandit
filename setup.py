@@ -58,8 +58,8 @@ setup(
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
-        'Programming Language :: Python :: 2.7',
-        # 'Programming Language :: Python :: 3',
+        # 'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
         # 'Programming Language :: Python :: 3.3',
         # 'Programming Language :: Python :: 3.4',
         # 'Programming Language :: Python :: 3.5',
@@ -110,12 +110,18 @@ setup(
     entry_points={
         'console_scripts': [
             'bandit=Bandit.bandit:main',
+            'bandit_v2=Bandit.bandit_v2:main',
             'bandit_by_streamgage=Bandit.bandit_by_streamgage:main',
+            'bandit_paramset=Bandit.bandit_paramset:main',
             'create_merged_db=Bandit.create_merged_db:main',
             'git_version=Bandit.git_version:main',
             'create_bandit_job=Bandit.utilities.create_bandit_job:main',
             'check_nhmparamdb=Bandit.utilities.check_nhmparamdb:main',
-            'bandit_multi_locations=Bandit.bandit_multi_locations:main'
+            'convert_v1_paramdb_v2=Bandit.utilities.convert_v1_paramdb_v2:main',
+            'bandit_multi_locations=Bandit.bandit_multi_locations:main',
+            'validate_parameters=Bandit.validate_parameters:main'
         ],
     },
+
+    zip_safe=False,
 )

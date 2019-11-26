@@ -1,17 +1,22 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # coding: utf-8
 from __future__ import (absolute_import, division, print_function)
 from future.utils import iteritems
 
-import os
-import subprocess32 as subprocess
-import sys
-from collections import OrderedDict
 from Bandit import bandit_cfg as bc
 
+import os
+import sys
+from collections import OrderedDict
 # import time
 import threading
-import Queue
+import queue
+
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
+
 
 """Example of code used to generate model extractions for headwaters in the NHM
 
@@ -54,7 +59,7 @@ class WorkerThread(threading.Thread):
                 thecmd = self.input_q.get(True, 0.05)
                 retcode = self.run_cmd(thecmd)
                 self.result_q.put((self.name, thecmd, retcode))
-            except Queue.Empty:
+            except queue.Empty:
                 continue
 
     def join(self, timeout=None):
@@ -112,7 +117,7 @@ def main():
     # default_config_file = '{}/bandit.cfg'.format(jobdir)
 
     # cmd_bandit = '/media/scratch/PRMS/bandit/Bandit/bandit.py'
-    cmd_bandit = find_executable('bandit')
+    cmd_bandit = find_executable('bandit_v2')
 
     if not cmd_bandit:
         print('ERROR: Unable to find bandit.py')
@@ -122,7 +127,8 @@ def main():
 
     # Skip the header information
     # NOTE: If file has no header the first entry will be skipped
-    seg_file.next()
+    seg_file.readline()
+    # seg_file.next()
 
     # First column is hwAreaId
     # Second and following columns are seg_id_nat
@@ -141,7 +147,8 @@ def main():
 
     if nrhru_src:
         nrhru_file = open(nrhru_src, 'r')
-        nrhru_file.next()
+        nrhru_file.readline()
+        # nrhru_file.next()
 
         noroute_hrus_by_loc = OrderedDict()
 
@@ -160,8 +167,8 @@ def main():
 
     # ****************************************************************************
     # Initialize the threads
-    cmd_q = Queue.Queue()
-    result_q = Queue.Queue()
+    cmd_q = queue.Queue()
+    result_q = queue.Queue()
 
     # Create pool of threads
     pool = [WorkerThread(input_q=cmd_q, result_q=result_q) for __ in range(num_threads)]
@@ -221,6 +228,9 @@ def main():
         if nrhru_src and kk in noroute_hrus_by_loc:
             config.update_value('hru_noroute', noroute_hrus_by_loc[kk])
 
+        # TODO: This causes the control_filename to be rewritten in the parent
+        #       directory; so this happens for each location. Need to fix.
+        config.update_value('control_filename', '{}/control.default'.format(job_dir))
         config.update_value('output_dir', '{}/{}'.format(job_dir, cdir))
         config.write('{}/bandit.cfg'.format(cdir))
 

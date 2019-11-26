@@ -1,8 +1,10 @@
-gdal
-yaml
+gdal >= 2
 pyyaml
+ruamel.yaml
 future
 pandas
 numpy
-networkx=1.11
-msgpack-python
+netcdf4
+networkx >= 2
+msgpack
+xarray
