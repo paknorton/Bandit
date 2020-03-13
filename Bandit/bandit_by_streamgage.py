@@ -462,7 +462,7 @@ def main():
                 # keys are 1-based, values in arrays are 1-based
                 seg_to_hru.setdefault(vv, []).append(ii + 1)
 
-    # Get HRU ids ordered by the segments in the model subset - entries are 1-based
+            # Get HRU ids ordered by the segments in the model subset - entries are 1-based
             hru_order_subset = []
             for xx in toseg_idx:
                 if xx in seg_to_hru:
