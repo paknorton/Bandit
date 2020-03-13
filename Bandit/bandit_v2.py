@@ -204,6 +204,11 @@ def main():
                         help='Output all parameters regardless of modules selected', action='store_true')
     parser.add_argument('--keep_hru_order',
                         help='Keep HRUs in the relative order they occur in the paramdb', action='store_true')
+    parser.add_argument('--hru_gis_id', help='Name of key/id for HRUs in geodatabase', nargs='?', default='hru_id_nat', type=str)
+    parser.add_argument('--seg_gis_id', help='Name of key/id for segments in geodatabase', nargs='?', default='seg_id_nat', type=str)
+    parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?', default='nhru', type=str)
+    parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?', default='nsegmentNationalIdentifier', type=str)
+
     args = parser.parse_args()
 
     stdir = os.getcwd()
@@ -229,7 +234,7 @@ def main():
     # Override configuration variables with any command line parameters
     for kk, vv in args.__dict__.items():
         if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
-                      'keep_hru_order']:
+                      'keep_hru_order', 'hru_gis_layer', 'seg_gis_layer', 'hru_gis_id', 'seg_gis_id']:
             if vv:
                 bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
                 config.update_value(kk, vv)
@@ -778,7 +783,13 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # 2019-08-07 PAN: first prototype for extractions of output variables
     if include_model_output:
-        if len(hru_order_subset) > 0:
+        # TODO: 2020-03-12 PAN - this is brittle, fix it.
+        seg_vars = ['seginc_gwflow', 'seginc_potet', 'seginc_sroff', 'seginc_ssflow',
+                    'seginc_swrad', 'segment_delta_flow', 'seg_gwflow', 'seg_inflow',
+                    'seg_lateral_inflow', 'seg_outflow', 'seg_sroff', 'seg_ssflow',
+                    'seg_upstream_inflow']
+
+        if len(hru_order_subset) > 0 or len(new_nhm_seg) > 0:
             try:
                 os.makedirs(f'{outdir}/model_output')
                 print('Creating directory model_output, for model output variables')
@@ -792,9 +803,15 @@ def main():
                     sys.stdout.flush()
 
                 filename = f'{output_vars_dir}/{vv}.nc'
-                mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                      nhm_hrus=hru_order_subset)
-                mod_out.write_csv(f'{outdir}/model_output')
+
+                if vv in seg_vars:
+                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                          nhm_segs=new_nhm_seg)
+                    mod_out.write_csv(f'{outdir}/model_output')
+                else:
+                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                          nhm_hrus=hru_order_subset)
+                    mod_out.write_csv(f'{outdir}/model_output')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write dynamic parameters
@@ -875,25 +892,37 @@ def main():
             # Output a shapefile of the selected HRUs
             # print('\tHRUs')
             # geo_shp.select_layer('nhruNationalIdentifier')
-            geo_shp.select_layer('nhru')
+            print('Layers: {}, {}'.format(args.hru_gis_layer, args.seg_gis_layer))
+            print('IDs: {}, {}'.format(args.hru_gis_id, args.seg_gis_id))
+
+            geo_shp.select_layer(args.hru_gis_layer)
+            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), args.hru_gis_id, hru_order_subset,
+                                    included_fields=['nhm_id', 'model_idx', args.hru_gis_id])
+
+            geo_shp.select_layer(args.seg_gis_layer)
+            geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), args.seg_gis_id, new_nhm_seg,
+                                    included_fields=[args.seg_gis_id, 'model_idx'])
+
+            # Original code
+            # geo_shp.select_layer('nhru')
+            #        geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
             # geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
-            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
-                                    included_fields=['nhm_id', 'model_idx', 'region', 'hru_id_nat'])
+            #                         included_fields=['nhm_id', 'model_idx', 'region', 'hru_id_nat'])
 
-            # geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
+            #        geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
 
-            # geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
-            # geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
-            # geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
+            #        geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
+            #        geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
+            #        geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
 
             # Output a shapefile of the selected stream segments
             # print('\tSegments')
-            geo_shp.select_layer('nsegmentNationalIdentifier')
-            geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', new_nhm_seg,
-                                    included_fields=['seg_id_nat', 'model_idx', 'region'])
+            # geo_shp.select_layer('nsegmentNationalIdentifier')
+            # geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', new_nhm_seg,
+            #                         included_fields=['seg_id_nat', 'model_idx', 'region'])
 
-            # geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
-            # geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
+            #       geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
+            #       geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
 
             del geo_shp
 
