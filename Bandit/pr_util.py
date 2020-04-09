@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from __future__ import (absolute_import, division, print_function)
-from future.utils import iteritems
+# from __future__ import (absolute_import, division, print_function)
+# from future.utils import iteritems
 
 import Bandit.colortest as color
 
@@ -47,7 +47,7 @@ def show_dict(thedict, title):
     color.term('white green' + ' ' + div(title, '-', 40), end='')
     color.term(end='\n')
     print('')
-    for i, j in iteritems(thedict):
+    for i, j in thedict.items():
         show_var(i, str(j), 'green', '')
     color.term('white green' + ' ' + div('', '-', 40), end='')
     color.term(end='\n')
