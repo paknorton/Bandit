@@ -5,8 +5,8 @@
 # Description: Configuration class for Model Bandit
 #              YAML is used for the backend
 
-from __future__ import (absolute_import, division, print_function)
-from future.utils import iteritems
+# from __future__ import (absolute_import, division, print_function)
+# from future.utils import iteritems
 
 from ruamel.yaml import YAML
 
@@ -35,7 +35,7 @@ class Cfg(object):
         """Pretty-print the configuration items"""
         outstr = ''
 
-        for (kk, vv) in iteritems(self.__cfgdict):
+        for (kk, vv) in self.__cfgdict.items():
             outstr += '{0:s}: '.format(kk)
 
             if isinstance(vv, list):

@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from __future__ import (absolute_import, division, print_function)
+# from __future__ import (absolute_import, division, print_function)
 # , unicode_literals)
-from future.utils import iteritems
+# from future.utils import iteritems
 
 from collections import OrderedDict
 from datetime import datetime
@@ -15,7 +15,7 @@ import socket
 import sys
 import time
 
-from Bandit.pr_util import print_warning, print_error
+from Bandit.pr_util import print_error
 
 try:
     # Python 2.x
@@ -246,7 +246,7 @@ class NWIS(object):
                 sys.stdout.flush()
 
             url_pieces['sites'] = gg
-            url_final = '&'.join(['{}={}'.format(kk, vv) for kk, vv in iteritems(url_pieces)])
+            url_final = '&'.join(['{}={}'.format(kk, vv) for kk, vv in url_pieces.items()])
 
             # Read site data from NWIS
             attempts = 0
