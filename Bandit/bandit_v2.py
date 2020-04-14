@@ -324,7 +324,7 @@ def main():
     # Build list of parameters required for the selected control file modules
     required_params = vpdb.get_params_for_modules(modules=list(ctl.modules.values()))
 
-    # Date range for pulling NWIS streamgage observations
+    # Date range for pulling NWIS streamgage observations and CBH data
     if isinstance(config.start_date, datetime.date):
         st_date = config.start_date
     else:
@@ -773,7 +773,8 @@ def main():
                 ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
                 ctl.get('precip_day').values = os.path.basename(cbh_outfile)
             else:
-                cbh_hdl.write_ascii()
+                # cbh_hdl.write_ascii()
+                cbh_hdl.write_ascii(vars=['tmax', 'tmin', 'prcp'])
             # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
         else:
             bandit_log.error('No HRUs associated with the segments')
