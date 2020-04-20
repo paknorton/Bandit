@@ -22,7 +22,7 @@ import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 import Bandit.dynamic_parameters as dyn_params
 from Bandit.model_output import ModelOutput
-from Bandit.git_version import git_version
+from Bandit.git_version import git_version, git_repo, git_branch
 from Bandit import __version__
 
 from pyPRMS.ParamDb import ParamDb
@@ -342,7 +342,9 @@ def main():
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
     nhmparamdb_revision = git_version(paramdb_dir)
-    bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
+    bandit_log.info(f'Using parameter database from: {git_repo(paramdb_dir)}')
+    bandit_log.info(f'Repo branch: {git_branch(paramdb_dir)}')
+    bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read hru_nhm_to_local and hru_nhm_to_region
