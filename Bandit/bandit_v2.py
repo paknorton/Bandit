@@ -208,7 +208,7 @@ def main():
     parser.add_argument('--seg_gis_id', help='Name of key/id for segments in geodatabase', nargs='?', default='seg_id_nat', type=str)
     parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?', default='nhru', type=str)
     parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?', default='nsegmentNationalIdentifier', type=str)
-
+    parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?', default=6, type=int)
     args = parser.parse_args()
 
     stdir = os.getcwd()
@@ -234,7 +234,8 @@ def main():
     # Override configuration variables with any command line parameters
     for kk, vv in args.__dict__.items():
         if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
-                      'keep_hru_order', 'hru_gis_layer', 'seg_gis_layer', 'hru_gis_id', 'seg_gis_id']:
+                      'keep_hru_order', 'hru_gis_layer', 'seg_gis_layer', 'hru_gis_id', 'seg_gis_id',
+                      'prms_version']:
             if vv:
                 bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
                 config.update_value(kk, vv)
@@ -727,7 +728,8 @@ def main():
         param_filename = '{}.nc'.format(base_filename)
         new_ps.write_netcdf('{}/{}'.format(outdir, param_filename))
     else:
-        new_ps.write_parameter_file('{}/{}'.format(outdir, param_filename), header=header)
+        print(f'\nWriting version {args.prms_version} parameter file')
+        new_ps.write_parameter_file('{}/{}'.format(outdir, param_filename), header=header, prms_version=args.prms_version)
 
     ctl.get('param_file').values = param_filename
 
