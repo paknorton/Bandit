@@ -820,7 +820,7 @@ def main():
                                               nhm_hrus=hru_order_subset)
                         mod_out.write_csv(f'{outdir}/model_output')
                 except FileNotFoundError:
-                    bandit_log.warning(f'Model output variable, {vv}, does not existing; skipping.')
+                    bandit_log.warning(f'Model output variable, {vv}, does not exist; skipping.')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write dynamic parameters
