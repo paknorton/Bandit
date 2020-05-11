@@ -21,6 +21,7 @@ class DynamicParameters(object):
         self.__endate = enddate
         self.__nhm_hrus = nhm_hrus
         self.__data = None
+        self.ds = None
 
     @property
     def data(self):
@@ -31,7 +32,8 @@ class DynamicParameters(object):
 
         return self.__data
 
-    def nearest(self, items, pivot):
+    @staticmethod
+    def nearest(items, pivot):
         return min(items, key=lambda x: abs(x - pivot))
 
     def read(self):
@@ -83,6 +85,8 @@ class DynamicParameters(object):
         """Read dynamic parameter files stored in netCDF format.
         """
 
+        ds = None
+
         if self.__nhm_hrus:
             # print('\t\tOpen dataarray')
             ds = xr.open_dataarray(self.__filename, chunks={'hru': 1000})
@@ -103,4 +107,3 @@ class DynamicParameters(object):
         self.__data['month'] = self.__data.index.month
         self.__data['day'] = self.__data.index.day
         self.ds = ds
-
