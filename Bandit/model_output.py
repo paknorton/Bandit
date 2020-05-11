@@ -28,7 +28,8 @@ class ModelOutput(object):
     def dataset(self):
         return self.__dataset
 
-    def nearest(self, items, pivot):
+    @staticmethod
+    def nearest(items, pivot):
         return min(items, key=lambda x: abs(x - pivot))
 
     def get_var(self, varname):
@@ -76,7 +77,7 @@ class ModelOutput(object):
         # self.__data['minute'] = 0
         # self.__data['second'] = 0
 
-    def write_csv(self, pathname=None, fileprefix=None):
+    def write_csv(self, pathname=None):
 
         data = self.get_var(self.__varname)
 
@@ -93,8 +94,8 @@ class ModelOutput(object):
         if self.__nhm_hrus:
             ss = self.__dataset[self.__varname].loc[self.__stdate:self.__endate, self.__nhm_hrus]
             ss.to_netcdf(f'{pathname}/{self.__varname}.nc', mode='w', format='NETCDF4',
-                         encoding = {'time': {'dtype': 'float32', 'calendar': 'standard', '_FillValue': None},
-                                     'hru': {'_FillValue': None}})
+                         encoding={'time': {'dtype': 'float32', 'calendar': 'standard', '_FillValue': None},
+                                   'hru': {'_FillValue': None}})
         elif self.__nhm_segs:
             ss = self.__dataset[self.__varname].loc[self.__stdate:self.__endate, self.__nhm_segs]
             ss.to_netcdf(f'{pathname}/{self.__varname}.nc', mode='w', format='NETCDF4',
