@@ -237,7 +237,7 @@ def main():
                       'keep_hru_order', 'hru_gis_layer', 'seg_gis_layer', 'hru_gis_id', 'seg_gis_id',
                       'prms_version']:
             if vv:
-                bandit_log.info('Overriding configuration for {} with {}'.format(kk, vv))
+                bandit_log.info(f'Overriding configuration for {kk} with {vv}')
                 config.update_value(kk, vv)
 
     # Where to output the subset
@@ -313,7 +313,7 @@ def main():
             if os.path.exists(config.dyn_params_dir):
                 dyn_params_dir = config.dyn_params_dir
             else:
-                bandit_log.error('dyn_params_dir: {}, does not exist.'.format(config.dyn_params_dir))
+                bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
                 exit(2)
         else:
             bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified in the config file')
@@ -392,7 +392,7 @@ def main():
             bandit_log.error('Cycles and/or loops found in stream network')
 
             for xx in nx.simple_cycles(dag_ds):
-                bandit_log.error('Cycle found for segment {}'.format(xx))
+                bandit_log.error(f'Cycle found for segment {xx}')
 
     if args.verbose:
         print('\tExtracting model subset')
@@ -407,7 +407,7 @@ def main():
         # networkx 2.x
         toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
 
-    bandit_log.info('Number of segments in subset: {}'.format(len(toseg_idx)))
+    bandit_log.info(f'Number of segments in subset: {len(toseg_idx)}')
 
     # Use the mapping to create subsets of nhm_seg, tosegment_nhm, and tosegment
     # NOTE: toseg_idx and new_nhm_seg are the same thing
@@ -427,7 +427,7 @@ def main():
     hru_segment = nhm_params.get('hru_segment_nhm').tolist()
     nhm_id = nhm_params.get('nhm_id').tolist()
     nhm_id_to_idx = nhm_params.get('nhm_id').index_map
-    bandit_log.info('Number of NHM hru_segment entries: {}'.format(len(hru_segment)))
+    bandit_log.info(f'Number of NHM hru_segment entries: {len(hru_segment)}')
 
     # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
     # new_nhm_seg and hru_noroute.
@@ -810,14 +810,17 @@ def main():
 
                 filename = f'{output_vars_dir}/{vv}.nc'
 
-                if vv in seg_vars:
-                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                          nhm_segs=new_nhm_seg)
-                    mod_out.write_csv(f'{outdir}/model_output')
-                else:
-                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                          nhm_hrus=hru_order_subset)
-                    mod_out.write_csv(f'{outdir}/model_output')
+                try:
+                    if vv in seg_vars:
+                        mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                              nhm_segs=new_nhm_seg)
+                        mod_out.write_csv(f'{outdir}/model_output')
+                    else:
+                        mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                              nhm_hrus=hru_order_subset)
+                        mod_out.write_csv(f'{outdir}/model_output')
+                except FileNotFoundError:
+                    bandit_log.warning(f'Model output variable, {vv}, does not existing; skipping.')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write dynamic parameters
