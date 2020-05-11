@@ -14,7 +14,7 @@ import Bandit.bandit_cfg as bc
 from pyPRMS.ParamDbRegion import ParamDbRegion
 
 # from dimension_class import Parameter
-from Bandit.git_version import git_version
+from Bandit.git_version import git_commit
 # from pr_util import print_warning, print_error
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
@@ -42,7 +42,7 @@ def main():
 
     # Write the git revision number of the NhmParamDb repo to a file in the merged params directory
     with open('{}/00-REVISION'.format(merged_paramdb_dir), 'w') as fhdl:
-        fhdl.write('{}\n'.format(git_version(paramdb_dir)))
+        fhdl.write('{}\n'.format(git_commit(paramdb_dir)))
 
     # Create NhmParamDb object and retrieve the parameters
     pdb = ParamDbRegion(paramdb_dir, verbose=True, verify=True)
