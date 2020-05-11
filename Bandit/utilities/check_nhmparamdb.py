@@ -7,7 +7,7 @@ import os
 # import shutil
 
 import Bandit.bandit_cfg as bc
-from Bandit.git_version import git_version
+from Bandit.git_version import git_commit
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -25,7 +25,7 @@ def main():
         m_rev = fhdl.readline().strip()
 
     # Get the current available revision for the NhmParamDb
-    c_rev = git_version(config.paramdb_dir)
+    c_rev = git_commit(config.paramdb_dir)
 
     if m_rev != c_rev:
         print('A newer version of the NhmParamDb is available.')
