@@ -17,23 +17,13 @@ import time
 
 from Bandit.pr_util import print_error
 
-try:
-    # Python 2.x
-    from StringIO import StringIO
-except ImportError:
-    # Python 3.x
-    from io import StringIO
+from io import StringIO
 
-try:
-    # Try importing assuming Python 3.x first
-    # from urllib.parse import urlparse, urlencode
-    from urllib.request import urlopen, Request
-    from urllib.error import HTTPError, URLError
-except ImportError:
-    # Otherwise fallback to Python 2.x
-    # from urlparse import urlparse
-    # from urllib import urlencode
-    from urllib2 import urlopen, Request, HTTPError, URLError
+# from urllib.parse import urlparse, urlencode
+# from urllib.request import Request
+from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+
 
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
 BASE_NWIS_URL = 'http://waterservices.usgs.gov/nwis'
@@ -42,7 +32,7 @@ RETRIES = 3
 nwis_logger = logging.getLogger('bandit.NWIS')
 
 
-class NWIS(object):
+class NWIS:
 
     """Class for accessing and manipulating streamflow information from the
     National Water Information System (NWIS; https://waterdata.usgs.gov/) provided by the
