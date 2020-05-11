@@ -42,8 +42,9 @@ def git_commit(repo_dir, length=None):
 
     Args:
         repo_dir (str): Local git repository directory.
+        length (int): Number of digits to return from commit
 
-   aa Returns:
+    Returns:
         str: Current git revision or 'Unknown'.
 
     """
