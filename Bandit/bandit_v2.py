@@ -22,7 +22,7 @@ import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 import Bandit.dynamic_parameters as dyn_params
 from Bandit.model_output import ModelOutput
-from Bandit.git_version import git_version, git_repo, git_branch
+from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit import __version__
 
 from pyPRMS.ParamDb import ParamDb
@@ -342,7 +342,8 @@ def main():
     # params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
-    nhmparamdb_revision = git_version(paramdb_dir)
+    git_url = git_commit_url(paramdb_dir)
+    nhmparamdb_revision = git_commit(paramdb_dir, length=7)
     bandit_log.info(f'Using parameter database from: {git_repo(paramdb_dir)}')
     bandit_log.info(f'Repo branch: {git_branch(paramdb_dir)}')
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
@@ -721,8 +722,8 @@ def main():
             new_ps.parameters.get(src_param.name).data = outdata
 
     # Write the new parameter file
-    header = ['Written by Bandit version {}'.format(__version__),
-              'NhmParamDb revision: {}'.format(nhmparamdb_revision)]
+    header = [f'Written by Bandit version {__version__}',
+              f'ParamDb revision: {git_url}']
     if args.param_netcdf:
         base_filename = os.path.splitext(param_filename)[0]
         param_filename = '{}.nc'.format(base_filename)
