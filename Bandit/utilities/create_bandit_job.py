@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-# from __future__ import (absolute_import, division, print_function)
-
 import argparse
 import os
 import shutil
@@ -21,7 +19,7 @@ def main():
     config = bc.Cfg(args.config)
 
     print('Creating new job for Bandit extraction')
-    print('Config file: {}'.format(args.config))
+    print(f'Config file: {args.config}')
 
     # Check that the various required directories and files defined in bandit.cfg exist
     if os.path.splitext(config.cbh_dir)[1] == '.nc':
@@ -50,20 +48,20 @@ def main():
     tl_jobsdir = config.output_dir
 
     # check for / create output directory
-    new_job_dir = '{}/{}'.format(tl_jobsdir, args.jobdir)
+    new_job_dir = f'{tl_jobsdir}/{args.jobdir}'
 
     try:
         os.mkdir(new_job_dir)
-        print('\tJob directory created: {}'.format(new_job_dir))
+        print(f'\tJob directory created: {new_job_dir}')
     except OSError as err:
         if err.errno == 2:
-            print('\tThe top-level jobs directory does not exist: {}'.format(tl_jobsdir))
+            print(f'\tThe top-level jobs directory does not exist: {tl_jobsdir}')
             exit(2)
         elif err.errno == 13:
-            print('\tYou have insufficient privileges to create: {}'.format(new_job_dir))
+            print(f'\tYou have insufficient privileges to create: {new_job_dir}')
             exit(2)
         elif err.errno == 17:
-            print('\tFile/Directory already exists: {}'.format(new_job_dir))
+            print(f'\tFile/Directory already exists: {new_job_dir}')
             print('\tNew bandit.cfg and control.default files will be copied here.')
         else:
             print('\tOther error')
@@ -73,11 +71,11 @@ def main():
     # Copy bandit.cfg to job directory
     print('\tCreating bandit.cfg file for new job')
     config.update_value('output_dir', new_job_dir)
-    config.write('{}/bandit.cfg'.format(new_job_dir))
+    config.write(f'{new_job_dir}/bandit.cfg')
 
     # Copy the control.default file to the job directory
     print('\tCopying control.default to new job')
-    shutil.copy('{}/control.default'.format(tl_jobsdir), '{}/control.default'.format(new_job_dir))
+    shutil.copy(f'{tl_jobsdir}/control.default', f'{new_job_dir}/control.default')
 
     print('\nNew job directory has been created.')
     print('Make sure to update outlets, cutoffs, and hru_noroute parameters as needed in bandit.cfg ' +
