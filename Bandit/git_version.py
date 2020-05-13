@@ -95,7 +95,7 @@ def main():
     args = parser.parse_args()
 
     if args.verbose:
-        print('GIT version for {}'.format(args.path_repo))
+        print(f'GIT version for {args.path_repo}')
 
     print(f'GIT repo URL: {git_repo(args.path_repo)}')
     print(f'GIT branch: {git_branch(args.path_repo)}')
