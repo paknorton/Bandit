@@ -1,5 +1,3 @@
-# from __future__ import (absolute_import, division, print_function)
-# from future.utils import iteritems
 
 from collections import namedtuple
 import netCDF4 as nc
@@ -45,11 +43,11 @@ class DynamicParameters(object):
 
         for xx, yy in fhdl.dimensions.items():
             if yy.isunlimited():
-                print('{}: {} (unlimited)'.format(xx, len(yy)))
+                print(f'{xx}: {len(yy)} (unlimited)')
                 recdim.name = xx
                 recdim.size = len(yy)
             else:
-                print('{}: {}'.format(xx, len(yy)))
+                print(f'{xx}: {len(yy)}')
 
         d0units = fhdl.variables[recdim.name].units
         d0calendar = fhdl.variables[recdim.name].calendar
@@ -64,13 +62,13 @@ class DynamicParameters(object):
         st_idx = np.where(timelist == self.nearest(timelist, self.__stdate))[0][0]
         en_idx = np.where(timelist == self.nearest(timelist, self.__endate))[0][0]
 
-        print('st_idx: {}'.format(st_idx))
-        print('en_idx: {}'.format(en_idx))
+        print(f'st_idx: {st_idx}')
+        print(f'en_idx: {en_idx}')
 
         # print('en_idx: {}'.format(self.nearest(timelist, self.__enddate)))
         print('-' * 50)
-        print('time.units: {}'.format(d0units))
-        print('time.calendar: {}'.format(d0calendar))
+        print(f'time.units: {d0units}')
+        print(f'time.calendar: {d0calendar}')
         print(timelist[st_idx:en_idx])
 
         # Extract columns of data for date range
