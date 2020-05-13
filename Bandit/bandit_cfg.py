@@ -5,9 +5,6 @@
 # Description: Configuration class for Model Bandit
 #              YAML is used for the backend
 
-# from __future__ import (absolute_import, division, print_function)
-# from future.utils import iteritems
-
 from ruamel.yaml import YAML
 
 
@@ -64,7 +61,7 @@ class Cfg(object):
         try:
             return self.__cfgdict[varname]
         except KeyError:
-            print('Configuration variable, {}, does not exist'.format(varname))
+            print(f'Configuration variable, {varname}, does not exist')
             raise
             # return None
 
@@ -75,7 +72,7 @@ class Cfg(object):
             filename (str): Name of the configuration file.
 
         """
-        # tmp = yaml.load(open(filename, 'r'), Loader=NoDatesSafeLoader)
+
         tmp = self.yaml.load(open(filename, 'r'))
         self.__cfgdict = tmp
 
@@ -94,7 +91,7 @@ class Cfg(object):
         if variable in self.__cfgdict:
             self.__cfgdict[variable] = newval
         else:
-            raise KeyError("Configuration variable, {}, does not exist".format(variable))
+            raise KeyError(f'Configuration variable, {variable}, does not exist')
 
     def write(self, filename):
         """"Write the configuration out to a file.
