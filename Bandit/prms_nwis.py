@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 
-# from __future__ import (absolute_import, division, print_function)
-# , unicode_literals)
-# from future.utils import iteritems
-
 from collections import OrderedDict
 from datetime import datetime
 
@@ -18,9 +14,6 @@ import time
 from Bandit.pr_util import print_error
 
 from io import StringIO
-
-# from urllib.parse import urlparse, urlencode
-# from urllib.request import Request
 from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
 
@@ -95,7 +88,7 @@ class NWIS:
                 # Assume a string of form 'YYYY-MM-DD' was provided
                 self.__stdate = datetime(*[int(xx) for xx in re.split('-| |:', st_date)])
             except ValueError as dt_err:
-                # Wrong form for date was provided
+                # Wrong form of date was provided
                 print_error('Date must be either a datetime or of form "YYYY-MM-DD"')
                 print(dt_err)
         self.__outdata = None
@@ -125,7 +118,7 @@ class NWIS:
                 # Assume a string of form 'YYYY-MM-DD' was provided
                 self.__endate = datetime(*[int(xx) for xx in re.split('-| |:', en_date)])
             except ValueError as dt_err:
-                # Wrong form for date was provided
+                # Wrong form of date was provided
                 print_error('Date must be either a datetime or of form "YYYY-MM-DD"')
                 print(dt_err)
         self.__outdata = None
@@ -172,9 +165,8 @@ class NWIS:
         if pat_count > 0:
             pat_first_date = data[data[col_id].str.contains(pat)].index[0].strftime('%Y-%m-%d')
 
-            self.logger.warning('{} has {} records marked {}. '
-                                'First occurrence at {}. Suffix removed from values'.format(col_id, pat_count, pat,
-                                                                                            pat_first_date))
+            self.logger.warning(f'{col_id} has {pat_count} records marked {pat}. ' +
+                                f'First occurrence at {pat_first_date}. Suffix removed from values')
             data[col_id].replace(pat, '', regex=True, inplace=True)
 
     def initialize_dataframe(self):
@@ -232,48 +224,36 @@ class NWIS:
         for gidx, gg in enumerate(self.__gageids):
             if self.__verbose:
                 sys.stdout.write('\r                                       ')
-                sys.stdout.write('\rStreamgage: {} ({}/{}) '.format(gg, gidx + 1, len(self.__gageids)))
+                sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
                 sys.stdout.flush()
 
             url_pieces['sites'] = gg
-            url_final = '&'.join(['{}={}'.format(kk, vv) for kk, vv in url_pieces.items()])
+            url_final = '&'.join([f'{kk}={vv}' for kk, vv in url_pieces.items()])
 
             # Read site data from NWIS
+            streamgage_obs_page = None
             attempts = 0
             while attempts < RETRIES:
                 try:
-                    response = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
-
-                    try:
-                        # Python 2.7.x
-                        encoding = response.info().getparam('charset')
-                    except AttributeError:
-                        # Python 3.x
-                        encoding = response.info().get_param('charset', failobj='utf8')
-
+                    response = urlopen(f'{BASE_NWIS_URL}/dv/{url_final}')
+                    encoding = response.info().get_param('charset', failobj='utf8')
                     streamgage_obs_page = response.read().decode(encoding)
 
-                    # with urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final)) as response:
-                    #     encoding = response.info().get_param('charset', 'utf8')
-                    #     streamgage_obs_page = response.read().decode(encoding)
-
-                    # streamgage_obs_page = urlopen('{}/dv/{}'.format(BASE_NWIS_URL, url_final))
                     break
                 except (HTTPError, URLError) as err:
                     attempts += 1
-                    self.logger.warning('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    self.logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
                     # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
-                except (ConnectionResetError) as err:
+                except ConnectionResetError as err:
                     attempts += 1
-                    self.logger.warning('ConnectionResetError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    self.logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
                     time.sleep(10)
 
             if streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
-                self.logger.warning('{} has no data for {} to {}'.format(gg,
-                                                                         self.__stdate.strftime('%Y-%m-%d'),
-                                                                         self.__endate.strftime('%Y-%m-%d')))
+                self.logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
+                                    ' to ' + self.__endate.strftime('%Y-%m-%d'))
 
                 df = pd.DataFrame(index=self.__date_range, columns=[gg])
                 df.index.name = 'date'
@@ -304,7 +284,7 @@ class NWIS:
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
-                    self.logger.warning('{} had more than one Q-col returned; empty dataset used.'.format(gg))
+                    self.logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
                     df = pd.DataFrame(index=self.__date_range, columns=[gg])
                     df.index.name = 'date'
 
@@ -321,7 +301,7 @@ class NWIS:
                         # If no flags are present the column should already be float
                         pd.to_numeric(df[gg], errors='raise')
                     except ValueError:
-                        self.logger.warning('{} had one or more flagged values; flagged values converted to NaN.'.format(gg))
+                        self.logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
                         df[gg] = pd.to_numeric(df[gg], errors='coerce')
 
                     # Check for discontinued gage records
@@ -390,12 +370,12 @@ class NWIS:
             outhdl.write('// 00000000\n')
         else:
             for gg in self.__gageids:
-                outhdl.write('// {}\n'.format(gg))
+                outhdl.write(f'// {gg}\n')
 
         outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
         outhdl.write('// Unit: runoff = cfs\n')
         outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
-        outhdl.write('runoff {}\n'.format(len(self.__gageids)))
+        outhdl.write(f'runoff {len(self.__gageids)}\n')
         outhdl.write('#########################################################\n')
 
         self.__outdata.to_csv(outhdl, sep=' ', columns=self.__final_outorder, index=False, header=False)
@@ -403,5 +383,5 @@ class NWIS:
 
         if self.__verbose:
             sys.stdout.write('\r                                       ')
-            sys.stdout.write('\r\tStreamflow data written to: {}\n'.format(filename))
+            sys.stdout.write(f'\r\tStreamflow data written to: {filename}\n')
             sys.stdout.flush()
