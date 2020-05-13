@@ -1,8 +1,4 @@
-#!/usr/bin/env python
-
-# from __future__ import (absolute_import, division, print_function)
-# , unicode_literals)
-# from future.utils import iteritems
+#!/usr/bin/env python3
 
 import argparse
 import errno
@@ -28,7 +24,6 @@ from Bandit import __version__
 from pyPRMS.ParamDb import ParamDb
 from pyPRMS.constants import HRU_DIMS
 from pyPRMS.CbhNetcdf import CbhNetcdf
-from pyPRMS.CbhAscii import CbhAscii
 from pyPRMS.ControlFile import ControlFile
 from pyPRMS.ParameterSet import ParameterSet
 from pyPRMS.ValidParams import ValidParams
@@ -199,16 +194,22 @@ def main():
     parser.add_argument('--cbh_netcdf', help='Enable netCDF output for CBH files', action='store_true')
     parser.add_argument('--param_netcdf', help='Enable netCDF output for parameter file', action='store_true')
     parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+',
-                        help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must exist in the model subset. Additional streamgages are marked as poi_type=0.')
+                        help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must ' +
+                             'exist in the model subset. Additional streamgages are marked as poi_type=0.')
     parser.add_argument('--no_filter_params',
                         help='Output all parameters regardless of modules selected', action='store_true')
     parser.add_argument('--keep_hru_order',
                         help='Keep HRUs in the relative order they occur in the paramdb', action='store_true')
-    parser.add_argument('--hru_gis_id', help='Name of key/id for HRUs in geodatabase', nargs='?', default='hru_id_nat', type=str)
-    parser.add_argument('--seg_gis_id', help='Name of key/id for segments in geodatabase', nargs='?', default='seg_id_nat', type=str)
-    parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?', default='nhru', type=str)
-    parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?', default='nsegmentNationalIdentifier', type=str)
-    parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?', default=6, type=int)
+    parser.add_argument('--hru_gis_id', help='Name of key/id for HRUs in geodatabase', nargs='?',
+                        default='hru_id_nat', type=str)
+    parser.add_argument('--seg_gis_id', help='Name of key/id for segments in geodatabase', nargs='?',
+                        default='seg_id_nat', type=str)
+    parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?',
+                        default='nhru', type=str)
+    parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?',
+                        default='nsegmentNationalIdentifier', type=str)
+    parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?',
+                        default=6, type=int)
     args = parser.parse_args()
 
     stdir = os.getcwd()
@@ -219,10 +220,10 @@ def main():
             os.chdir(args.job)
             # print('Working in directory: {}'.format(args.job))
         else:
-            print('ERROR: Invalid jobs directory: {}'.format(args.job))
+            print(f'ERROR: Invalid jobs directory: {args.job}')
             exit(-1)
 
-    bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
+    bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
 
     addl_gages = None
     if args.add_gages:
@@ -316,7 +317,8 @@ def main():
                 bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
                 exit(2)
         else:
-            bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified in the config file')
+            bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified ' +
+                             'in the config file')
             exit(2)
 
     # Load master list of valid parameters
@@ -443,8 +445,8 @@ def main():
             hru_to_seg[hid] = vv
         elif nhm_id[ii] in hru_noroute:
             if vv != 0:
-                err_txt = 'User-supplied non-routed HRU {} routes to stream segment {} - Skipping.'
-                bandit_log.error(err_txt.format(nhm_id[ii], vv))
+                err_txt = f'User-supplied non-routed HRU {nhm_id[ii]} routes to stream segment {vv} - Skipping.'
+                bandit_log.error(err_txt)
             else:
                 hid = nhm_id[ii]
                 seg_to_hru.setdefault(vv, []).append(hid)
@@ -469,17 +471,18 @@ def main():
                 for yy in seg_to_hru[xx]:
                     hru_order_subset.append(yy)
             else:
-                bandit_log.warning('Stream segment {} has no HRUs connected to it.'.format(xx))
+                bandit_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
 
         # Append the additional non-routed HRUs to the list
         if len(hru_noroute) > 0:
             for xx in hru_noroute:
                 if hru_segment[nhm_id_to_idx[xx]] == 0:
-                    bandit_log.info('User-supplied HRU {} is not connected to any stream segment'.format(xx))
+                    bandit_log.info(f'User-supplied HRU {xx} is not connected to any stream segment')
                     hru_order_subset.append(xx)
                 else:
-                    err_txt = 'User-supplied HRU {} routes to stream segment {} - Skipping.'
-                    bandit_log.error(err_txt.format(xx, hru_segment[nhm_id_to_idx[xx]]))
+                    err_txt = f'User-supplied HRU {xx} routes to stream segment ' + \
+                              f'{hru_segment[nhm_id_to_idx[xx]]} - Skipping.'
+                    bandit_log.error(err_txt)
 
         # Renumber the hru_segments for the subset
         new_hru_segment = []
@@ -497,8 +500,8 @@ def main():
                     new_hru_segment.append(0)
 
     hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
-    bandit_log.info('Number of HRUs in subset: {}'.format(len(hru_order_subset)))
-    bandit_log.info('Size of hru_segment for subset: {}'.format(len(new_hru_segment)))
+    bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
+    bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
 
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
@@ -518,7 +521,7 @@ def main():
 
     # Create new hru_deplcrv and renumber
     new_hru_deplcrv = [uniq_dict[xx] for xx in hru_deplcrv_subset]
-    bandit_log.info('Size of hru_deplcrv for subset: {}'.format(len(new_hru_deplcrv)))
+    bandit_log.info(f'Size of hru_deplcrv for subset: {len(new_hru_deplcrv)}')
 
     # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -529,7 +532,7 @@ def main():
 
     if nhm_params.exists('poi_gage_segment'):
         poi_gage_segment = nhm_params.get('poi_gage_segment').tolist()
-        bandit_log.info('Size of NHM poi_gage_segment: {}'.format(len(poi_gage_segment)))
+        bandit_log.info(f'Size of NHM poi_gage_segment: {len(poi_gage_segment)}')
 
         poi_gage_id = nhm_params.get('poi_gage_id').tolist()
         poi_type = nhm_params.get('poi_type').tolist()
@@ -557,24 +560,27 @@ def main():
             for ss, vv in addl_gages.items():
                 if ss in new_poi_gage_id:
                     idx = new_poi_gage_id.index(ss)
-                    warn_txt = 'Existing NHM POI, {}, overridden on commandline (was {}, now {})'
-                    bandit_log.warning(warn_txt.format(ss, new_poi_gage_segment[idx], new_nhm_seg_to_idx1[vv]))
+                    warn_txt = f'Existing NHM POI, {ss}, overridden on commandline ' + \
+                               f'(was {new_poi_gage_segment[idx]}, now {new_nhm_seg_to_idx1[vv]})'
+                    bandit_log.warning(warn_txt)
                     new_poi_gage_segment[idx] = new_nhm_seg_to_idx1[vv]
                     new_poi_type[idx] = 0
                 elif new_nhm_seg_to_idx1[vv] in new_poi_gage_segment:
                     sidx = new_poi_gage_segment.index(new_nhm_seg_to_idx1[vv])
-                    warn_txt = 'User-specified streamgage ({}) has same nhm_seg ({}) as existing POI ({}), replacing streamgage ID'
-                    bandit_log.warning(warn_txt.format(ss, new_nhm_seg_to_idx1[vv], new_poi_gage_id[sidx]))
+                    warn_txt = f'User-specified streamgage ({ss}) has same nhm_seg ({new_nhm_seg_to_idx1[vv]}) ' + \
+                               f'as existing POI ({new_poi_gage_id[sidx]}); replacing streamgage ID'
+                    bandit_log.warning(warn_txt)
                     new_poi_gage_id[sidx] = ss
                     new_poi_type[sidx] = 0
                 elif vv not in seg_to_hru.keys():
-                    warn_txt = 'User-specified streamgage ({}) has nhm_seg={} which is not part of the model subset - Skipping.'
-                    bandit_log.warning(warn_txt.format(ss, vv))
+                    warn_txt = f'User-specified streamgage ({ss}) has nhm_seg={vv} which is not part ' + \
+                               f'of the model subset; skipping.'
+                    bandit_log.warning(warn_txt)
                 else:
                     new_poi_gage_id.append(ss)
                     new_poi_gage_segment.append(new_nhm_seg_to_idx1[vv])
                     new_poi_type.append(0)
-                    bandit_log.info('Added user-specified POI streamgage ({}) at nhm_seg={}'.format(ss, vv))
+                    bandit_log.info(f'Added user-specified POI streamgage ({ss}) at nhm_seg={vv}')
 
     # ==================================================================
     # ==================================================================
@@ -665,7 +671,7 @@ def main():
 
             if args.verbose:
                 sys.stdout.write('\r                                       ')
-                sys.stdout.write('\rProcessing {} '.format(src_param.name))
+                sys.stdout.write(f'\rProcessing {src_param.name} ')
                 sys.stdout.flush()
 
             dim_order = [dd for dd in src_param.dimensions.keys()]
@@ -699,7 +705,7 @@ def main():
                     elif pp == 'poi_type':
                         outdata = np.array(new_poi_type)
                     else:
-                        bandit_log.error('Unkown parameter, {}, with dimensions {}'.format(pp, first_dimension))
+                        bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
                 elif first_dimension in HRU_DIMS:
                     if pp == 'hru_deplcrv':
                         outdata = np.array(new_hru_deplcrv)
@@ -708,7 +714,7 @@ def main():
                     else:
                         outdata = nhm_params.get_subset(pp, hru_order_subset)
                 else:
-                    bandit_log.error('No rules to handle dimension {}'.format(first_dimension))
+                    bandit_log.error(f'No rules to handle dimension {first_dimension}')
             elif ndims == 2:
                 # 2D Parameters
                 if first_dimension == 'nsegment':
@@ -716,8 +722,8 @@ def main():
                 elif first_dimension in HRU_DIMS:
                     outdata = nhm_params.get_subset(pp, hru_order_subset)
                 else:
-                    err_txt = 'No rules to handle 2D parameter, {}, which contains dimension {}'
-                    bandit_log.error(err_txt.format(pp, first_dimension))
+                    err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
+                    bandit_log.error(err_txt)
 
             new_ps.parameters.get(src_param.name).data = outdata
 
@@ -726,11 +732,11 @@ def main():
               f'ParamDb revision: {git_url}']
     if args.param_netcdf:
         base_filename = os.path.splitext(param_filename)[0]
-        param_filename = '{}.nc'.format(base_filename)
-        new_ps.write_netcdf('{}/{}'.format(outdir, param_filename))
+        param_filename = f'{base_filename}.nc'
+        new_ps.write_netcdf(f'{outdir}/{param_filename}')
     else:
         print(f'\nWriting version {args.prms_version} parameter file')
-        new_ps.write_parameter_file('{}/{}'.format(outdir, param_filename), header=header, prms_version=args.prms_version)
+        new_ps.write_parameter_file(f'{outdir}/{param_filename}', header=header, prms_version=args.prms_version)
 
     ctl.get('param_file').values = param_filename
 
@@ -752,19 +758,12 @@ def main():
             if args.verbose:
                 print('Processing CBH files')
 
+            # Read the CBH source file
             if os.path.splitext(cbh_dir)[1] == '.nc':
                 cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
                                     nhm_hrus=hru_order_subset)
             else:
-                # Subset the hru_nhm_to_local mapping
-                # TODO: This section will not work with the monolithic paramdb - remove
-                hru_order_ss = OrderedDict()
-                for kk in hru_order_subset:
-                    hru_order_ss[kk] = hru_nhm_to_local[kk]
-
-                cbh_hdl = CbhAscii(src_path=cbh_dir, st_date=st_date, en_date=en_date,
-                                   nhm_hrus=hru_order_subset, indices=hru_order_ss,
-                                   mapping=hru_nhm_to_region)
+                raise ValueError('Missing netcdf CBH files')
 
             if args.cbh_netcdf:
                 # Pull the filename prefix off of the first file found in the
@@ -772,7 +771,7 @@ def main():
                 file_it = glob.iglob(cbh_dir)
                 cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
 
-                cbh_outfile = '{}/{}.nc'.format(outdir, cbh_prefix)
+                cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
                 cbh_hdl.write_netcdf(cbh_outfile)
                 ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
                 ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
@@ -830,16 +829,16 @@ def main():
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Add dynamic parameters
         for cparam in ctl.dynamic_parameters:
-            param_name = 'dyn_{}'.format(cparam)
-            input_file = '{}/{}.nc'.format(dyn_params_dir, param_name)
-            output_file = '{}/{}.param'.format(outdir, param_name)
+            param_name = f'dyn_{cparam}'
+            input_file = f'{dyn_params_dir}/{param_name}.nc'
+            output_file = f'{outdir}/{param_name}.param'
 
             if not os.path.exists(input_file):
-                warn_txt = 'WARNING: CONUS dynamic parameter file: {}, does not exist... skipping'
-                bandit_log.warning(warn_txt.format(input_file))
+                warn_txt = f'WARNING: CONUS dynamic parameter file: {input_file}, does not exist... skipping'
+                bandit_log.warning(warn_txt)
             else:
                 if args.verbose:
-                    print('Writing dynamic parameter {}'.format(cparam))
+                    print(f'Writing dynamic parameter {cparam}')
 
                 mydyn = dyn_params.DynamicParameters(input_file, cparam, st_date, en_date, hru_order_subset)
                 # mydyn = dyn_params.DynamicParameters(input_file, cparam, st_date, en_date, hru_order_subset)
@@ -854,27 +853,27 @@ def main():
 
                 # Output ASCII files
                 out_ascii = open(output_file, 'w')
-                out_ascii.write('{}\n'.format(cparam))
-                out_ascii.write('{}\n'.format(header))
+                out_ascii.write(f'{cparam}\n')
+                out_ascii.write(f'{header}\n')
                 out_ascii.write('####\n')
                 mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
                                   sep=' ', index=False, header=False, encoding=None, chunksize=50)
                 out_ascii.close()
 
     # Write an updated control file to the output directory
-    ctl.write('{}.bandit'.format(control_filename))
+    ctl.write(f'{control_filename}.bandit')
 
     if output_streamflow:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Download the streamgage information from NWIS
         if args.verbose:
-            print('Downloading NWIS streamgage observations for {} stations'.format(len(new_poi_gage_id)))
+            print(f'Downloading NWIS streamgage observations for {len(new_poi_gage_id)} stations')
 
         streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
                                     verbose=args.verbose)
         streamflow.get_daily_streamgage_observations()
-        streamflow.write_prms_data(filename='{}/{}'.format(outdir, obs_filename))
+        streamflow.write_prms_data(filename=f'{outdir}/{obs_filename}')
 
     # *******************************************
     # Create a shapefile of the selected HRUs
@@ -884,12 +883,12 @@ def main():
             print('Writing shapefiles for model subset')
 
         if not os.path.isdir(geo_file):
-            bandit_log.error('File geodatabase, {}, does not exist. Shapefiles will not be created'.format(geo_file))
+            bandit_log.error(f'File geodatabase, {geo_file}, does not exist. Shapefiles will not be created')
         else:
             geo_shp = prms_geo.Geo(geo_file)
 
             # Create GIS sub-directory if it doesn't already exist
-            gis_dir = '{}/GIS'.format(outdir)
+            gis_dir = f'{outdir}/GIS'
             try:
                 os.makedirs(gis_dir)
             except OSError as exception:
@@ -901,15 +900,15 @@ def main():
             # Output a shapefile of the selected HRUs
             # print('\tHRUs')
             # geo_shp.select_layer('nhruNationalIdentifier')
-            print('Layers: {}, {}'.format(args.hru_gis_layer, args.seg_gis_layer))
-            print('IDs: {}, {}'.format(args.hru_gis_id, args.seg_gis_id))
+            print(f'Layers: {args.hru_gis_layer}, {args.seg_gis_layer}')
+            print(f'IDs: {args.hru_gis_id}, {args.seg_gis_id}')
 
             geo_shp.select_layer(args.hru_gis_layer)
-            geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), args.hru_gis_id, hru_order_subset,
+            geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', args.hru_gis_id, hru_order_subset,
                                     included_fields=['nhm_id', 'model_idx', args.hru_gis_id])
 
             geo_shp.select_layer(args.seg_gis_layer)
-            geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), args.seg_gis_id, new_nhm_seg,
+            geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', args.seg_gis_id, new_nhm_seg,
                                     included_fields=[args.seg_gis_id, 'model_idx'])
 
             # Original code
@@ -935,7 +934,7 @@ def main():
 
             del geo_shp
 
-    bandit_log.info('========== END {} =========='.format(datetime.datetime.now().isoformat()))
+    bandit_log.info(f'========== END {datetime.datetime.now().isoformat()} ==========')
 
     os.chdir(stdir)
 
