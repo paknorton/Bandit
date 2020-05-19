@@ -40,7 +40,7 @@ import Bandit.bandit_cfg as bc
 import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 import Bandit.dynamic_parameters as dyn_params
-from Bandit.git_version import git_version
+from Bandit.git_version import git_commit
 from Bandit import __version__
 
 from pyPRMS.constants import REGIONS, HRU_DIMS, PARAMETERS_XML
@@ -314,7 +314,7 @@ def main():
     params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
 
     # Output revision of NhmParamDb and the revision used by merged paramdb
-    bandit_log.debug('Current NhmParamDb revision: {}'.format(git_version(paramdb_dir)))
+    bandit_log.debug('Current NhmParamDb revision: {}'.format(git_commit(paramdb_dir)))
     with open('{}/00-REVISION'.format(merged_paramdb_dir), 'r') as fhdl:
         nhmparamdb_revision = fhdl.readline().strip()
         bandit_log.info('Parameters based on NhmParamDb revision: {}'.format(nhmparamdb_revision))
