@@ -72,9 +72,6 @@ def main():
 
     stdir = os.getcwd()
 
-    # TODO: Add to command line arguments
-    # single_poi = False
-
     if args.job:
         if os.path.exists(args.job):
             # Change into job directory before running extraction
@@ -103,7 +100,7 @@ def main():
     bandit_log.addHandler(flog)
     bandit_log.addHandler(clog)
 
-    bandit_log.info('========== START {} =========='.format(datetime.datetime.now().isoformat()))
+    bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
 
     addl_gages = None
     if args.add_gages:
@@ -274,10 +271,7 @@ def main():
             bandit_log.error('Cycles and/or loops found in stream network')
 
             for xx in nx.simple_cycles(dag_ds):
-                bandit_log.error('Cycle found for segment {}'.format(xx))
-
-    if args.verbose:
-        print('\tExtracting model subset')
+                bandit_log.error(f'Cycle found for segment {xx}')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Build dictionary which maps poi_gage_id to poi_gage_segment
@@ -320,7 +314,7 @@ def main():
                 bandit_log.error(f'Streamgage {sg} does not exist in poi_gage_id')
                 break
 
-            sg_dir = '{}/{}'.format(outdir, sg)
+            sg_dir = f'{outdir}/{sg}'
 
             try:
                 os.makedirs(sg_dir)
@@ -330,8 +324,6 @@ def main():
                 else:
                     pass
 
-            # =======================================
-            # Given a d/s segment (dsmost_seg) create a subset of u/s segments
             if args.verbose:
                 print('\tExtracting model subset')
 
@@ -671,12 +663,11 @@ def main():
                       f'ParamDb revision: {git_url}']
             if args.param_netcdf:
                 base_filename = os.path.splitext(param_filename)[0]
-                param_filename = '{}.nc'.format(base_filename)
-                new_ps.write_netcdf('{}/{}'.format(sg_dir, param_filename))
+                param_filename = f'{base_filename}.nc'
+                new_ps.write_netcdf(f'{sg_dir}/{param_filename}')
             else:
                 print(f'\nWriting version {args.prms_version} parameter file')
-                new_ps.write_parameter_file('{}/{}'.format(sg_dir, param_filename), header=header,
-                                            prms_version=args.prms_version)
+                new_ps.write_parameter_file(f'{sg_dir}/{param_filename}', header=header, prms_version=args.prms_version)
 
             ctl.get('param_file').values = param_filename
 
@@ -685,11 +676,6 @@ def main():
                 # sys.stdout.write('\r                                       ')
                 # sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
                 sys.stdout.flush()
-
-            # 2019-09-16 PAN: Nasty hack to handle parameter databases that may not have
-            #                 a one-to-one match between index value and nhm_id.
-            # cparam = nhm_params.get('nhm_id').tostructure()
-            # hru_order_subset_nhm_id = np.array(cparam['data'])[tuple(hru_order_subset0), ].ravel(order='F').tolist()
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Write CBH files
@@ -703,6 +689,7 @@ def main():
                     if args.verbose:
                         print('Processing CBH files')
 
+                    # Read the CBH source file
                     if os.path.splitext(cbh_dir)[1] == '.nc':
                         cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
                                             nhm_hrus=hru_order_subset)
@@ -763,8 +750,6 @@ def main():
                                 mod_out.write_csv(f'{sg_dir}/model_output')
                         except FileNotFoundError:
                             bandit_log.warning(f'Model output variable, {vv}, does not exist; skipping.')
-                    sys.stdout.write('\n')
-                    sys.stdout.flush()
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Write dynamic parameters
@@ -828,7 +813,7 @@ def main():
                     print('Writing shapefiles for model subset')
 
                 if not os.path.isdir(geo_file):
-                    bandit_log.error('File geodatabase, {}, does not exist. Shapefiles will not be created'.format(geo_file))
+                    bandit_log.error(f'File geodatabase, {geo_file}, does not exist. Shapefiles will not be created')
                 else:
                     geo_shp = prms_geo.Geo(geo_file)
 

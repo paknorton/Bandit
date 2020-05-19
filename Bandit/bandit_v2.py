@@ -263,7 +263,6 @@ def main():
         exit(200)
 
     # Build the stream network
-    # dag_ds = generate_stream_network(tosegment, nhm_seg)
     dag_ds = pdb.parameters.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
 
     bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
@@ -299,9 +298,11 @@ def main():
     new_nhm_seg_to_idx1 = OrderedDict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
 
     # Generate the renumbered local tosegments (1-based with zero being an outlet)
-    new_tosegment = [new_nhm_seg_to_idx1[ee[1]] if ee[1] in new_nhm_seg_to_idx1 else 0 for ee in dag_ds_subset.edges]
+    new_tosegment = [new_nhm_seg_to_idx1[ee[1]] if ee[1] in new_nhm_seg_to_idx1
+                     else 0 for ee in dag_ds_subset.edges]
 
-    # NOTE: With monolithic nhmParamDb files hru_segment becomes hru_segment_nhm and the regional hru_segments are gone.
+    # NOTE: With monolithic nhmParamDb files hru_segment becomes hru_segment_nhm and the
+    # regional hru_segments are gone.
     # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
     #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
     #                 needs to be loaded and used to map the nhm HRU ids to their
@@ -447,7 +448,8 @@ def main():
                     new_poi_type[idx] = 0
                 elif new_nhm_seg_to_idx1[vv] in new_poi_gage_segment:
                     sidx = new_poi_gage_segment.index(new_nhm_seg_to_idx1[vv])
-                    warn_txt = f'User-specified streamgage ({ss}) has same nhm_seg ({new_nhm_seg_to_idx1[vv]}) ' + \
+                    warn_txt = f'User-specified streamgage ({ss}) ' + \
+                               f'has same nhm_seg ({new_nhm_seg_to_idx1[vv]}) ' + \
                                f'as existing POI ({new_poi_gage_id[sidx]}); replacing streamgage ID'
                     bandit_log.warning(warn_txt)
                     new_poi_gage_id[sidx] = ss
@@ -657,7 +659,6 @@ def main():
                 ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
                 ctl.get('precip_day').values = os.path.basename(cbh_outfile)
             else:
-                # cbh_hdl.write_ascii()
                 cbh_hdl.write_ascii(vars=['tmax', 'tmin', 'prcp'])
             # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
         else:
