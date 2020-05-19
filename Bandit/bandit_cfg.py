@@ -81,7 +81,7 @@ class Cfg(object):
 
         Args:
             variable (str): The configuration variable to update.
-            newval (str): The value to assign to the variable.
+            newval (str, list): The value to assign to the variable.
 
         Raises:
             KeyError: If configuration variable does not exist.
