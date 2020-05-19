@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 #      Author: Parker Norton (pnorton@usgs.gov)
 #        Date: 2017-02-14
@@ -33,14 +33,14 @@ class Cfg(object):
         outstr = ''
 
         for (kk, vv) in self.__cfgdict.items():
-            outstr += '{0:s}: '.format(kk)
+            outstr += f'{kk}: '
 
             if isinstance(vv, list):
                 for ll in vv:
-                    outstr += '{}, '.format(ll)
+                    outstr += f'{ll}, '
                 outstr = outstr.strip(', ') + '\n'
             else:
-                outstr += '{}\n'.format(vv)
+                outstr += f'{vv}\n'
         return outstr
 
     def __getattr__(self, item):
