@@ -17,6 +17,7 @@ import Bandit.bandit_cfg as bc
 import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 import Bandit.dynamic_parameters as dyn_params
+from Bandit.bandit_helpers import parse_gages, subset_stream_network
 from Bandit.model_output import ModelOutput
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit import __version__
@@ -29,131 +30,6 @@ from pyPRMS.ParameterSet import ParameterSet
 from pyPRMS.ValidParams import ValidParams
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
-
-
-def parse_gage(s):
-    """Parse a streamgage key-value pair.
-
-    Parse a streamgage key-value pair, separated by '='; that's the reverse of ShellArgs.
-    On the command line (argparse) a declaration will typically look like::
-        foo=hello or foo="hello world"
-
-    :param s: str
-    :rtype: tuple(key, value)
-    """
-
-    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
-    items = s.split('=')
-    key = items[0].strip()  # we remove blanks around keys, as is logical
-    value = ''
-
-    if len(items) > 1:
-        # rejoin the rest:
-        value = '='.join(items[1:])
-    return key, value
-
-
-def parse_gages(items):
-    """Parse a list of key-value pairs and return a dictionary.
-
-    :param list[str] items: list of key-value pairs
-
-    :returns: key-value dictionary
-    :rtype: dict[str, str]
-    """
-
-    # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
-    d = {}
-    if items:
-        for item in items:
-            key, value = parse_gage(item)
-            d[key] = int(value)
-    return d
-
-
-def generate_stream_network(tosegment, nhm_seg):
-    dag_ds = nx.DiGraph()
-    for ii, vv in enumerate(tosegment):
-        #     dag_ds.add_edge(ii+1, vv)
-        if vv == 0:
-            dag_ds.add_edge(nhm_seg[ii], 'Out_{}'.format(nhm_seg[ii]))
-        else:
-            dag_ds.add_edge(nhm_seg[ii], vv)
-
-    bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
-    bandit_log.debug('Number of NHM downstream edges: {}'.format(dag_ds.number_of_edges()))
-
-    return dag_ds
-
-
-def subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg):
-    # Create the upstream graph
-    dag_us = dag_ds.reverse()
-    bandit_log.debug('Number of NHM upstream nodes: {}'.format(dag_us.number_of_nodes()))
-    bandit_log.debug('Number of NHM upstream edges: {}'.format(dag_us.number_of_edges()))
-
-    # Trim the u/s graph to remove segments above the u/s cutoff segments
-    try:
-        for xx in uscutoff_seg:
-            try:
-                dag_us.remove_nodes_from(nx.dfs_predecessors(dag_us, xx))
-
-                # Also remove the cutoff segment itself
-                dag_us.remove_node(xx)
-            except KeyError:
-                print('WARNING: nhm_segment {} does not exist in stream network'.format(xx))
-    except TypeError:
-        bandit_log.error('\nSelected cutoffs should at least be an empty list instead of NoneType.')
-        exit(200)
-
-    bandit_log.debug('Number of NHM upstream nodes (trimmed): {}'.format(dag_us.number_of_nodes()))
-    bandit_log.debug('Number of NHM upstream edges (trimmed): {}'.format(dag_us.number_of_edges()))
-
-    # =======================================
-    # Given a d/s segment (dsmost_seg) create a subset of u/s segments
-
-    # Get all unique segments u/s of the starting segment
-    uniq_seg_us = set()
-    if dsmost_seg:
-        for xx in dsmost_seg:
-            try:
-                pred = nx.dfs_predecessors(dag_us, xx)
-                uniq_seg_us = uniq_seg_us.union(set(pred.keys()).union(set(pred.values())))
-            except KeyError:
-                bandit_log.error('KeyError: Segment {} does not exist in stream network'.format(xx))
-                # print('\nKeyError: Segment {} does not exist in stream network'.format(xx))
-
-        # Get a subgraph in the dag_ds graph and return the edges
-        dag_ds_subset = dag_ds.subgraph(uniq_seg_us).copy()
-
-        # 2018-02-13 PAN: It is possible to have outlets specified which are not truly
-        #                 outlets in the most conservative sense (e.g. a point where
-        #                 the stream network exits the study area). This occurs when
-        #                 doing headwater extractions where all segments for a headwater
-        #                 are specified in the configuration file. Instead of creating
-        #                 output edges for all specified 'outlets' the set difference
-        #                 between the specified outlets and nodes in the graph subset
-        #                 which have no edges is performed first to reduce the number of
-        #                 outlets to the 'true' outlets of the system.
-        node_outlets = [ee[0] for ee in dag_ds_subset.edges()]
-        true_outlets = set(dsmost_seg).difference(set(node_outlets))
-        bandit_log.debug('node_outlets: {}'.format(','.join(map(str, node_outlets))))
-        bandit_log.debug('true_outlets: {}'.format(','.join(map(str, true_outlets))))
-
-        # Add the downstream segments that exit the subgraph
-        for xx in true_outlets:
-            nhm_outlet = list(dag_ds.neighbors(xx))[0]
-            dag_ds_subset.nodes[xx]['style'] = 'filled'
-            dag_ds_subset.nodes[xx]['fontcolor'] = 'white'
-            dag_ds_subset.nodes[xx]['fillcolor'] = 'blue'
-            dag_ds_subset.add_node(nhm_outlet, style='filled', fontcolor='white', fillcolor='grey')
-            dag_ds_subset.add_edge(xx, nhm_outlet)
-    else:
-        # No outlets specified so pull the CONUS
-        dag_ds_subset = dag_ds
-
-    return dag_ds_subset
-
 
 # Setup the logging
 bandit_log = logging.getLogger('bandit')
@@ -321,12 +197,6 @@ def main():
                              'in the config file')
             exit(2)
 
-    # Load master list of valid parameters
-    vpdb = ValidParams()
-
-    # Build list of parameters required for the selected control file modules
-    required_params = vpdb.get_params_for_modules(modules=list(ctl.modules.values()))
-
     # Date range for pulling NWIS streamgage observations and CBH data
     if isinstance(config.start_date, datetime.date):
         st_date = config.start_date
@@ -360,6 +230,12 @@ def main():
     # hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(cbh_dir))
     # hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(cbh_dir))
 
+    # Load master list of valid parameters
+    vpdb = ValidParams()
+
+    # Build list of parameters required for the selected control file modules
+    required_params = vpdb.get_params_for_modules(modules=list(ctl.modules.values()))
+
     # Load the NHMparamdb
     print('Loading NHM ParamDb')
     pdb = ParamDb(merged_paramdb_dir)
@@ -370,7 +246,7 @@ def main():
     # Get tosegment_nhm
     # NOTE: tosegment is now tosegment_nhm and the regional tosegment is gone.
     # Convert to list for fastest access to array
-    tosegment = nhm_params.get('tosegment_nhm').tolist()
+    # tosegment = nhm_params.get('tosegment_nhm').tolist()
     nhm_seg = nhm_params.get('nhm_seg').tolist()
 
     if args.verbose:
@@ -387,7 +263,11 @@ def main():
         exit(200)
 
     # Build the stream network
-    dag_ds = generate_stream_network(tosegment, nhm_seg)
+    # dag_ds = generate_stream_network(tosegment, nhm_seg)
+    dag_ds = pdb.parameters.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
+
+    bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
+    bandit_log.debug('Number of NHM downstream edges: {}'.format(dag_ds.number_of_edges()))
 
     if check_dag:
         if not nx.is_directed_acyclic_graph(dag_ds):
