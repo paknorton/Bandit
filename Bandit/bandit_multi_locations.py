@@ -1,21 +1,14 @@
-#!/usr/bin/env python
-# coding: utf-8
-from __future__ import (absolute_import, division, print_function)
-from future.utils import iteritems
+#!/usr/bin/env python3
 
 from Bandit import bandit_cfg as bc
 
 import os
 import sys
 from collections import OrderedDict
-# import time
 import threading
 import queue
 
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
+import subprocess
 
 
 """Example of code used to generate model extractions for headwaters in the NHM
@@ -100,16 +93,14 @@ def main():
     job_dir = os.getcwd()
 
     # Read the default configuration file
-    config = bc.Cfg('{}/bandit.cfg'.format(job_dir))
+    config = bc.Cfg(f'{job_dir}/bandit.cfg')
 
-    if args.segoutlets:
-        seg_src = '{}/{}'.format(job_dir, args.segoutlets)
-    else:
+    if not args.segoutlets:
         print('ERROR: Must specify the segment outlets file.')
         exit(1)
 
     if args.nrhrus:
-        nrhru_src = '{}/{}'.format(job_dir, args.nrhrus)
+        nrhru_src = f'{job_dir}/{args.nrhrus}'
     else:
         nrhru_src = None
 
@@ -123,6 +114,7 @@ def main():
         print('ERROR: Unable to find bandit.py')
         exit(1)
 
+    seg_src = f'{job_dir}/{args.segoutlets}'
     seg_file = open(seg_src, 'r')
 
     # Skip the header information
@@ -136,7 +128,7 @@ def main():
 
     # Read the segment outlets by location
     for line in seg_file:
-        cols = line.strip().replace(" ", "").split(',')
+        cols = line.strip().replace(' ', '').split(',')
         try:
             # Assume first column is a number
             cols = [int(xx) for xx in cols]
@@ -145,16 +137,15 @@ def main():
             # First column is probably a string
             segments_by_loc[cols[0]] = [int(xx) for xx in cols[1:]]
 
+    noroute_hrus_by_loc = OrderedDict()
     if nrhru_src:
         nrhru_file = open(nrhru_src, 'r')
         nrhru_file.readline()
         # nrhru_file.next()
 
-        noroute_hrus_by_loc = OrderedDict()
-
         # Read in the non-routed HRUs by location
         for line in nrhru_file:
-            cols = line.strip().replace(" ", "").split(',')
+            cols = line.strip().replace(' ', '').split(',')
             try:
                 # Assume first column is a number
                 cols = [int(xx) for xx in cols]
@@ -193,7 +184,7 @@ def main():
         try:
             os.makedirs(job_dir)
         except OSError as err:
-            print("\tError creating directory: {}".format(err))
+            print(f'\tError creating directory: {err}')
             exit(1)
 
     # st_dir = os.getcwd()
@@ -204,22 +195,22 @@ def main():
 
     work_count = 0
 
-    for kk, vv in iteritems(segments_by_loc):
+    for kk, vv in segments_by_loc.items():
         try:
             # Try for integer formatted output directories first
             if args.prefix:
-                cdir = '{}{:04d}'.format(args.prefix, kk)
+                cdir = f'{args.prefix}{kk:04d}'
             else:
-                cdir = '{:04d}'.format(kk)
+                cdir = f'{kk:04d}'
         except ValueError:
-            cdir = '{}'.format(kk)
+            cdir = f'{kk}'
 
         # Create the headwater directory if needed
         if not os.path.exists(cdir):
             try:
                 os.makedirs(cdir)
             except OSError as err:
-                print("\tError creating directory: {}".format(err))
+                print(f'\tError creating directory: {err}')
                 exit(1)
 
         # Update the outlets in the basin.cfg file and write into the headwater directory
@@ -230,26 +221,26 @@ def main():
 
         # TODO: This causes the control_filename to be rewritten in the parent
         #       directory; so this happens for each location. Need to fix.
-        config.update_value('control_filename', '{}/control.default'.format(job_dir))
-        config.update_value('output_dir', '{}/{}'.format(job_dir, cdir))
-        config.write('{}/bandit.cfg'.format(cdir))
+        config.update_value(f'control_filename', '{job_dir}/control.default')
+        config.update_value(f'output_dir', '{job_dir}/{cdir}')
+        config.write(f'{cdir}/bandit.cfg')
 
         # Run bandit
         # Add the command to queue for processing
         work_count += 1
-        cmd = '{} -j {}/{}'.format(cmd_bandit, job_dir, cdir)
+        cmd = f'{cmd_bandit} -j {job_dir}/{cdir}'
 
         os.chdir(cdir)
         cmd_q.put(cmd)
         os.chdir(job_dir)
 
-    print("work_count = {:d}".format(work_count))
+    print(f'work_count = {work_count:4d}')
 
     # Output results
     while work_count > 0:
         result = result_q.get()
 
-        sys.stdout.write("\rwork_count: {:4d}".format(work_count))
+        sys.stdout.write(f'\rwork_count: {work_count:4d}')
         sys.stdout.flush()
 
     #     print "Thread %s return code = %d" % (result[0], result[2])
@@ -259,7 +250,7 @@ def main():
             # An error occurred running the command
             # Returncodes greater than 200 are generated by bandit errors, that
             # don't necessitate shutting the entire job down.
-            print("\nThread %s return code = %d (%s)" % (result[0], result[2], result[1]))
+            print(f'\nThread {result[0]} return code = {result[2]} ({result[1]})')
             work_count = 0
 
     # Ask for the threads to die and wait for them to do it
