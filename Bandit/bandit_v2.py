@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
 
 import argparse
+import datetime
 import errno
 import glob
 import logging
 import networkx as nx
 import numpy as np
 import os
-import re
 import sys
 
 from collections import OrderedDict
-import datetime
 
 import Bandit.bandit_cfg as bc
+import Bandit.dynamic_parameters as dyn_params
 import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
-import Bandit.dynamic_parameters as dyn_params
-from Bandit.bandit_helpers import parse_gages, subset_stream_network
-from Bandit.model_output import ModelOutput
-from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
-from Bandit import __version__
 
-from pyPRMS.ParamDb import ParamDb
+from Bandit import __version__
+from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network
+from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
+from Bandit.model_output import ModelOutput
+
 from pyPRMS.constants import HRU_DIMS
 from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.ControlFile import ControlFile
+from pyPRMS.ParamDb import ParamDb
 from pyPRMS.ParameterSet import ParameterSet
 from pyPRMS.ValidParams import ValidParams
 
@@ -141,7 +141,7 @@ def main():
     # List of additional HRUs (have no route to segment within subset)
     hru_noroute = config.hru_noroute
 
-    # List of output variables to sbuset
+    # List of output variables to subset
     try:
         include_model_output = config.include_model_output
         output_vars = config.output_vars
@@ -198,17 +198,8 @@ def main():
             exit(2)
 
     # Date range for pulling NWIS streamgage observations and CBH data
-    if isinstance(config.start_date, datetime.date):
-        st_date = config.start_date
-    else:
-        st_date = datetime.datetime(*[int(x) for x in re.split('[- :]', config.start_date)])
-        # st_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
-
-    if isinstance(config.end_date, datetime.date):
-        en_date = config.end_date
-    else:
-        en_date = datetime.datetime(*[int(x) for x in re.split('[- :]', config.end_date)])
-        # en_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
+    st_date = set_date(config.start_date)
+    en_date = set_date(config.end_date)
 
     # ===============================================================
     # params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
@@ -221,15 +212,6 @@ def main():
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Read hru_nhm_to_local and hru_nhm_to_region
-    # Create segment_nhm_to_local and segment_nhm_to_region
-
-    # TODO: since hru_nhm_to_region and nhru_nhm_to_local are only needed for
-    #       CBH files we should 'soft-fail' if the files are missing and just
-    #       output a warning and turn off CBH output if it was selected.
-    # hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(cbh_dir))
-    # hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(cbh_dir))
-
     # Load master list of valid parameters
     vpdb = ValidParams()
 
@@ -281,13 +263,7 @@ def main():
     dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
     # Create list of toseg ids for the model subset
-    try:
-        # networkx 1.x
-        toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges_iter()))
-    except AttributeError:
-        # networkx 2.x
-        toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
-
+    toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
     bandit_log.info(f'Number of segments in subset: {len(toseg_idx)}')
 
     # Use the mapping to create subsets of nhm_seg, tosegment_nhm, and tosegment
@@ -337,8 +313,8 @@ def main():
     # print('{0} hru_to_seg {0}'.format('-'*15))
     # print(hru_to_seg)
 
-    # HRU-related parameters can either be output with the legacy, segment-orient order
-    # or can be output while maintaining their relative order from the parameter database.
+    # HRU-related parameters can either be output with the legacy, segment-oriented order
+    # or can be output maintaining their original relative order from the parameter database.
     if args.keep_hru_order:
         hru_order_subset = [kk for kk in hru_to_seg.keys()]
 
