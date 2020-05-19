@@ -7,7 +7,6 @@ import logging
 import networkx as nx
 import numpy as np
 import os
-import re
 import sys
 
 from collections import OrderedDict
@@ -17,7 +16,7 @@ import Bandit.bandit_cfg as bc
 import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 import Bandit.dynamic_parameters as dyn_params
-from Bandit.bandit_helpers import parse_gages, subset_stream_network
+from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network
 from Bandit.model_output import ModelOutput
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit import __version__
@@ -204,17 +203,8 @@ def main():
             exit(2)
 
     # Date range for pulling NWIS streamgage observations and CBH data
-    if isinstance(config.start_date, datetime.date):
-        st_date = config.start_date
-    else:
-        st_date = datetime.datetime(*[int(x) for x in re.split('[- :]', config.start_date)])
-        # st_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.start_date)])
-
-    if isinstance(config.end_date, datetime.date):
-        en_date = config.end_date
-    else:
-        en_date = datetime.datetime(*[int(x) for x in re.split('[- :]', config.end_date)])
-        # en_date = datetime.datetime(*[int(x) for x in re.split('-| |:', config.end_date)])
+    st_date = set_date(config.start_date)
+    en_date = set_date(config.end_date)
 
     # ===============================================================
     # params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
@@ -227,15 +217,6 @@ def main():
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Read hru_nhm_to_local and hru_nhm_to_region
-    # Create segment_nhm_to_local and segment_nhm_to_region
-
-    # TODO: since hru_nhm_to_region and nhru_nhm_to_local are only needed for
-    #       CBH files we should 'soft-fail' if the files are missing and just
-    #       output a warning and turn off CBH output if it was selected.
-    # hru_nhm_to_region = get_parameter('{}/hru_nhm_to_region.msgpack'.format(cbh_dir))
-    # hru_nhm_to_local = get_parameter('{}/hru_nhm_to_local.msgpack'.format(cbh_dir))
-
     # Load master list of valid parameters
     vpdb = ValidParams()
 
@@ -274,12 +255,8 @@ def main():
                 bandit_log.error(f'Cycle found for segment {xx}')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Build dictionary which maps poi_gage_id to poi_gage_segment
-    poi_gage_segment_tmp = nhm_params.get('poi_gage_segment').data
-    poi_gage_id_tmp = nhm_params.get('poi_gage_id').data
-
-    # Create dictionary to lookup nhm_segment for a given poi_gage_id
-    poi_id_to_seg = dict(zip(poi_gage_id_tmp, poi_gage_segment_tmp))
+    # Get dictionary which maps poi_gage_id to poi_gage_segment
+    poi_id_to_seg = nhm_params.poi_to_seg
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Read streamgage ids from file - one streamgage id per row
