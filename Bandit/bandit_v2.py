@@ -302,19 +302,24 @@ def main():
             hru_to_seg[hid] = vv
         elif nhm_id[ii] in hru_noroute:
             if vv != 0:
-                err_txt = f'User-supplied non-routed HRU {nhm_id[ii]} routes to stream segment {vv} - Skipping.'
+                err_txt = f'User-supplied non-routed HRU {nhm_id[ii]} routes to stream segment {vv}; skipping.'
                 bandit_log.error(err_txt)
             else:
                 hid = nhm_id[ii]
                 seg_to_hru.setdefault(vv, []).append(hid)
                 hru_to_seg[hid] = vv
+
+    if set(hru_to_seg.values()) == set(hru_noroute):
+        # This occurs when the are no ROUTED HRUs for any of the stream segments
+        bandit_log.error('No HRUs associated with any of the segments; exiting.')
+        exit(2)
     # print('{0} seg_to_hru {0}'.format('-'*15))
     # print(seg_to_hru)
     # print('{0} hru_to_seg {0}'.format('-'*15))
     # print(hru_to_seg)
 
     # HRU-related parameters can either be output with the legacy, segment-oriented order
-    # or can be output maintaining their original relative order from the parameter database.
+    # or can be output maintaining their original HRU-relative order from the parameter database.
     if args.keep_hru_order:
         hru_order_subset = [kk for kk in hru_to_seg.keys()]
 
@@ -329,6 +334,10 @@ def main():
                     hru_order_subset.append(yy)
             else:
                 bandit_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
+
+        # if len(hru_order_subset) == 0:
+        #     bandit_log.error('No HRUs associated with any of the segments; exiting.')
+        #     exit(2)
 
         # Append the additional non-routed HRUs to the list
         if len(hru_noroute) > 0:
@@ -612,33 +621,32 @@ def main():
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Subset the cbh files for the selected HRUs
-        if len(hru_order_subset) > 0:
-            if args.verbose:
-                print('Processing CBH files')
+        if args.verbose:
+            print('Processing CBH files')
 
-            # Read the CBH source file
-            if os.path.splitext(cbh_dir)[1] == '.nc':
-                cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
-                                    nhm_hrus=hru_order_subset)
-            else:
-                raise ValueError('Missing netcdf CBH files')
-
-            if args.cbh_netcdf:
-                # Pull the filename prefix off of the first file found in the
-                # source netcdf CBH directory.
-                file_it = glob.iglob(cbh_dir)
-                cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
-
-                cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
-                cbh_hdl.write_netcdf(cbh_outfile)
-                ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
-                ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
-                ctl.get('precip_day').values = os.path.basename(cbh_outfile)
-            else:
-                cbh_hdl.write_ascii(vars=['tmax', 'tmin', 'prcp'])
-            # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
+        # Read the CBH source file
+        if os.path.splitext(cbh_dir)[1] == '.nc':
+            cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
+                                nhm_hrus=hru_order_subset)
         else:
-            bandit_log.error('No HRUs associated with the segments')
+            raise ValueError('Missing netcdf CBH files')
+
+        if args.cbh_netcdf:
+            # Pull the filename prefix off of the first file found in the
+            # source netcdf CBH directory.
+            file_it = glob.iglob(cbh_dir)
+            cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
+
+            cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
+            cbh_hdl.write_netcdf(cbh_outfile)
+            ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
+            ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
+            ctl.get('precip_day').values = os.path.basename(cbh_outfile)
+        else:
+            cbh_hdl.write_ascii(vars=['tmax', 'tmin', 'prcp'])
+        # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
+    else:
+        bandit_log.error('No HRUs associated with the segments')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write output variables
@@ -651,32 +659,32 @@ def main():
                     'seg_lateral_inflow', 'seg_outflow', 'seg_sroff', 'seg_ssflow',
                     'seg_upstream_inflow']
 
-        if len(hru_order_subset) > 0 or len(new_nhm_seg) > 0:
+        # if len(hru_order_subset) > 0 or len(new_nhm_seg) > 0:
+        try:
+            os.makedirs(f'{outdir}/model_output')
+            print('Creating directory model_output, for model output variables')
+        except OSError:
+            print('Using existing model_output directory for output variables')
+
+        for vv in output_vars:
+            if args.verbose:
+                sys.stdout.write('\r                                                  ')
+                sys.stdout.write(f'\rProcessing output variable: {vv} ')
+                sys.stdout.flush()
+
+            filename = f'{output_vars_dir}/{vv}.nc'
+
             try:
-                os.makedirs(f'{outdir}/model_output')
-                print('Creating directory model_output, for model output variables')
-            except OSError:
-                print('Using existing model_output directory for output variables')
-
-            for vv in output_vars:
-                if args.verbose:
-                    sys.stdout.write('\r                                                  ')
-                    sys.stdout.write(f'\rProcessing output variable: {vv} ')
-                    sys.stdout.flush()
-
-                filename = f'{output_vars_dir}/{vv}.nc'
-
-                try:
-                    if vv in seg_vars:
-                        mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                              nhm_segs=new_nhm_seg)
-                        mod_out.write_csv(f'{outdir}/model_output')
-                    else:
-                        mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                              nhm_hrus=hru_order_subset)
-                        mod_out.write_csv(f'{outdir}/model_output')
-                except FileNotFoundError:
-                    bandit_log.warning(f'Model output variable, {vv}, does not exist; skipping.')
+                if vv in seg_vars:
+                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                          nhm_segs=new_nhm_seg)
+                    mod_out.write_csv(f'{outdir}/model_output')
+                else:
+                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
+                                          nhm_hrus=hru_order_subset)
+                    mod_out.write_csv(f'{outdir}/model_output')
+            except FileNotFoundError:
+                bandit_log.warning(f'Model output variable, {vv}, does not exist; skipping.')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write dynamic parameters
