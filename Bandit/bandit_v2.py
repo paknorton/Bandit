@@ -645,8 +645,6 @@ def main():
         else:
             cbh_hdl.write_ascii(vars=['tmax', 'tmin', 'prcp'])
         # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
-    else:
-        bandit_log.error('No HRUs associated with the segments')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write output variables
