@@ -16,10 +16,70 @@ from Bandit.pr_util import print_error
 from io import StringIO
 from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
+from html.parser import HTMLParser
+
+
+class NWISErrorParser(HTMLParser):
+    # This is a quick 'n dirty error message parser for NWIS
+    inBody = False
+    inPara = False
+    inBold = False
+    lsStartTags = list()
+    lsEndTags = list()
+    lsStartEndTags = list()
+    lsComments = list()
+    curr_key = None
+    error_info = {}
+
+    # HTML Parser Methods
+    def handle_starttag(self, start_tag, attrs):
+        if self.inBody and start_tag != 'h1':
+            self.lsStartTags.append(start_tag)
+            # print('Start tag: ', start_tag)
+
+        if start_tag == 'body':
+            self.inBody = True
+
+        if start_tag == 'p':
+            self.inPara = True
+
+        if start_tag == 'b':
+            self.inBold = True
+
+    def handle_endtag(self, end_tag):
+        if end_tag == 'body':
+            self.inBody = False
+
+        if self.inBody and end_tag != 'h1':
+            self.lsEndTags.append(end_tag)
+            # print('End tag: ', end_tag)
+
+        if end_tag == 'p':
+            self.inPara = False
+        if end_tag == 'b':
+            self.inBold = False
+
+    def handle_startendtag(self, startend_tag, attrs):
+        self.lsStartEndTags.append(startend_tag)
+
+    def handle_data(self, data):
+        if self.inBody:
+            # print("Encountered some data  :", data)
+
+            if self.inPara and self.inBold:
+                self.curr_key = data
+            elif self.inPara:
+                if self.curr_key == 'message':
+                    self.error_info[self.curr_key] = data.split(',')[0]
+                else:
+                    self.error_info[self.curr_key] = data
+
+    def handle_comment(self, data):
+        self.lsComments.append(data)
 
 
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
-BASE_NWIS_URL = 'http://waterservices.usgs.gov/nwis'
+BASE_NWIS_URL = 'https://waterservices.usgs.gov/nwis'
 RETRIES = 3
 
 nwis_logger = logging.getLogger('bandit.NWIS')
@@ -241,15 +301,26 @@ class NWIS:
 
                     break
                 except (HTTPError, URLError) as err:
-                    attempts += 1
-                    self.logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
-                    # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    if err.code == 400:
+                        err_parser = NWISErrorParser()
+                        err_parser.feed(str(err.read().decode("utf8", 'ignore')))
+                        self.logger.warning(f'HTTPError: {err.code}, Site: {gg}, {err_parser.error_info["message"]}')
+
+                        break
+                    else:
+                        attempts += 1
+                        self.logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
+                        # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
                 except ConnectionResetError as err:
                     attempts += 1
                     self.logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
                     time.sleep(10)
 
-            if streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
+            if streamgage_obs_page is None:
+                # Create a dummy dataframe
+                df = pd.DataFrame(index=self.__date_range, columns=[gg])
+                df.index.name = 'date'
+            elif streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
                 self.logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
