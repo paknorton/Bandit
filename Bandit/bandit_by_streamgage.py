@@ -146,7 +146,7 @@ def main():
     # WARNING: The by streamgage version of bandit does not allow non-routed HRUs
     hru_noroute = []
 
-    # List of output variables to sbuset
+    # List of output variables to subset
     try:
         include_model_output = config.include_model_output
         output_vars = config.output_vars
@@ -358,7 +358,7 @@ def main():
         # print(hru_to_seg)
 
         # HRU-related parameters can either be output with the legacy, segment-oriented order
-        # or can be output maintaining their original relative order from the parameter database.
+        # or can be output maintaining their original HRU-relative order from the parameter database.
         if args.keep_hru_order:
             hru_order_subset = [kk for kk in hru_to_seg.keys()]
 
