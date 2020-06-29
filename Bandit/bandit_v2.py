@@ -69,6 +69,7 @@ def main():
     parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
     parser.add_argument('--cbh_netcdf', help='Enable netCDF output for CBH files', action='store_true')
     parser.add_argument('--param_netcdf', help='Enable netCDF output for parameter file', action='store_true')
+    parser.add_argument('--streamflow_netcdf', help='Enable netCDF output for streamflow file', action='store_true')
     parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+',
                         help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must ' +
                              'exist in the model subset. Additional streamgages are marked as poi_type=0.')
@@ -85,7 +86,7 @@ def main():
     parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?',
                         default='nsegmentNationalIdentifier', type=str)
     parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?',
-                        default=6, type=int)
+                        default=5, type=int)
     args = parser.parse_args()
 
     stdir = os.getcwd()
@@ -112,7 +113,7 @@ def main():
     for kk, vv in args.__dict__.items():
         if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
                       'keep_hru_order', 'hru_gis_layer', 'seg_gis_layer', 'hru_gis_id', 'seg_gis_id',
-                      'prms_version']:
+                      'prms_version', 'streamflow_netcdf']:
             if vv:
                 bandit_log.info(f'Overriding configuration for {kk} with {vv}')
                 config.update_value(kk, vv)
@@ -128,9 +129,6 @@ def main():
 
     # Location of the NHM parameter database
     paramdb_dir = config.paramdb_dir
-
-    # Location of the merged parameter database
-    merged_paramdb_dir = config.merged_paramdb_dir
 
     # List of outlets
     dsmost_seg = config.outlets
@@ -220,7 +218,7 @@ def main():
 
     # Load the NHMparamdb
     print('Loading NHM ParamDb')
-    pdb = ParamDb(merged_paramdb_dir)
+    pdb = ParamDb(paramdb_dir)
     nhm_params = pdb.parameters
     nhm_global_dimensions = pdb.dimensions
 
@@ -736,7 +734,11 @@ def main():
         streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
                                     verbose=args.verbose)
         streamflow.get_daily_streamgage_observations()
-        streamflow.write_prms_data(filename=f'{outdir}/{obs_filename}')
+
+        if args.streamflow_netcdf:
+            streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
+        else:
+            streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
 
     # *******************************************
     # Create a shapefile of the selected HRUs

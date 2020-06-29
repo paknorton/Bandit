@@ -4,6 +4,7 @@ from collections import OrderedDict
 from datetime import datetime
 
 import logging
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import re
@@ -120,6 +121,10 @@ class NWIS:
         # Regex's for stripping unneeded clutter from the rdb file
         self.__t1 = re.compile('^#.*$\n?', re.MULTILINE)  # remove comment lines
         self.__t2 = re.compile('^5s.*$\n?', re.MULTILINE)  # remove field length lines
+
+    @property
+    def data(self):
+        return self.__outdata
 
     @property
     def start_date(self):
@@ -348,10 +353,11 @@ class NWIS:
 
                 # Conveniently the columns we want to drop contain '_cd' in their names
                 drop_cols = [col for col in df.columns if '_cd' in col]
+                drop_cols.append('site_no')
                 df.drop(drop_cols, axis=1, inplace=True)
 
                 # There should now only be date, site_no, and a Q column named *_00060_00003
-                # We will rename the *_00060_00003 to mean_val
+                # We will rename the *_00060_00003 to the site_no value
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
@@ -370,10 +376,10 @@ class NWIS:
 
                     try:
                         # If no flags are present the column should already be float
-                        pd.to_numeric(df[gg], errors='raise')
+                        df[gg] = pd.to_numeric(df[gg], errors='raise', downcast='float')
                     except ValueError:
                         self.logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
-                        df[gg] = pd.to_numeric(df[gg], errors='coerce')
+                        df[gg] = pd.to_numeric(df[gg], errors='coerce', downcast='float')
 
                     # Check for discontinued gage records
                     # if df[gg].dtype == np.object_:
@@ -405,11 +411,10 @@ class NWIS:
 
                     # Resample to daily to fill in the missing days with NaN
                     # df = df.resample('D').mean()
-
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append(gg)
 
-    def write_prms_data(self, filename):
+    def write_ascii(self, filename):
         """Writes streamgage observations to a file in PRMS format.
 
         :param str filename: name of the file to create
@@ -456,3 +461,49 @@ class NWIS:
             sys.stdout.write('\r                                       ')
             sys.stdout.write(f'\r\tStreamflow data written to: {filename}\n')
             sys.stdout.flush()
+
+    def write_netcdf(self, filename):
+        """Write NWIS streamflow to netcdf format file"""
+
+        max_gageid_len = len(max(self.__gageids, key=len))
+
+        # Create a netCDF file for the CBH data
+        nco = nc.Dataset(filename, 'w', clobber=True)
+
+        # Create the dimensions
+        nco.createDimension('gageid_nchars', max_gageid_len)
+        nco.createDimension('gageid', len(self.__gageids))
+        nco.createDimension('time', None)
+
+        reference_time = self.__stdate.strftime('%Y-%m-%d %H:%M:%S')
+        cal_type = 'standard'
+
+        # Create the variables
+        timeo = nco.createVariable('time', 'f4', ('time'))
+        timeo.calendar = cal_type
+        timeo.units = f'days since {reference_time}'
+
+        gageido = nco.createVariable('gageid', 'S1', ('gageid', 'gageid_nchars'), zlib=True)
+        gageido.long_name = 'Streamgage ID'
+        gageido.cf_role = 'timeseries_id'
+
+        varo = nco.createVariable('discharge', 'f4', ('gageid', 'time'), fill_value=-999.0, zlib=True)
+        varo.long_name = 'discharge'
+        varo.units = 'cfs'
+
+        nco.setncattr('Description', 'Streamflow data for PRMS')
+        nco.setncattr('FeatureType', 'timeSeries')
+        # nco.setncattr('Bandit_version', __version__)
+        # nco.setncattr('NHM_version', nhmparamdb_revision)
+
+        # Write the Streamgage IDs
+        gageido[:] = nc.stringtochar(np.array(self.__gageids).astype('S'))
+
+        timeo[:] = nc.date2num(pd.to_datetime(self.__outdata.index).tolist(),
+                               units=f'days since {reference_time}',
+                               calendar=cal_type)
+
+        # Write the streamgage observations
+        varo[:, :] = self.__outdata.to_numpy(dtype=np.float).T
+
+        nco.close()

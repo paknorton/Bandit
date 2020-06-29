@@ -47,6 +47,20 @@ class Cfg(object):
         # Undefined attributes will look up the given configuration item
         return self.get_value(item)
 
+    def exists(self, name):
+        return name in self.__cfgdict
+
+    def is_empty(self, name):
+        cval = self.get_value(name)
+
+        if isinstance(cval, list):
+            return len(cval) == 0
+        if isinstance(cval, str):
+            return len(cval) == 0
+        if isinstance(cval, bool):
+            return False
+        return True
+
     def get_value(self, varname):
         """Return the value for a given config variable.
 
@@ -61,8 +75,7 @@ class Cfg(object):
         try:
             return self.__cfgdict[varname]
         except KeyError:
-            print(f'Configuration variable, {varname}, does not exist')
-            raise
+            raise KeyError(f'Configuration variable, {varname}, does not exist') from None
             # return None
 
     def load(self, filename):
