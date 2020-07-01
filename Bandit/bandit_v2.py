@@ -629,8 +629,6 @@ def main():
         else:
             raise ValueError('Missing netcdf CBH files')
 
-        cbh_varlist = ['rhavg']
-
         if args.cbh_netcdf:
             # Pull the filename prefix off of the first file found in the
             # source netcdf CBH directory.
@@ -638,14 +636,18 @@ def main():
             cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
 
             cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
-            cbh_hdl.write_netcdf(cbh_outfile)
+            cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()))
 
-            # Set the control file variables for CBH filez
-            ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
-            ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
-            ctl.get('precip_day').values = os.path.basename(cbh_outfile)
+            # Set the control file variables for the CBH files
+            for cfv in config.cbh_var_map.values():
+                ctl.get(cfv).values = os.path.basename(cbh_outfile)
+
         else:
-            cbh_hdl.write_ascii(variables=cbh_varlist)
+            cbh_hdl.write_ascii(variables=list(config.cbh_var_map.keys()))
+
+            # Set the control file variables for the CBH files
+            for cbhvar, cfv in config.cbh_var_map.items():
+                ctl.get(cfv).values = f'{cbhvar}.cbh'
 
 
         # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
