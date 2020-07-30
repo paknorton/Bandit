@@ -12,6 +12,8 @@ import socket
 import sys
 import time
 
+from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
+
 from Bandit.pr_util import print_error
 
 from io import StringIO
@@ -110,9 +112,13 @@ class NWIS:
         self.logger = logging.getLogger('bandit.NWIS')
         self.logger.info('NWIS instance')
 
-        self.__stdate = st_date
-        self.__endate = en_date
-        self.__gageids = gage_ids
+        self.__stdate = None
+        self.__endate = None
+        self.__gageids = None
+
+        self.start_date = st_date
+        self.end_date = en_date
+        self.gage_ids = gage_ids
         self.__outdata = None
         self.__date_range = None
         self.__final_outorder = None
@@ -146,7 +152,7 @@ class NWIS:
 
         # Set the starting date for retrieval
         # As written this will clear any streamgage observations that have been downloaded.
-        if isinstance(st_date, datetime.datetime):
+        if isinstance(st_date, datetime):
             self.__stdate = st_date
         else:
             try:
@@ -176,7 +182,7 @@ class NWIS:
         :type en_date: datetime or str
         """
 
-        if isinstance(en_date, datetime.datetime):
+        if isinstance(en_date, datetime):
             self.__endate = en_date
         else:
             try:
@@ -288,7 +294,6 @@ class NWIS:
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
         for gidx, gg in enumerate(self.__gageids):
             if self.__verbose:
-                sys.stdout.write('\r                                       ')
                 sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
                 sys.stdout.flush()
 
@@ -411,8 +416,10 @@ class NWIS:
 
                     # Resample to daily to fill in the missing days with NaN
                     # df = df.resample('D').mean()
+
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append(gg)
+            sys.stdout.write('\r                                       \r')
 
     def write_ascii(self, filename):
         """Writes streamgage observations to a file in PRMS format.
