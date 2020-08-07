@@ -15,12 +15,13 @@ from collections import OrderedDict
 import Bandit.bandit_cfg as bc
 import Bandit.dynamic_parameters as dyn_params
 import Bandit.prms_geo as prms_geo
-import Bandit.prms_nwis as prms_nwis
+# import Bandit.prms_nwis as prms_nwis
 
 from Bandit import __version__
 from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
+from Bandit.points_of_interest import POI
 
 from pyPRMS.constants import HRU_DIMS
 from pyPRMS.CbhNetcdf import CbhNetcdf
@@ -331,6 +332,7 @@ def main():
                 for yy in seg_to_hru[xx]:
                     hru_order_subset.append(yy)
             else:
+                print(f'Segment {xx} has no HRUs connected to it')
                 bandit_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
 
         # if len(hru_order_subset) == 0:
@@ -649,7 +651,6 @@ def main():
             for cbhvar, cfv in config.cbh_var_map.items():
                 ctl.get(cfv).values = f'{cbhvar}.cbh'
 
-
         # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -736,17 +737,32 @@ def main():
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Download the streamgage information from NWIS
-        if args.verbose:
-            print(f'Downloading NWIS streamgage observations for {len(new_poi_gage_id)} stations')
+        if len(new_poi_gage_id) > 0:
+            if args.verbose:
+                print(f'Retrieving streamgage observations for {len(new_poi_gage_id)} stations')
 
-        streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
-                                    verbose=args.verbose)
-        streamflow.get_daily_streamgage_observations()
+            streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
+                             gage_ids=new_poi_gage_id, verbose=args.verbose)
 
-        if args.streamflow_netcdf:
-            streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
+            if args.streamflow_netcdf:
+                streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
+            else:
+                streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
         else:
-            streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
+            bandit_log.info(f'No POIs exist in model subset so {obs_filename} was not created')
+
+        # TODO: 2020-08-07 PAN - Below is the older NWIS retrieval calls.
+        #       This pulled streamflow directly from NWIS. Should we include
+        #       a capability for retrieving from the net for the NWIS stations?
+        #       This would only work with NWIS and not HYDAT.
+        # streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
+        #                             verbose=args.verbose)
+        # streamflow.get_daily_streamgage_observations()
+        #
+        # if args.streamflow_netcdf:
+        #     streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
+        # else:
+        #     streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
 
     # *******************************************
     # Create a shapefile of the selected HRUs
