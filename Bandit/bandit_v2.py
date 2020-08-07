@@ -15,7 +15,7 @@ from collections import OrderedDict
 import Bandit.bandit_cfg as bc
 import Bandit.dynamic_parameters as dyn_params
 import Bandit.prms_geo as prms_geo
-# import Bandit.prms_nwis as prms_nwis
+import Bandit.prms_nwis as prms_nwis
 
 from Bandit import __version__
 from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network
@@ -741,8 +741,16 @@ def main():
             if args.verbose:
                 print(f'Retrieving streamgage observations for {len(new_poi_gage_id)} stations')
 
-            streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
-                             gage_ids=new_poi_gage_id, verbose=args.verbose)
+            if config.exists('poi_dir'):
+                bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
+                streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
+                                 gage_ids=new_poi_gage_id, verbose=args.verbose)
+            else:
+                # Default to retrieving only NWIS stations from waterservices.usgs.gov
+                bandit_log.info('No poi_dir: retrieving only NWIS POIs from online NWIS service.')
+                streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
+                                            verbose=args.verbose)
+                streamflow.get_daily_streamgage_observations()
 
             if args.streamflow_netcdf:
                 streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
@@ -750,19 +758,6 @@ def main():
                 streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
         else:
             bandit_log.info(f'No POIs exist in model subset so {obs_filename} was not created')
-
-        # TODO: 2020-08-07 PAN - Below is the older NWIS retrieval calls.
-        #       This pulled streamflow directly from NWIS. Should we include
-        #       a capability for retrieving from the net for the NWIS stations?
-        #       This would only work with NWIS and not HYDAT.
-        # streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
-        #                             verbose=args.verbose)
-        # streamflow.get_daily_streamgage_observations()
-        #
-        # if args.streamflow_netcdf:
-        #     streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
-        # else:
-        #     streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
 
     # *******************************************
     # Create a shapefile of the selected HRUs
