@@ -12,9 +12,10 @@ import socket
 import sys
 import time
 
-from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
+# from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
 
-from Bandit.pr_util import print_error
+from Bandit.bandit_helpers import set_date
+# from Bandit.pr_util import print_error
 
 from io import StringIO
 from urllib.request import urlopen
@@ -152,16 +153,7 @@ class NWIS:
 
         # Set the starting date for retrieval
         # As written this will clear any streamgage observations that have been downloaded.
-        if isinstance(st_date, datetime):
-            self.__stdate = st_date
-        else:
-            try:
-                # Assume a string of form 'YYYY-MM-DD' was provided
-                self.__stdate = datetime(*[int(xx) for xx in re.split('-| |:', st_date)])
-            except ValueError as dt_err:
-                # Wrong form of date was provided
-                print_error('Date must be either a datetime or of form "YYYY-MM-DD"')
-                print(dt_err)
+        self.__stdate = set_date(st_date)
         self.__outdata = None
 
     @property
@@ -181,17 +173,7 @@ class NWIS:
         :param en_date: end date (either a datetime object or a string of the form YYYY-MM-DD)
         :type en_date: datetime or str
         """
-
-        if isinstance(en_date, datetime):
-            self.__endate = en_date
-        else:
-            try:
-                # Assume a string of form 'YYYY-MM-DD' was provided
-                self.__endate = datetime(*[int(xx) for xx in re.split('-| |:', en_date)])
-            except ValueError as dt_err:
-                # Wrong form of date was provided
-                print_error('Date must be either a datetime or of form "YYYY-MM-DD"')
-                print(dt_err)
+        self.__endate = set_date(en_date)
         self.__outdata = None
 
     @property
@@ -472,31 +454,32 @@ class NWIS:
     def write_netcdf(self, filename):
         """Write NWIS streamflow to netcdf format file"""
 
-        max_gageid_len = len(max(self.__gageids, key=len))
+        max_poiid_len = len(max(self.__gageids, key=len))
 
         # Create a netCDF file for the CBH data
         nco = nc.Dataset(filename, 'w', clobber=True)
 
         # Create the dimensions
-        nco.createDimension('gageid_nchars', max_gageid_len)
-        nco.createDimension('gageid', len(self.__gageids))
+        nco.createDimension('poiid_nchars', max_poiid_len)
+        nco.createDimension('poi_id', len(self.__gageids))
         nco.createDimension('time', None)
 
         reference_time = self.__stdate.strftime('%Y-%m-%d %H:%M:%S')
         cal_type = 'standard'
 
         # Create the variables
-        timeo = nco.createVariable('time', 'f4', ('time'))
+        timeo = nco.createVariable('time', 'f4', 'time')
         timeo.calendar = cal_type
         timeo.units = f'days since {reference_time}'
 
-        gageido = nco.createVariable('gageid', 'S1', ('gageid', 'gageid_nchars'), zlib=True)
-        gageido.long_name = 'Streamgage ID'
-        gageido.cf_role = 'timeseries_id'
+        poiido = nco.createVariable('poi_id', 'S1', ('poi_id', 'poiid_nchars'), zlib=True)
+        poiido.long_name = 'Point-of-Interest ID'
+        poiido.cf_role = 'timeseries_id'
+        poiido._Encoding = 'ascii'
 
-        varo = nco.createVariable('discharge', 'f4', ('gageid', 'time'), fill_value=-999.0, zlib=True)
+        varo = nco.createVariable('discharge', 'f4', ('poi_id', 'time'), fill_value=-999.0, zlib=True)
         varo.long_name = 'discharge'
-        varo.units = 'cfs'
+        varo.units = 'ft3 s-1'
 
         nco.setncattr('Description', 'Streamflow data for PRMS')
         nco.setncattr('FeatureType', 'timeSeries')
@@ -504,7 +487,7 @@ class NWIS:
         # nco.setncattr('NHM_version', nhmparamdb_revision)
 
         # Write the Streamgage IDs
-        gageido[:] = nc.stringtochar(np.array(self.__gageids).astype('S'))
+        poiido[:] = nc.stringtochar(np.array(self.__gageids, dtype='S'))
 
         timeo[:] = nc.date2num(pd.to_datetime(self.__outdata.index).tolist(),
                                units=f'days since {reference_time}',
