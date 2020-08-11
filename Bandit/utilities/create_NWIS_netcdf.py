@@ -213,6 +213,7 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
 
     nwis_sites.rename(columns=field_map, inplace=True)
     nwis_sites.set_index('poi_id', inplace=True)
+    nwis_sites = nwis_sites.sort_index()
 
     return nwis_sites
 
@@ -338,7 +339,6 @@ def main():
     # nwis_daily[~nwis_daily['site_no'].isin(nwis_multiple)]
 
     site_list = nwis_sites.index.tolist()
-    site_list.sort()
     print(f'Number of sites: {len(site_list)}')
     # print(f'Sites not pulled: {set(nhm_gages) - set(site_list)}')
 
