@@ -48,7 +48,10 @@ class ModelOutput(object):
         if self.__nhm_hrus:
             self.__dataset = xr.open_dataset(self.__filename, chunks={'hru': 1000})
         elif self.__nhm_segs:
-            self.__dataset = xr.open_dataset(self.__filename, chunks={'segment': 1000})
+            try:
+                self.__dataset = xr.open_dataset(self.__filename, chunks={'segment': 1000})
+            except ValueError:
+                self.__dataset = xr.open_dataset(self.__filename, chunks={'nsegment': 1000})
 
     def write_csv(self, pathname=None):
         data = self.get_var(self.__varname)
