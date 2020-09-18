@@ -46,12 +46,17 @@ class ModelOutput(object):
     def read_netcdf(self):
         """Read model output file stored in netCDF format"""
         if self.__nhm_hrus:
-            self.__dataset = xr.open_dataset(self.__filename, chunks={'hru': 1000})
+            try:
+                self.__dataset = xr.open_dataset(self.__filename, chunks={'hru': 1000})
+            except ValueError:
+                self.__dataset = xr.open_dataset(self.__filename, chunks={'nhru': 1000})
+                self.__dataset = self.__dataset.assign_coords(nhru=(self.__dataset.nhm_id))
         elif self.__nhm_segs:
             try:
-                self.__dataset = xr.open_dataset(self.__filename, chunks={'segment': 1000})
+                self.__dataset = xr.open_dataset(self.__filename, decode_coords=True, chunks={'segment': 1000})
             except ValueError:
-                self.__dataset = xr.open_dataset(self.__filename, chunks={'nsegment': 1000})
+                self.__dataset = xr.open_dataset(self.__filename, decode_coords=True, chunks={'nsegment': 1000})
+                self.__dataset = self.__dataset.assign_coords(nsegment=(self.__dataset.nhm_seg))
 
     def write_csv(self, pathname=None):
         data = self.get_var(self.__varname)
