@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import datetime
 import errno
 import glob
 import logging
@@ -10,25 +11,45 @@ import os
 import sys
 
 from collections import OrderedDict
-import datetime
 
 import Bandit.bandit_cfg as bc
+import Bandit.dynamic_parameters as dyn_params
 import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
-import Bandit.dynamic_parameters as dyn_params
-from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network
-from Bandit.model_output import ModelOutput
-from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
-from Bandit import __version__
 
-from pyPRMS.ParamDb import ParamDb
+from Bandit import __version__
+from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network
+from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
+from Bandit.model_output import ModelOutput
+from Bandit.points_of_interest import POI
+
 from pyPRMS.constants import HRU_DIMS
 from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.ControlFile import ControlFile
+from pyPRMS.ParamDb import ParamDb
 from pyPRMS.ParameterSet import ParameterSet
 from pyPRMS.ValidParams import ValidParams
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
+
+# Setup the logging
+bandit_log = logging.getLogger('bandit')
+bandit_log.setLevel(logging.DEBUG)
+
+log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
+
+# Handler for file logs
+flog = logging.FileHandler('bandit.log')
+flog.setLevel(logging.DEBUG)
+flog.setFormatter(log_fmt)
+
+# Handler for console logs
+clog = logging.StreamHandler()
+clog.setLevel(logging.ERROR)
+clog.setFormatter(log_fmt)
+
+bandit_log.addHandler(flog)
+bandit_log.addHandler(clog)
 
 
 def main():
@@ -50,6 +71,7 @@ def main():
     parser.add_argument('--output_streamflow', help='Output streamflows for subset', action='store_true')
     parser.add_argument('--cbh_netcdf', help='Enable netCDF output for CBH files', action='store_true')
     parser.add_argument('--param_netcdf', help='Enable netCDF output for parameter file', action='store_true')
+    parser.add_argument('--streamflow_netcdf', help='Enable netCDF output for streamflow file', action='store_true')
     parser.add_argument('--add_gages', metavar="KEY=VALUE", nargs='+',
                         help='Add arbitrary streamgages to POIs of form gage_id=segment. Segment must ' +
                              'exist in the model subset. Additional streamgages are marked as poi_type=0.')
@@ -66,7 +88,7 @@ def main():
     parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?',
                         default='nsegmentNationalIdentifier', type=str)
     parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?',
-                        default=6, type=int)
+                        default=5, type=int)
     args = parser.parse_args()
 
     stdir = os.getcwd()
@@ -79,25 +101,6 @@ def main():
         else:
             print(f'ERROR: Invalid jobs directory: {args.job}')
             exit(-1)
-
-    # Setup the logging
-    bandit_log = logging.getLogger('bandit')
-    bandit_log.setLevel(logging.DEBUG)
-
-    log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
-
-    # Handler for file logs
-    flog = logging.FileHandler('bandit.log')
-    flog.setLevel(logging.DEBUG)
-    flog.setFormatter(log_fmt)
-
-    # Handler for console logs
-    clog = logging.StreamHandler()
-    clog.setLevel(logging.ERROR)
-    clog.setFormatter(log_fmt)
-
-    bandit_log.addHandler(flog)
-    bandit_log.addHandler(clog)
 
     bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
 
@@ -112,7 +115,7 @@ def main():
     for kk, vv in args.__dict__.items():
         if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
                       'keep_hru_order', 'hru_gis_layer', 'seg_gis_layer', 'hru_gis_id', 'seg_gis_id',
-                      'prms_version']:
+                      'prms_version', 'streamflow_netcdf']:
             if vv:
                 bandit_log.info(f'Overriding configuration for {kk} with {vv}')
                 config.update_value(kk, vv)
@@ -225,7 +228,7 @@ def main():
 
     # Load the NHMparamdb
     print('Loading NHM ParamDb')
-    pdb = ParamDb(merged_paramdb_dir)
+    pdb = ParamDb(paramdb_dir)
     nhm_params = pdb.parameters
     nhm_global_dimensions = pdb.dimensions
 
@@ -327,8 +330,8 @@ def main():
         nhm_id_to_idx = nhm_params.get('nhm_id').index_map
         bandit_log.info(f'Number of NHM hru_segment entries: {len(hru_segment)}')
 
-        # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered
-        # by new_nhm_seg and hru_noroute.
+        # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
+        # new_nhm_seg and hru_noroute.
         seg_to_hru = OrderedDict()
         hru_to_seg = OrderedDict()
 
@@ -341,7 +344,7 @@ def main():
                 hru_to_seg[hid] = vv
             elif nhm_id[ii] in hru_noroute:
                 if vv != 0:
-                    err_txt = f'User-supplied non-routed HRU {nhm_id[ii]} routes to stream segment {vv} - Skipping.'
+                    err_txt = f'User-supplied non-routed HRU {nhm_id[ii]} routes to stream segment {vv}; skipping.'
                     bandit_log.error(err_txt)
                 else:
                     hid = nhm_id[ii]
@@ -372,6 +375,7 @@ def main():
                     for yy in seg_to_hru[xx]:
                         hru_order_subset.append(yy)
                 else:
+                    print(f'Segment {xx} has no HRUs connected to it')
                     bandit_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
             # Append the additional non-routed HRUs to the list
             if len(hru_noroute) > 0:
@@ -682,12 +686,19 @@ def main():
                 cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
 
                 cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
-                cbh_hdl.write_netcdf(cbh_outfile)
-                ctl.get('tmax_day').values = os.path.basename(cbh_outfile)
-                ctl.get('tmin_day').values = os.path.basename(cbh_outfile)
-                ctl.get('precip_day').values = os.path.basename(cbh_outfile)
+                cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()))
+
+                # Set the control file variables for the CBH files
+                for cfv in config.cbh_var_map.values():
+                    ctl.get(cfv).values = os.path.basename(cbh_outfile)
+
             else:
-                cbh_hdl.write_ascii(pathname=sg_dir, vars=['tmax', 'tmin', 'prcp'])
+                cbh_hdl.write_ascii(pathname=sg_dir, variables=list(config.cbh_var_map.keys()))
+
+                # Set the control file variables for the CBH files
+                for cbhvar, cfv in config.cbh_var_map.items():
+                    ctl.get(cfv).values = f'{cbhvar}.cbh'
+
             # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -774,13 +785,29 @@ def main():
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Download the streamgage information from NWIS
-            if args.verbose:
-                print(f'Downloading NWIS streamgage observations for {len(new_poi_gage_id)} stations')
+            if len(new_poi_gage_id) > 0:
+                if args.verbose:
+                    print(f'Retrieving streamgage observations for {len(new_poi_gage_id)} stations')
 
-            streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
-                                        verbose=args.verbose)
-            streamflow.get_daily_streamgage_observations()
-            streamflow.write_prms_data(filename=f'{sg_dir}/{obs_filename}')
+                # TODO: 2020-12-16 PAN - How should NWIS-REST vs local netcdf vs THREDDS
+                #       be handled here? For now testing THREDDS will be hardcoded.
+                if config.exists('poi_dir'):
+                    bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
+                    streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
+                                     gage_ids=new_poi_gage_id, verbose=args.verbose)
+                else:
+                    # Default to retrieving only NWIS stations from waterservices.usgs.gov
+                    bandit_log.info('No poi_dir: retrieving only NWIS POIs from online NWIS service.')
+                streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
+                                            verbose=args.verbose)
+                streamflow.get_daily_streamgage_observations()
+
+                if args.streamflow_netcdf:
+                    streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
+                else:
+                    streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
+            else:
+                bandit_log.info(f'No POIs exist in model subset so {obs_filename} was not created')
 
         # *******************************************
         # Create a shapefile of the selected HRUs
