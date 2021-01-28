@@ -741,6 +741,8 @@ def main():
             if args.verbose:
                 print(f'Retrieving streamgage observations for {len(new_poi_gage_id)} stations')
 
+            # TODO: 2020-12-16 PAN - How should NWIS-REST vs local netcdf vs THREDDS
+            #       be handled here? For now testing THREDDS will be hardcoded.
             if config.exists('poi_dir'):
                 bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
                 streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
