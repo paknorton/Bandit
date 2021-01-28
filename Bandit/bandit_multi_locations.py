@@ -202,8 +202,8 @@ def main():
 
         # TODO: This causes the control_filename to be rewritten in the parent
         #       directory; so this happens for each location. Need to fix.
-        config.update_value(f'control_filename', '{job_dir}/control.default')
-        config.update_value(f'output_dir', '{job_dir}/{cdir}')
+        config.update_value('control_filename', f'{job_dir}/control.default')
+        config.update_value('output_dir', f'{job_dir}/{cdir}')
         config.write(f'{cdir}/bandit.cfg')
 
         # Run bandit
