@@ -45,7 +45,14 @@ class POI:
         self.__final_outorder = None
         self.__verbose = verbose
 
-        self.read()
+        self.thredds_server = 'http://gdp-netcdfdev.cr.usgs.gov:8080'
+        self.base_opendap = f'{self.thredds_server}/thredds/dodsC/NHM_POIS/files'
+
+        # base_url is used to get a list of files for a product
+        # Until xarray supports ncml parsing the list of files will have to be manually built
+        self.base_url = f'{self.thredds_server}/thredds/catalog/NHM_POIS/files/catalog.html'
+
+        self.read_thredds()
 
     @property
     def data(self):
@@ -120,6 +127,21 @@ class POI:
             self.__gageids = [gage_ids]
         self.__outdata = None
 
+    def get(self, var: str):
+        if 'time' in self.__outdata[var].dims:
+            if self.__stdate is not None and self.__endate is not None:
+                try:
+                    data = self.__outdata[var].loc[self.__gageids, self.__stdate:self.__endate].to_pandas()
+                except IndexError:
+                    print(f'ERROR: Indices (time, poi_id) were used to subset {var} which expects' +
+                          f'indices ({" ".join(map(str, self.__outdata[var].coords))})')
+                    raise
+            else:
+                data = self.__outdata[var].loc[self.__gageids, :].to_pandas()
+        else:
+            data = self.__outdata[var].loc[self.__gageids].to_pandas()
+        return data
+
     def read(self):
         """Read POI files stored in netCDF format"""
 
@@ -135,20 +157,31 @@ class POI:
         else:
             self.logger.warning('No poi_ids were specified.')
 
-    def get(self, var: str):
-        if 'time' in self.__outdata[var].dims:
-            if self.__stdate is not None and self.__endate is not None:
-                try:
-                    data = self.__outdata[var].loc[self.__gageids, self.__stdate:self.__endate].to_pandas()
-                except IndexError:
-                    print(f'ERROR: Indices (time, poi_id) were used to subset {var} which expects' +
-                          f'indices ({" ".join(map(str, self.__outdata[var].coords))})')
-                    raise
-            else:
-                data = self.__outdata[var].loc[self.__gageids, :].to_pandas()
+    def read_thredds(self):
+        """Read POI files stored in netCDF format"""
+
+        if self.__gageids:
+            # print('\t\tOpen dataset')
+            full_file_list = pd.read_html(self.base_url, skiprows=1)[0]['Files']
+
+            # Only include files ending in .nc (sometimes the .ncml files are included and we don't want those)
+            flist = full_file_list[full_file_list.str.match('.*nc$')].tolist()
+
+            # Create list of file URLs
+            # The list looks something like:
+            # ['http://gdp-netcdfdev.cr.usgs.gov:8080/thredds/dodsC/NHM_NWIS/files/NWIS_pois.nc',
+            #  'http://gdp-netcdfdev.cr.usgs.gov:8080/thredds/dodsC/NHM_NWIS/files/HYDAT_pois.nc']
+            xfiles = [f'{self.base_opendap}/{xx}' for xx in flist]
+
+            self.__outdata = xr.open_mfdataset(xfiles,
+                                               chunks={'poi_id': 1040}, combine='nested',
+                                               concat_dim='poi_id', decode_cf=True,
+                                               engine='netcdf4')
+            # NOTE: With a multi-file dataset the time attributes 'units' and
+            #       'calendar' are lost.
+            #       see https://github.com/pydata/xarray/issues/2436
         else:
-            data = self.__outdata[var].loc[self.__gageids].to_pandas()
-        return data
+            self.logger.warning('No poi_ids were specified.')
 
     def write_ascii(self, filename):
         """Writes POI observations to a file in PRMS format.
