@@ -34,9 +34,9 @@ def main():
     elif not os.path.exists(config.paramdb_dir):
         print("Location of the NHM parameter database (paramdb_dir) does not exist!")
         exit(2)
-    elif not os.path.exists(config.merged_paramdb_dir):
-        print("Location of the merged parameters database (merged_paramdb_dir) does not exist!")
-        exit(2)
+    # elif not os.path.exists(config.merged_paramdb_dir):
+    #     print("Location of the merged parameters database (merged_paramdb_dir) does not exist!")
+    #     exit(2)
     elif not os.path.exists(config.geodatabase_filename):
         print("The geodatabase file (geodatabase_filename) does not exist!")
         exit(2)
