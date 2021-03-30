@@ -310,6 +310,9 @@ class NWIS:
                     attempts += 1
                     self.logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
                     time.sleep(10)
+                except socket.timeout as err:
+                    attempts += 1
+                    self.logger.warning(f'socket.timeout: {err}; try {attempts} of {RETRIES}')
 
             if streamgage_obs_page is None:
                 # Create a dummy dataframe
