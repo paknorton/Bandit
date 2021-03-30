@@ -292,7 +292,7 @@ class NWIS:
                     streamgage_obs_page = response.read().decode(encoding)
 
                     break
-                except (HTTPError, URLError) as err:
+                except HTTPError as err:
                     if err.code == 400:
                         err_parser = NWISErrorParser()
                         err_parser.feed(str(err.read().decode("utf8", 'ignore')))
@@ -303,6 +303,9 @@ class NWIS:
                         attempts += 1
                         self.logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
                         # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                except URLError as err:
+                    attempts += 1
+                    self.logger.warning(f'URLError: {err}, reason={err.reason}; try {attempts} of {RETRIES}')
                 except ConnectionResetError as err:
                     attempts += 1
                     self.logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
