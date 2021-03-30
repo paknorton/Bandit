@@ -626,8 +626,9 @@ def main():
 
         # Read the CBH source file
         if os.path.splitext(cbh_dir)[1] == '.nc':
+            # print(f'{hru_order_subset=}')
             cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
-                                nhm_hrus=hru_order_subset)
+                                nhm_hrus=hru_order_subset, thredds=False)
         else:
             raise ValueError('Missing netcdf CBH files')
 
