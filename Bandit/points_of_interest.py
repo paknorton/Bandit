@@ -131,7 +131,9 @@ class POI:
         if 'time' in self.__outdata[var].dims:
             if self.__stdate is not None and self.__endate is not None:
                 try:
-                    data = self.__outdata[var].loc[self.__gageids, self.__stdate:self.__endate].to_pandas()
+                    # data = self.__outdata[var].loc[self.__gageids, self.__stdate:self.__endate].to_pandas()
+                    # NOTE: Dimensions are swapped on the THREDDS server
+                    data = self.__outdata[var].loc[self.__stdate:self.__endate, self.__gageids].to_pandas()
                 except IndexError:
                     print(f'ERROR: Indices (time, poi_id) were used to subset {var} which expects' +
                           f'indices ({" ".join(map(str, self.__outdata[var].coords))})')
@@ -193,7 +195,9 @@ class POI:
         for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
             out_order.insert(0, cc)
 
-        data = self.get('discharge').T
+        # NOTE: Dimensions are swapped on the THREDDS server
+        # data = self.get('discharge').T
+        data = self.get('discharge')
 
         # Create the year, month, day, hour, minute, second columns
         try:
