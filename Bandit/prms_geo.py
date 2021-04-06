@@ -1,7 +1,13 @@
 
 from collections import OrderedDict
 from osgeo import ogr
-import gdal
+
+try:
+    import gdal
+except ImportError:
+    # Python 3.6 seems to use an older version of gdal which is imported from
+    # osgeo instead directly.
+    from osgeo import gdal
 
 
 class GdalErrorHandler(object):
