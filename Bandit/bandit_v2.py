@@ -757,6 +757,8 @@ def main():
             else:
                 streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
         else:
+            # TODO: 2021-03-30 PAN - prms_nwis has a mechanism for creating the sf_data file
+            #       with a dummy record when no POIs are provided
             bandit_log.info(f'No POIs exist in model subset so {obs_filename} was not created')
 
     # *******************************************
