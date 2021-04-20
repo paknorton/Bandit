@@ -45,7 +45,8 @@ class POI:
         self.__final_outorder = None
         self.__verbose = verbose
 
-        self.thredds_server = 'http://gdp-netcdfdev.cr.usgs.gov:8080'
+        # self.thredds_server = 'http://gdp-netcdfdev.cr.usgs.gov:8080'
+        self.thredds_server = 'http://localhost:8080'
         self.base_opendap = f'{self.thredds_server}/thredds/dodsC/NHM_POIS/files'
 
         # base_url is used to get a list of files for a product
