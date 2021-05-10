@@ -372,7 +372,9 @@ def main():
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
     # toseg_idx contains the in-order indices for the subset of tosegments
+    # --------------------------------------------------------------------------
 
+    # ==========================================================================
     # ==========================================================================
     # Get subset of hru_deplcrv using hru_order
     # A single snarea_curve can be referenced by multiple HRUs
