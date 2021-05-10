@@ -365,7 +365,7 @@ def main():
                 if hru_segment[nhm_id_to_idx[xx]] == 0:
                     new_hru_segment.append(0)
 
-    hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
+    # hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
     bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
     bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
 
@@ -473,7 +473,7 @@ def main():
     for dd, dv in crap_dims.items():
         # dimensions 'nmonths' and 'one' are never changed
         if dd in HRU_DIMS:
-            dims[dd] = len(hru_order_subset0)
+            dims[dd] = len(hru_order_subset)
         elif dd == 'nsegment':
             dims[dd] = len(new_nhm_seg)
         elif dd == 'ndeplval':
