@@ -209,7 +209,7 @@ def main():
         # Run bandit
         # Add the command to queue for processing
         work_count += 1
-        cmd = f'{cmd_bandit} --keep_hru_order -j {job_dir}/{cdir}'
+        cmd = f'{cmd_bandit} --no_filter_params --keep_hru_order -j {job_dir}/{cdir}'
 
         os.chdir(cdir)
         cmd_q.put(cmd)
