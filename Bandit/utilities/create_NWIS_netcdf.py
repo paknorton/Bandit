@@ -21,15 +21,13 @@ from urllib.error import HTTPError
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
-base_url = 'http://waterservices.usgs.gov/nwis'
+base_url = 'https://waterservices.usgs.gov/nwis'
 
 t1 = re.compile('^#.*$\n?', re.MULTILINE)   # remove comment lines
 t2 = re.compile('^5s.*$\n?', re.MULTILINE)  # remove field length lines
 
 
 def read_csv(filename):
-    # Given two paramdb files this will return an ordered dictionary of the 2nd columns of each file
-    # where the first file is the key, second file is the value
     fhdl = open(filename)
     rawdata = fhdl.read().splitlines()
     fhdl.close()
@@ -99,7 +97,7 @@ def get_nwis_site_fields():
         if code in ['cd', 'no', 'nm', 'dt']:
             nwis_final[fld] = np.str_
         elif code in ['va']:
-            nwis_final[fld] = np.float32
+            nwis_final[fld] = float
         else:
             nwis_final[fld] = np.str_
 
@@ -118,7 +116,7 @@ def _retrieve_from_nwis(url):
     return streamgage_site_page
 
 
-def get_nwis_sites(stdate, endate, sites=None, regions=None):
+def get_nwis_sites(stdate, endate, sites=None, regions=None, relaxed=False):
     cols = get_nwis_site_fields()
 
     # Columns to include in the final dataframe
@@ -135,9 +133,18 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
     # url_pieces['huc'] = None
     url_pieces['siteOutput'] = 'expanded'
     url_pieces['siteStatus'] = 'all'
-    url_pieces['parameterCd'] = '00060'  # Discharge
-    url_pieces['siteType'] = 'ST'
-    url_pieces['hasDataTypeCd'] = 'dv'
+    url_pieces['agencyCd'] = 'USGS'
+    # url_pieces['drainAreaMin'] = 0
+
+    if not relaxed:
+        url_pieces['parameterCd'] = '00060'  # Discharge
+        url_pieces['siteType'] = 'ST'
+        url_pieces['hasDataTypeCd'] = 'dv'
+    else:
+        print('--relaxed: parameterCd removed; siteType, hasDataTypeCd expanded; access=3')
+        url_pieces['siteType'] = 'LK,ST,ST-CA,ST-DCH,ST-TS,ES,SP'
+        url_pieces['hasDataTypeCd'] = 'iv,dv,pk'
+        url_pieces['access'] = 3
 
     # NOTE: If both sites and regions parameters are specified the sites
     #       parameter takes precedence.
@@ -164,7 +171,6 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
             sites = [sites]
 
     if 'huc' in url_pieces:
-        # for region in range(19):
         for region in regions:
             sys.stdout.write(f'\r  Region: {region:02}')
             sys.stdout.flush()
@@ -175,11 +181,49 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
 
             streamgage_site_page = _retrieve_from_nwis(stn_url)
 
-            # Read the rdb file into a dataframe
-            df = pd.read_csv(StringIO(streamgage_site_page), sep='\t', dtype=cols, usecols=include_cols)
+            try:
+                # Read the rdb file into a dataframe
+                df = pd.read_csv(StringIO(streamgage_site_page), sep='\t', dtype=cols, usecols=include_cols)
 
-            nwis_sites = nwis_sites.append(df, ignore_index=True)
+                nwis_sites = nwis_sites.append(df, ignore_index=True)
+            except:
+                chdl = open('crap_error', 'w')
+                chdl.write(streamgage_site_page)
+                chdl.close()
+                raise
+
             sys.stdout.write('\r                      \r')
+
+        if relaxed:
+            # There are a couple of stations found so far that have no huc_cd
+            # Plus a few others - these are only needed for NHM v1.0 POIs
+            addl_sites = ['06164000', '06178500', '11383730', '10351701']
+            url_pieces.pop('huc')
+            url_pieces.pop('hasDataTypeCd')
+            url_pieces.pop('startDT')
+            url_pieces.pop('endDT')
+
+            for site in addl_sites:
+                sys.stdout.write(f'\r  Site: {site} ')
+                sys.stdout.flush()
+
+                url_pieces['sites'] = site
+                url_final = '&'.join([f'{kk}={vv}' for kk, vv in url_pieces.items()])
+
+                stn_url = f'{base_url}/site/?{url_final}'
+
+                try:
+                    streamgage_site_page = _retrieve_from_nwis(stn_url)
+
+                    # Read the rdb file into a dataframe
+                    df = pd.read_csv(StringIO(streamgage_site_page), sep='\t', dtype=cols, usecols=include_cols)
+
+                    nwis_sites = nwis_sites.append(df, ignore_index=True)
+                except HTTPError as err:
+                    if err.code == 404:
+                        sys.stdout.write(f'HTTPError: {err.code}, site does not meet criteria - SKIPPED\n')
+                        print(url_final)
+                sys.stdout.write('\r                      \r')
     else:
         for site in sites:
             sys.stdout.write(f'\r  Site: {site} ')
@@ -213,6 +257,11 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
 
     nwis_sites.rename(columns=field_map, inplace=True)
     nwis_sites.set_index('poi_id', inplace=True)
+
+    if relaxed:
+        # Add some missing/bad POIs for NHM v1.0
+        nwis_sites.loc['10309101'] = ['USGS', 'INVALID poi_id', 38.9459, -119.7796, 'NAD83', 0, 'NGVD29', '16050201', 0.0, 0.0]
+
     nwis_sites = nwis_sites.sort_index()
 
     return nwis_sites
@@ -311,6 +360,7 @@ def main():
     parser.add_argument('--daterange',
                         help='Starting and ending calendar date (YYYY-MM-DD YYYY-MM-DD)',
                         nargs=2, metavar=('startDate', 'endDate'), required=True)
+    parser.add_argument('--relaxed', help='Removes most selection restrictions', action='store_true')
     parser.add_argument('-p', '--poi', help='POI agency file derived from GF')
     # parser.add_argument('-s', '--src', help='HYDAT sqlite3 database')
 
@@ -328,9 +378,10 @@ def main():
     print('Get NWIS streamgages that are used by the NHM')
     # nhm_gages = get_nhm_nwis_pois(agency_filename)
     nhm_gages = read_csv(poi_filename)
+    print(f'Number of POIs in NHM: {len(nhm_gages)}')
 
     print('Reading station information')
-    nwis_sites = get_nwis_sites(stdate=st_date, endate=en_date)
+    nwis_sites = get_nwis_sites(stdate=st_date, endate=en_date, relaxed=args.relaxed)
     # nwis_sites = get_nwis_sites(stdate=st_date, endate=en_date, regions=17)
     # nwis_sites = get_nwis_sites(stdate=st_date, endate=en_date, sites='06469400')
 
@@ -339,7 +390,12 @@ def main():
     # nwis_daily[~nwis_daily['site_no'].isin(nwis_multiple)]
 
     site_list = nwis_sites.index.tolist()
+
     print(f'Number of sites: {len(site_list)}')
+
+    if len(nhm_gages) != len(site_list):
+        print('NHM streamgages missing from NWIS station list')
+        print((set(nhm_gages) - set(site_list)))
     # print(f'Sites not pulled: {set(nhm_gages) - set(site_list)}')
 
     # nwis_sites.to_csv('crap.csv')
