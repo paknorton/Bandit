@@ -228,7 +228,9 @@ def main():
     # NOTE: tosegment is now tosegment_nhm and the regional tosegment is gone.
     # Convert to list for fastest access to array
     # tosegment = nhm_params.get('tosegment_nhm').tolist()
-    nhm_seg = nhm_params.get('nhm_seg').tolist()
+
+    # NOTE: 2021-07-13 PAN - I don't this is needed anymore
+    # nhm_seg = nhm_params.get('nhm_seg').tolist()
 
     if args.verbose:
         print('Generating stream network from tosegment_nhm')
@@ -239,7 +241,7 @@ def main():
     # NOTE: It's possible to have a stream segment that does not exist in
     #       tosegment but does exist in nhm_seg (e.g. standalone segment). So
     #       we use nhm_seg to verify at least one of the given segment(s) exist.
-    if dsmost_seg and len(set(dsmost_seg).intersection(nhm_seg)) == 0:
+    if dsmost_seg and len(set(dsmost_seg).intersection(nhm_params.get('nhm_seg').tolist())) == 0:
         bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
         exit(200)
 
@@ -261,12 +263,12 @@ def main():
 
     dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
+    # NOTE: 2021-07-13 PAN - toseg_idx replaced by new_nhm_seg
     # Create list of toseg ids for the model subset
-    toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
-    bandit_log.info(f'Number of segments in subset: {len(toseg_idx)}')
+    # toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
+    # bandit_log.info(f'Number of segments in subset: {len(toseg_idx)}')
 
     # Use the mapping to create subsets of nhm_seg, tosegment_nhm, and tosegment
-    # NOTE: toseg_idx and new_nhm_seg are the same thing
     new_nhm_seg = [ee[0] for ee in dag_ds_subset.edges]
 
     # Using a dictionary mapping nhm_seg to 1-based index for speed
@@ -295,16 +297,15 @@ def main():
     for ii, vv in enumerate(hru_segment):
         # Contains both new_nhm_seg values and non-routed HRU values
         # keys are 1-based, values in arrays are 1-based
+        hid = nhm_id[ii]
         if vv in new_nhm_seg:
-            hid = nhm_id[ii]
             seg_to_hru.setdefault(vv, []).append(hid)
             hru_to_seg[hid] = vv
-        elif nhm_id[ii] in hru_noroute:
+        elif hid in hru_noroute:
             if vv != 0:
                 err_txt = f'User-supplied non-routed HRU {nhm_id[ii]} routes to stream segment {vv}; skipping.'
                 bandit_log.error(err_txt)
             else:
-                hid = nhm_id[ii]
                 seg_to_hru.setdefault(vv, []).append(hid)
                 hru_to_seg[hid] = vv
 
@@ -439,7 +440,9 @@ def main():
                     bandit_log.warning(warn_txt)
                     new_poi_gage_id[sidx] = ss
                     new_poi_type[sidx] = 0
-                elif vv not in seg_to_hru.keys():
+                # NOTE: 2021-07-13 PAN - no need for using seg_to_hru when we have new_nhm_seg
+                # elif vv not in seg_to_hru.keys():
+                elif vv not in new_nhm_seg:
                     warn_txt = f'User-specified streamgage ({ss}) has nhm_seg={vv} which is not part ' + \
                                f'of the model subset; skipping.'
                     bandit_log.warning(warn_txt)
