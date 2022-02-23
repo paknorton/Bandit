@@ -78,14 +78,10 @@ def main():
                         help='Output all parameters regardless of modules selected', action='store_true')
     parser.add_argument('--keep_hru_order',
                         help='Keep HRUs in the relative order they occur in the paramdb', action='store_true')
-    parser.add_argument('--hru_gis_id', help='Name of key/id for HRUs in geodatabase', nargs='?',
-                        default='hru_id_nat', type=str)
-    parser.add_argument('--seg_gis_id', help='Name of key/id for segments in geodatabase', nargs='?',
-                        default='seg_id_nat', type=str)
-    parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?',
-                        default='nhru', type=str)
-    parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?',
-                        default='nsegmentNationalIdentifier', type=str)
+    parser.add_argument('--hru_gis_id', help='Name of key/id for HRUs in geodatabase', nargs='?', type=str)
+    parser.add_argument('--seg_gis_id', help='Name of key/id for segments in geodatabase', nargs='?', type=str)
+    parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?', type=str)
+    parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?', type=str)
     parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?',
                         default=5, type=int)
     args = parser.parse_args()
@@ -113,8 +109,7 @@ def main():
     # Override configuration variables with any command line parameters
     for kk, vv in args.__dict__.items():
         if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
-                      'keep_hru_order', 'hru_gis_layer', 'seg_gis_layer', 'hru_gis_id', 'seg_gis_id',
-                      'prms_version', 'streamflow_netcdf']:
+                      'keep_hru_order', 'prms_version', 'streamflow_netcdf']:
             if vv:
                 bandit_log.info(f'Overriding configuration for {kk} with {vv}')
                 config.update_value(kk, vv)
@@ -176,9 +171,17 @@ def main():
 
         # Full path and filename to the geodatabase to use for outputting shapefile subsets
         geo_file = config.geodatabase_filename
+        hru_gis_layer = config.hru_gis_layer
+        hru_gis_id = config.hru_gis_id
+        seg_gis_layer = config.seg_gis_layer
+        seg_gis_id = config.seg_gis_id
     except KeyError:
         output_shapefiles = False
         geo_file = ''
+        hru_gis_layer = None
+        hru_gis_id = None
+        seg_gis_layer = None
+        seg_gis_id = None
 
     # Load the control file
     ctl = ControlFile(control_filename)
@@ -788,16 +791,16 @@ def main():
             # Output a shapefile of the selected HRUs
             # print('\tHRUs')
             # geo_shp.select_layer('nhruNationalIdentifier')
-            print(f'Layers: {args.hru_gis_layer}, {args.seg_gis_layer}')
-            print(f'IDs: {args.hru_gis_id}, {args.seg_gis_id}')
+            print(f'Layers: {hru_gis_layer}, {seg_gis_layer}')
+            print(f'IDs: {hru_gis_id}, {seg_gis_id}')
 
-            geo_shp.select_layer(args.hru_gis_layer)
-            geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', args.hru_gis_id, hru_order_subset,
-                                    included_fields=['nhm_id', 'model_idx', args.hru_gis_id])
+            geo_shp.select_layer(hru_gis_layer)
+            geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', hru_gis_id, hru_order_subset,
+                                    included_fields=['nhm_id', 'model_idx', hru_gis_id])
 
-            geo_shp.select_layer(args.seg_gis_layer)
-            geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', args.seg_gis_id, new_nhm_seg,
-                                    included_fields=[args.seg_gis_id, 'model_idx'])
+            geo_shp.select_layer(seg_gis_layer)
+            geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', seg_gis_id, new_nhm_seg,
+                                    included_fields=[seg_gis_id, 'model_idx'])
 
             # Original code
             # geo_shp.select_layer('nhru')
