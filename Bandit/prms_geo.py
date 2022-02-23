@@ -152,7 +152,7 @@ class Geo(object):
             orig_fld_names.append(fld_name)
             out_layer.CreateField(fld_def)
 
-        # Add model_idx field
+        # Add local model_idx field
         fld_def = ogr.FieldDefn('model_idx', ogr.OFTInteger)
         orig_fld_names.append('model_idx')
         out_layer.CreateField(fld_def)
