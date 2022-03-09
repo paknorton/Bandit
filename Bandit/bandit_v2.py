@@ -203,6 +203,11 @@ def main():
     st_date = set_date(config.start_date)
     en_date = set_date(config.end_date)
 
+    # Adjust the start and end dates in the control file to reflect
+    # date range from bandit config file
+    ctl.get('start_time').values = [st_date.year, st_date.month, st_date.day, 0, 0, 0]
+    ctl.get('end_time').values = [en_date.year, en_date.month, en_date.day, 0, 0, 0]
+
     # ===============================================================
     # params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
 
