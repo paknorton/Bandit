@@ -6,6 +6,13 @@ import re
 
 from collections import OrderedDict
 
+try:
+    from typing import Optional, Union, Dict, List, OrderedDict as OrderedDictType
+except ImportError:
+    # pre-python 3.7.2
+    from typing import Optional, Union, Dict, List, MutableMapping as OrderedDictType
+
+
 bandit_helper_log = logging.getLogger('bandit.helper')
 
 
@@ -57,8 +64,12 @@ def set_date(adate):
         return datetime.datetime(*[int(x) for x in re.split('[- :]', adate)])
 
 
-def subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg):
+def subset_stream_network(dag_ds: nx.classes.digraph.DiGraph,
+                          uscutoff_seg: List[int],
+                          dsmost_seg: List[int]) -> nx.classes.digraph.DiGraph:
     # Create the upstream graph
+    # TODO: 2021-12-01 PAN - the reverse function is pretty inefficient for multi-location
+    #       jobs.
     dag_us = dag_ds.reverse()
     bandit_helper_log.debug('Number of NHM upstream nodes: {}'.format(dag_us.number_of_nodes()))
     bandit_helper_log.debug('Number of NHM upstream edges: {}'.format(dag_us.number_of_edges()))
