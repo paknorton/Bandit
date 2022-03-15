@@ -2,7 +2,9 @@
 
 from collections import OrderedDict
 from datetime import datetime
+from typing import Dict, List, Optional, Sequence, Union
 
+import datetime
 import logging
 import netCDF4 as nc
 import numpy as np
@@ -99,7 +101,10 @@ class NWIS:
     # As written this class provides fucntions for downloading daily streamgage observations
     # Additional functionality (e.g. monthyly, annual, other statistics) may be added at a future time.
 
-    def __init__(self, gage_ids=None, st_date=None, en_date=None, verbose=False):
+    def __init__(self, gage_ids: Optional[List] = None,
+                 st_date: Optional[datetime.datetime] = None,
+                 en_date: Optional[datetime.datetime] = None,
+                 verbose: Optional[bool] = False):
         """Create the NWIS object.
 
         :param list[str] gage_ids: list of streamgages to retrieve
@@ -144,7 +149,7 @@ class NWIS:
         return self.__stdate
 
     @start_date.setter
-    def start_date(self, st_date):
+    def start_date(self, st_date: Union[datetime.datetime, str]):
         """Set the start date.
 
         :param st_date: start date (either a datetime object or a string of the form YYYY-MM-DD)
@@ -167,7 +172,7 @@ class NWIS:
         return self.__endate
 
     @end_date.setter
-    def end_date(self, en_date):
+    def end_date(self, en_date: Union[datetime.datetime, str]):
         """Set the end date.
 
         :param en_date: end date (either a datetime object or a string of the form YYYY-MM-DD)
