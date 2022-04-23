@@ -46,21 +46,28 @@ class ModelOutput(object):
     def read_netcdf(self):
         """Read model output file stored in netCDF format"""
         if self.__nhm_hrus:
-            try:
-                self.__dataset = xr.open_dataset(self.__filename, chunks={'hru': 1000})
-            except ValueError:
-                self.__dataset = xr.open_dataset(self.__filename, chunks={'nhru': 1000})
-                self.__dataset = self.__dataset.assign_coords(nhru=(self.__dataset.nhm_id))
+            self.__dataset = xr.open_dataset(self.__filename, chunks={})
+            self.__dataset = self.__dataset.assign_coords(nhru=self.__dataset.nhm_id)
+            # try:
+            #     self.__dataset = xr.open_dataset(self.__filename, chunks={'hru': 1000})
+            # except ValueError:
+            #     self.__dataset = xr.open_dataset(self.__filename, chunks={'nhru': 1000})
+            #     self.__dataset = self.__dataset.assign_coords(nhru=(self.__dataset.nhm_id))
         elif self.__nhm_segs:
-            try:
-                self.__dataset = xr.open_dataset(self.__filename, decode_coords=True, chunks={'segment': 1000})
-            except ValueError:
-                self.__dataset = xr.open_dataset(self.__filename, decode_coords=True, chunks={'nsegment': 1000})
-                self.__dataset = self.__dataset.assign_coords(nsegment=(self.__dataset.nhm_seg))
+            self.__dataset = xr.open_dataset(self.__filename, decode_coords=True, chunks={})
+            self.__dataset = self.__dataset.assign_coords(nsegment=self.__dataset.nhm_seg)
+            # try:
+            #     print('first')
+            #     self.__dataset = xr.open_dataset(self.__filename, decode_coords=True, chunks={'segment': 1000})
+            # except ValueError:
+            #     print('second')
+            # self.__dataset = xr.open_dataset(self.__filename, decode_coords=True, chunks={'nsegment': 1000})
+            # self.__dataset = self.__dataset.assign_coords(nsegment=(self.__dataset.nhm_seg))
 
     def write_csv(self, pathname=None):
         data = self.get_var(self.__varname)
 
+        # print(data.head())
         if self.__nhm_hrus:
             data.to_csv(f'{pathname}/{self.__varname}.csv', columns=self.__nhm_hrus,
                         sep=',', index=True, header=True, chunksize=50)

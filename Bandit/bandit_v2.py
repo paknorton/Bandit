@@ -769,7 +769,11 @@ def main():
         else:
             # TODO: 2021-03-30 PAN - prms_nwis has a mechanism for creating the sf_data file
             #       with a dummy record when no POIs are provided
-            bandit_log.info(f'No POIs exist in model subset so {obs_filename} was not created')
+            print('Writing dummy streamflow data file')
+            streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=args.verbose)
+            streamflow.get_daily_streamgage_observations()
+            streamflow.write_ascii(filename=f'{obs_filename}')
+            bandit_log.info(f'No POIs exist in model subset; dummy data written.')
 
     # *******************************************
     # Create a shapefile of the selected HRUs
