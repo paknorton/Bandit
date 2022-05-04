@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import sqlite3
 import sys
+import unicodedata
 
 from Bandit.bandit_helpers import set_date
 
@@ -87,7 +88,7 @@ def get_hydat_stations(dbcon):
 def get_nhm_hydat_pois(filename):
     # Build ordered dictionary of geospatial fabric POIs
     col_names = ['GNIS_Name', 'Type_Gage', 'Type_Ref', 'Gage_Source', 'poi_segment_v1_1']
-    col_types = [np.str_, np.str_, np.str_, np.str_, np.int]
+    col_types = [np.str_, np.str_, np.str_, np.str_, int]
 
     cols = dict(zip(col_names, col_types))
 
@@ -188,7 +189,8 @@ def write_hydat_netcdf(df_stn, df_streamflow, filename):
                            calendar=cal_type)
 
     # Write the station information
-    poinameo[:] = nc.stringtochar(np.array(poiname_list).astype('S'))
+    poiname_list_norm = [unicodedata.normalize('NFKD', aa).encode('ascii', 'ignore') for aa in poiname_list]
+    poinameo[:] = nc.stringtochar(np.array(poiname_list_norm).astype('S'))
     lato[:] = df_stn['latitude'].to_numpy(dtype=np.float)
     lono[:] = df_stn['longitude'].to_numpy(dtype=np.float)
     draino[:] = df_stn['drainage_area'].to_numpy(dtype=np.float)
