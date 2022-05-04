@@ -68,6 +68,7 @@ def main():
                         help='Output all parameters regardless of modules selected', action='store_true')
     parser.add_argument('--hru_gis_id', help='Name of key/id for HRUs in geodatabase', nargs='?', type=str)
     parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?', type=str)
+    parser.add_argument('--include_stream', help='Include the stream segment the HRU connects to', action='store_true')
     parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?',
                         default=5, type=int)
     parser.add_argument('--prefix', help='Prefix to append to each HRU directory', type=str)
@@ -91,7 +92,7 @@ def main():
     # Override configuration variables with any command line parameters
     for kk, vv in args.__dict__.items():
         if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
-                      'prms_version', 'prefix']:
+                      'prms_version', 'prefix', 'include_stream']:
             if vv:
                 bandit_log.info(f'Overriding configuration for {kk} with {vv}')
                 config.update_value(kk, vv)
@@ -147,11 +148,17 @@ def main():
         geo_file = config.geodatabase_filename
         hru_gis_layer = config.hru_gis_layer
         hru_gis_id = config.hru_gis_id
+
+        if args.include_stream:
+            seg_gis_layer = config.seg_gis_layer
+            seg_gis_id = config.seg_gis_id
     except KeyError:
         output_shapefiles = False
         geo_file = ''
         hru_gis_layer = None
         hru_gis_id = None
+        seg_gis_layer = None
+        seg_gis_id = None
 
     # Load the control file
     ctl = ControlFile(control_filename)
@@ -202,15 +209,25 @@ def main():
     params = list(nhm_params.keys())
 
     # Initial list of parameters not included in single-hru extractions
-    remove_params = ['hru_segment', 'hru_segment_nhm', 'obsout_segment']
+    if args.include_stream:
+        remove_params = []
+    else:
+        remove_params = ['hru_segment', 'hru_segment_nhm', 'obsout_segment']
 
     # Add segment- and poi-related parameters
     for pp in params:
         src_param = nhm_params.get(pp)
 
         if 'nsegment' in src_param.dimensions.keys():
-            bandit_log.info(f'INFO: Removed nsegment parameter, {pp}')
-            remove_params.append(pp)
+            if args.include_stream:
+                pass
+                # if pp not in ['K_coef', 'nhm_seg', 'segment_type', 'tosegment',
+                #               'tosegment_nhm', 'x_coef']:
+                #     bandit_log.info(f'INFO: Removed nsegment parameter, {pp}')
+                #     remove_params.append(pp)
+            else:
+                bandit_log.info(f'INFO: Removed nsegment parameter, {pp}')
+                remove_params.append(pp)
         elif 'npoigages' in src_param.dimensions.keys():
             bandit_log.info(f'INFO: Removed npoigages parameter, {pp}')
             remove_params.append(pp)
@@ -241,6 +258,9 @@ def main():
         hru_order_subset = [chru]
         bandit_log.info(f'HRU_{chru}: Number of HRUs in subset: {len(hru_order_subset)}')
 
+        if args.include_stream:
+            new_nhm_seg = [nhm_params.hru_to_seg[chru]]
+
         # ==========================================================================
         # Get subset of hru_deplcrv using hru_order_subset
         # A single snarea_curve can be referenced by multiple HRUs
@@ -265,7 +285,9 @@ def main():
             dims[kk.name] = kk.size
 
         # Remove dimensions not used in single-hru extractions
-        del dims['nsegment']
+        if not args.include_stream:
+            del dims['nsegment']
+
         del dims['npoigages']
 
         # Resize dimensions to the model subset
@@ -274,6 +296,8 @@ def main():
             # dimensions 'nmonths' and 'one' are never changed
             if dd in HRU_DIMS:
                 dims[dd] = len(hru_order_subset)
+            elif args.include_stream and dd == 'nsegment':
+                dims[dd] = 1
             elif dd == 'ndeplval':
                 dims[dd] = len(uniq_deplcrv0) * 11
                 dims['ndepl'] = len(uniq_deplcrv0)
@@ -347,6 +371,11 @@ def main():
                     # 1D Parameters
                     if first_dimension == 'one':
                         outdata = src_param.data
+                    elif args.include_stream and first_dimension == 'nsegment':
+                        if pp in ['tosegment']:
+                            outdata = np.array(0)
+                        else:
+                            outdata = nhm_params.get_subset(pp, new_nhm_seg)
                     elif first_dimension == 'ndeplval':
                         # This is really a 2D in disguise, however, it is stored in C-order unlike
                         # other 2D arrays
@@ -355,8 +384,11 @@ def main():
                         if pp == 'hru_deplcrv':
                             outdata = np.array(new_hru_deplcrv)
                         elif pp == 'hru_segment':
-                            print(f'ERROR: {src_param.name} should not be here')
-                            pass
+                            if args.include_stream:
+                                outdata = np.array(1)
+                            else:
+                                print(f'ERROR: {src_param.name} should not be here')
+                                pass
                         else:
                             outdata = nhm_params.get_subset(pp, hru_order_subset)
                     else:
@@ -364,8 +396,10 @@ def main():
                 elif ndims == 2:
                     # 2D Parameters
                     if first_dimension == 'nsegment':
-                        print(f'ERROR: {src_param.name} should not be here')
-                        pass
+                        if args.include_stream:
+                            outdata = nhm_params.get_subset(pp, new_nhm_seg)
+                        else:
+                            print(f'ERROR: {src_param.name} should not be here')
                     elif first_dimension in HRU_DIMS:
                         outdata = nhm_params.get_subset(pp, hru_order_subset)
                     else:
@@ -480,6 +514,7 @@ def main():
                         mod_out.write_csv(f'{sg_dir}/model_output')
                 except FileNotFoundError:
                     bandit_log.warning(f'Model output variable, {vv}, does not exist; skipping.')
+            print()
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Write dynamic parameters
@@ -559,6 +594,11 @@ def main():
                 geo_shp.select_layer(hru_gis_layer)
                 geo_shp.write_shapefile(f'{sg_dir}/GIS/HRU_subset.shp', hru_gis_id, hru_order_subset,
                                         included_fields=['nhm_id', 'model_idx', hru_gis_id])
+
+                if args.include_stream:
+                    geo_shp.select_layer(seg_gis_layer)
+                    geo_shp.write_shapefile(f'{sg_dir}/GIS/Segments_subset.shp', seg_gis_id, new_nhm_seg,
+                                            included_fields=[seg_gis_id, 'model_idx'])
                 del geo_shp
 
         if args.verbose:
