@@ -2,9 +2,13 @@
 
 import argparse
 # import colorful as cf
+import datetime
+import logging
 import netCDF4 as nc
 import numpy as np
+import os
 import pandas as pd
+import platform
 import re
 import sys
 
@@ -12,24 +16,42 @@ import Bandit.prms_nwis as prms_nwis
 from Bandit.bandit_helpers import set_date
 
 from collections import OrderedDict
-# from datetime import datetime
 from io import StringIO
 
 from urllib.request import urlopen  # , Request
 from urllib.error import HTTPError
 
+__version__ = 0.2
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
-base_url = 'http://waterservices.usgs.gov/nwis'
+base_url = 'https://waterservices.usgs.gov/nwis'
 
 t1 = re.compile('^#.*$\n?', re.MULTILINE)   # remove comment lines
 t2 = re.compile('^5s.*$\n?', re.MULTILINE)  # remove field length lines
 
+# Setup logging
+pgm_log = logging.getLogger('create_NWIS_netcdf')
+pgm_log.setLevel(logging.DEBUG)
+
+log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
+
+# Handler for file logs
+flog = logging.FileHandler(f'create_NWIS_netcdf.log')
+flog.setLevel(logging.DEBUG)
+flog.setFormatter(log_fmt)
+
+# Handler for console logs
+clog = logging.StreamHandler()
+clog.setLevel(logging.ERROR)
+clog.setFormatter(log_fmt)
+
+pgm_log.addHandler(flog)
+pgm_log.addHandler(clog)
+
 
 def read_csv(filename):
-    # Given two paramdb files this will return an ordered dictionary of the 2nd columns of each file
-    # where the first file is the key, second file is the value
+    # Opens a paramdb csv file and returns the second field
     fhdl = open(filename)
     rawdata = fhdl.read().splitlines()
     fhdl.close()
@@ -58,18 +80,22 @@ def get_nhm_nwis_pois(filename):
                 _ = int(gage_id)
 
                 if len(gage_id) > 15:
-                    print(f'  {gage_id} is not a USGS gage')
+                    pgm_log.warning(f'{gage_id} is not a USGS gage')
+                    print(f'{gage_id} is not a USGS gage')
                 else:
                     nhm_gages.append(gage_id)
             except ValueError:
                 if len(gage_id) == 7:
+                    pgm_log.warning(f'  {gage_id} incorrectly sourced to {gage_src}')
                     print(f'  {gage_id} incorrectly sourced to {gage_src}')
         elif gage_src == 'EC':
             if len(gage_id) > 7:
+                pgm_log.warning(f'{gage_id} incorrectly sourced to {gage_src}')
                 print(f'  {gage_id} incorrectly sourced to {gage_src}')
                 if len(gage_id) <= 15:
                     nhm_gages.append(gage_id)
         elif gage_src == '0':
+            pgm_log.error(f'{gage_id} incorrectly sourced as 0')
             print(f'  {gage_id} incorrectly sourced as 0')
             nhm_gages.append(gage_id)
 
@@ -137,7 +163,7 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
     url_pieces['siteStatus'] = 'all'
     url_pieces['parameterCd'] = '00060'  # Discharge
     url_pieces['siteType'] = 'ST'
-    url_pieces['hasDataTypeCd'] = 'dv'
+    # url_pieces['hasDataTypeCd'] = 'dv'
 
     # NOTE: If both sites and regions parameters are specified the sites
     #       parameter takes precedence.
@@ -154,7 +180,7 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
             # Single region
             regions = [regions]
     else:
-        # One or more sites with specified
+        # One or more sites were specified
         url_pieces['sites'] = None
 
         if isinstance(sites, (list, tuple)):
@@ -178,7 +204,9 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
             # Read the rdb file into a dataframe
             df = pd.read_csv(StringIO(streamgage_site_page), sep='\t', dtype=cols, usecols=include_cols)
 
-            nwis_sites = nwis_sites.append(df, ignore_index=True)
+            # pandas append deprecated since v1.4
+            # nwis_sites = nwis_sites.append(df, ignore_index=True)
+            nwis_sites = pd.concat([nwis_sites, df], ignore_index=True)
             sys.stdout.write('\r                      \r')
     else:
         for site in sites:
@@ -196,7 +224,9 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
                 # Read the rdb file into a dataframe
                 df = pd.read_csv(StringIO(streamgage_site_page), sep='\t', dtype=cols, usecols=include_cols)
 
-                nwis_sites = nwis_sites.append(df, ignore_index=True)
+                # pandas append deprecated since v1.4
+                # nwis_sites = nwis_sites.append(df, ignore_index=True)
+                nwis_sites = pd.concat([nwis_sites, df], ignore_index=True)
             except HTTPError as err:
                 if err.code == 404:
                     sys.stdout.write(f'HTTPError: {err.code}, site does not meet criteria - SKIPPED\n')
@@ -292,13 +322,13 @@ def write_nwis_netcdf(df_stn, df_streamflow, filename):
 
     # Write the station information
     poinameo[:] = nc.stringtochar(np.array(poiname_list).astype('S'))
-    lato[:] = df_stn['latitude'].to_numpy(dtype=np.float)
-    lono[:] = df_stn['longitude'].to_numpy(dtype=np.float)
-    draino[:] = df_stn['drainage_area'].to_numpy(dtype=np.float)
-    draineffo[:] = df_stn['drainage_area_contrib'].to_numpy(dtype=np.float)
+    lato[:] = df_stn['latitude'].to_numpy(dtype=float)
+    lono[:] = df_stn['longitude'].to_numpy(dtype=float)
+    draino[:] = df_stn['drainage_area'].to_numpy(dtype=float)
+    draineffo[:] = df_stn['drainage_area_contrib'].to_numpy(dtype=float)
 
     # Write the streamgage observations
-    varo[:, :] = df_streamflow.to_numpy(dtype=np.float).T
+    varo[:, :] = df_streamflow.to_numpy(dtype=float).T
 
     nco.close()
 
@@ -325,9 +355,31 @@ def main():
     st_date = set_date(args.daterange[0])
     en_date = set_date(args.daterange[1])
 
+    # =========================================================================
+    pgm_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
+    pgm_log.info(" ".join(sys.argv))
+    pgm_log.info(f'Script version: {__version__}')
+    pgm_log.info(f'Script directory: {os.path.dirname(os.path.abspath(__file__))}')
+    pgm_log.info(f'Python: {platform.python_implementation()} ({platform.python_version()})')
+    pgm_log.info(f'Host: {platform.node()}')
+    pgm_log.info('-'*70)
+    pgm_log.info(f'Current directory: {os.getcwd()}')
+    pgm_log.info(f'Date range: {args.daterange[0]} to {args.daterange[1]}')
+    pgm_log.info(f'poi_id source: {args.poi}')
+    pgm_log.info(f'Destination dir: {args.dstdir}')
+    # =========================================================================
+
     print('Get NWIS streamgages that are used by the NHM')
     # nhm_gages = get_nhm_nwis_pois(agency_filename)
     nhm_gages = read_csv(poi_filename)
+    pgm_log.info(f'Number of POIs read from poi_id file: {len(nhm_gages)}')
+
+    nhm_nwis_gages = []
+    for xx in nhm_gages:
+        if len(xx) != 7:
+            nhm_nwis_gages.append(xx)
+
+    pgm_log.info(f'Number of NWIS POIs in poi_id file: {len(nhm_nwis_gages)}')
 
     print('Reading station information')
     nwis_sites = get_nwis_sites(stdate=st_date, endate=en_date)
@@ -335,15 +387,36 @@ def main():
     # nwis_sites = get_nwis_sites(stdate=st_date, endate=en_date, sites='06469400')
 
     # Reduce dataframe to sites in the NHM
-    nwis_sites = nwis_sites[nwis_sites.index.isin(nhm_gages)]
+    nwis_sites = nwis_sites[nwis_sites.index.isin(nhm_nwis_gages)]
     # nwis_daily[~nwis_daily['site_no'].isin(nwis_multiple)]
 
     site_list = nwis_sites.index.tolist()
-    print(f'Number of sites: {len(site_list)}')
-    # print(f'Sites not pulled: {set(nhm_gages) - set(site_list)}')
+    print(f'Number of matching NWIS streamgages: {len(site_list)}')
+    pgm_log.info(f'Number of matching NWIS streamgages: {len(site_list)}')
 
-    # nwis_sites.to_csv('crap.csv')
-    # exit()
+    missing_sites = list(set(nhm_nwis_gages) - set(site_list))
+
+    print(f'Sites not pulled: {missing_sites}')
+    pgm_log.info(f'Sites not pulled: {missing_sites}')
+
+    # Try to retrieve any missing sites
+    if len(missing_sites) > 0:
+        print('Trying to retrieve missing sites')
+        addl_sites = get_nwis_sites(stdate=st_date, endate=en_date, sites=missing_sites)
+        nwis_sites = pd.concat([nwis_sites, addl_sites])
+
+    # Reduce dataframe to sites in the NHM
+    nwis_sites = nwis_sites[nwis_sites.index.isin(nhm_nwis_gages)]
+    # nwis_daily[~nwis_daily['site_no'].isin(nwis_multiple)]
+
+    site_list = nwis_sites.index.tolist()
+    print(f'Number of matching NWIS streamgages and addl sites: {len(site_list)}')
+    pgm_log.info(f'Number of matching NWIS streamgages and addl: {len(site_list)}')
+
+    missing_sites = list(set(nhm_nwis_gages) - set(site_list))
+    if len(missing_sites) > 0:
+        print(f'ERROR: Missing sites from NWIS, {missing_sites}')
+        exit(200)
 
     print('Retrieving daily streamflow observations')
     streamflow = prms_nwis.NWIS(gage_ids=site_list, st_date=st_date, en_date=en_date,
