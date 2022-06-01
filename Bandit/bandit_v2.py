@@ -800,8 +800,9 @@ def main():
             # Output a shapefile of the selected HRUs
             # print('\tHRUs')
             # geo_shp.select_layer('nhruNationalIdentifier')
-            print(f'Layers: {hru_gis_layer}, {seg_gis_layer}')
-            print(f'IDs: {hru_gis_id}, {seg_gis_id}')
+            if args.verbose:
+                print(f'Layers: {hru_gis_layer}, {seg_gis_layer}')
+                print(f'IDs: {hru_gis_id}, {seg_gis_id}')
 
             geo_shp.select_layer(hru_gis_layer)
             geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', hru_gis_id, hru_order_subset,
