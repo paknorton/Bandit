@@ -7,6 +7,33 @@
 
 from ruamel.yaml import YAML
 
+default_values = dict(start_date='1980-01-01',
+                      end_date='2010-12-31',
+                      check_DAG='False',
+                      poi_dir='',
+                      output_dir='.',
+                      control_filename='control.default',
+                      param_filename='myparam.param',
+                      paramdb_dir='.',
+                      dyn_params_dir='.',
+                      outlets=[],
+                      cutoffs=[],
+                      hru_noroute=[],
+                      include_model_output=False,
+                      output_vars=[],
+                      output_vars_dir='.',
+                      output_cbh=False,
+                      cbh_dir='.',
+                      cbh_var_map={},
+                      output_streamflow=False,
+                      streamflow_filename='sf_data',
+                      output_shapefiles=False,
+                      geodatabase_filename='',
+                      hru_gis_layer=None,
+                      hru_gis_id=None,
+                      seg_gis_layer=None,
+                      seg_gis_id=None)
+
 
 class Cfg(object):
     """Configuration class for the Bandit NHM extraction program."""
@@ -73,7 +100,8 @@ class Cfg(object):
         """
 
         try:
-            return self.__cfgdict[varname]
+            return self.__cfgdict.get(varname, default_values[varname])
+            # return self.__cfgdict[varname]
         except KeyError:
             raise KeyError(f'Configuration variable, {varname}, does not exist') from None
             # return None
