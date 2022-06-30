@@ -108,8 +108,7 @@ def main():
 
     # Override configuration variables with any command line parameters
     for kk, vv in args.__dict__.items():
-        if kk not in ['job', 'verbose', 'cbh_netcdf', 'add_gages', 'param_netcdf', 'no_filter_params',
-                      'keep_hru_order', 'prms_version', 'streamflow_netcdf']:
+        if config.exists(kk):
             if vv:
                 bandit_log.info(f'Overriding configuration for {kk} with {vv}')
                 config.update_value(kk, vv)
@@ -118,7 +117,7 @@ def main():
     outdir = config.output_dir
 
     # The control file to use
-    control_filename = config.control_filename
+    # control_filename = config.control_filename
 
     # What to name the output parameter file
     param_filename = config.param_filename
@@ -136,64 +135,67 @@ def main():
     hru_noroute = config.hru_noroute
 
     # List of output variables to subset
-    try:
-        include_model_output = config.include_model_output
-        output_vars = config.output_vars
-        output_vars_dir = config.output_vars_dir
-    except KeyError:
-        include_model_output = False
-        output_vars = []
-        output_vars_dir = ''
+    # try:
+    #     include_model_output = config.include_model_output
+    #     output_vars = config.output_vars
+    #     output_vars_dir = config.output_vars_dir
+    # except KeyError:
+    #     include_model_output = False
+    #     output_vars = []
+    #     output_vars_dir = ''
 
     # Control what is checked and output for subset
-    check_dag = config.check_DAG
+    # check_dag = config.check_DAG
 
-    try:
-        output_cbh = config.output_cbh
+    # try:
+    #     output_cbh = config.output_cbh
+    #
+    #     # Location of the NHM CBH files
+    #     cbh_dir = config.cbh_dir
+    # except KeyError:
+    #     output_cbh = False
+    #     cbh_dir = ''
 
-        # Location of the NHM CBH files
-        cbh_dir = config.cbh_dir
-    except KeyError:
-        output_cbh = False
-        cbh_dir = ''
+    # try:
+    #     output_streamflow = config.output_streamflow
+    #
+    #     # What to name the streamflow output file
+    #     obs_filename = config.streamflow_filename
+    # except KeyError:
+    #     output_streamflow = False
+    #     obs_filename = ''
 
-    try:
-        output_streamflow = config.output_streamflow
-
-        # What to name the streamflow output file
-        obs_filename = config.streamflow_filename
-    except KeyError:
-        output_streamflow = False
-        obs_filename = ''
-
-    try:
-        output_shapefiles = config.output_shapefiles
-
-        # Full path and filename to the geodatabase to use for outputting shapefile subsets
-        geo_file = config.geodatabase_filename
-        hru_gis_layer = config.hru_gis_layer
-        hru_gis_id = config.hru_gis_id
-        seg_gis_layer = config.seg_gis_layer
-        seg_gis_id = config.seg_gis_id
-    except KeyError:
-        output_shapefiles = False
-        geo_file = ''
-        hru_gis_layer = None
-        hru_gis_id = None
-        seg_gis_layer = None
-        seg_gis_id = None
+    # try:
+    #     output_shapefiles = config.output_shapefiles
+    #
+    #     # Full path and filename to the geodatabase to use for outputting shapefile subsets
+    #     geo_file = config.geodatabase_filename
+    #     hru_gis_layer = config.hru_gis_layer
+    #     hru_gis_id = config.hru_gis_id
+    #     seg_gis_layer = config.seg_gis_layer
+    #     seg_gis_id = config.seg_gis_id
+    # except KeyError:
+    #     output_shapefiles = False
+    #     geo_file = ''
+    #     hru_gis_layer = None
+    #     hru_gis_id = None
+    #     seg_gis_layer = None
+    #     seg_gis_id = None
 
     # Load the control file
-    ctl = ControlFile(control_filename)
+    ctl = ControlFile(config.control_filename)
 
-    dyn_params_dir = ''
+    # dyn_params_dir = ''
     if ctl.has_dynamic_parameters:
         if config.dyn_params_dir:
-            if os.path.exists(config.dyn_params_dir):
-                dyn_params_dir = config.dyn_params_dir
-            else:
+            if not os.path.exists(config.dyn_params_dir):
                 bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
                 exit(2)
+            # if os.path.exists(config.dyn_params_dir):
+            #     dyn_params_dir = config.dyn_params_dir
+            # else:
+            #     bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
+            #     exit(2)
         else:
             bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified ' +
                              'in the config file')
@@ -257,7 +259,7 @@ def main():
     bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
     bandit_log.debug('Number of NHM downstream edges: {}'.format(dag_ds.number_of_edges()))
 
-    if check_dag:
+    if config.check_DAG:
         if not nx.is_directed_acyclic_graph(dag_ds):
             bandit_log.error('Cycles and/or loops found in stream network')
 
@@ -626,7 +628,7 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write CBH files
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if output_cbh:
+    if config.output_cbh:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -635,8 +637,8 @@ def main():
             print('Processing CBH files')
 
         # Read the CBH source file
-        if os.path.splitext(cbh_dir)[1] == '.nc':
-            cbh_hdl = CbhNetcdf(src_path=cbh_dir, st_date=st_date, en_date=en_date,
+        if os.path.splitext(config.cbh_dir)[1] == '.nc':
+            cbh_hdl = CbhNetcdf(src_path=config.cbh_dir, st_date=st_date, en_date=en_date,
                                 nhm_hrus=hru_order_subset)
         else:
             raise ValueError('Missing netcdf CBH files')
@@ -644,7 +646,7 @@ def main():
         if args.cbh_netcdf:
             # Pull the filename prefix off of the first file found in the
             # source netcdf CBH directory.
-            file_it = glob.iglob(cbh_dir)
+            file_it = glob.iglob(config.cbh_dir)
             cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
 
             cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
@@ -667,7 +669,7 @@ def main():
     # Write output variables
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # 2019-08-07 PAN: first prototype for extractions of output variables
-    if include_model_output:
+    if config.include_model_output:
         # TODO: 2020-03-12 PAN - this is brittle, fix it.
         seg_vars = ['seginc_gwflow', 'seginc_potet', 'seginc_sroff', 'seginc_ssflow',
                     'seginc_swrad', 'segment_delta_flow', 'seg_gwflow', 'seg_inflow',
@@ -681,13 +683,13 @@ def main():
         except OSError:
             print('Using existing model_output directory for output variables')
 
-        for vv in output_vars:
+        for vv in config.output_vars:
             if args.verbose:
                 sys.stdout.write('\r                                                  ')
                 sys.stdout.write(f'\rProcessing output variable: {vv} ')
                 sys.stdout.flush()
 
-            filename = f'{output_vars_dir}/{vv}.nc'
+            filename = f'{config.output_vars_dir}/{vv}.nc'
 
             try:
                 if vv in seg_vars:
@@ -710,7 +712,7 @@ def main():
         # Add dynamic parameters
         for cparam in ctl.dynamic_parameters:
             param_name = f'dyn_{cparam}'
-            input_file = f'{dyn_params_dir}/{param_name}.nc'
+            input_file = f'{config.dyn_params_dir}/{param_name}.nc'
             output_file = f'{outdir}/{param_name}.param'
 
             if not os.path.exists(input_file):
@@ -741,9 +743,9 @@ def main():
                 out_ascii.close()
 
     # Write an updated control file to the output directory
-    ctl.write(f'{control_filename}.bandit')
+    ctl.write(f'{config.control_filename}.bandit')
 
-    if output_streamflow:
+    if config.output_streamflow:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Download the streamgage information from NWIS
@@ -763,29 +765,29 @@ def main():
                 streamflow.get_daily_streamgage_observations()
 
             if args.streamflow_netcdf:
-                streamflow.write_netcdf(filename=f'{outdir}/{obs_filename}.nc')
+                streamflow.write_netcdf(filename=f'{outdir}/{config.streamflow_filename}.nc')
             else:
-                streamflow.write_ascii(filename=f'{outdir}/{obs_filename}')
+                streamflow.write_ascii(filename=f'{outdir}/{config.streamflow_filename}')
         else:
             # TODO: 2021-03-30 PAN - prms_nwis has a mechanism for creating the sf_data file
             #       with a dummy record when no POIs are provided
             print('Writing dummy streamflow data file')
             streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=args.verbose)
             streamflow.get_daily_streamgage_observations()
-            streamflow.write_ascii(filename=f'{obs_filename}')
+            streamflow.write_ascii(filename=f'{config.streamflow_filename}')
             bandit_log.info(f'No POIs exist in model subset; dummy data written.')
 
     # *******************************************
     # Create a shapefile of the selected HRUs
-    if output_shapefiles:
+    if config.output_shapefiles:
         if args.verbose:
             print('-'*40)
             print('Writing shapefiles for model subset')
 
-        if not os.path.isdir(geo_file):
-            bandit_log.error(f'File geodatabase, {geo_file}, does not exist. Shapefiles will not be created')
+        if not os.path.isdir(config.geodatabase_filename):
+            bandit_log.error(f'File geodatabase, {config.geodatabase_filename}, does not exist. Shapefiles will not be created')
         else:
-            geo_shp = prms_geo.Geo(geo_file)
+            geo_shp = prms_geo.Geo(config.geodatabase_filename)
 
             # Create GIS sub-directory if it doesn't already exist
             gis_dir = f'{outdir}/GIS'
@@ -801,16 +803,16 @@ def main():
             # print('\tHRUs')
             # geo_shp.select_layer('nhruNationalIdentifier')
             if args.verbose:
-                print(f'Layers: {hru_gis_layer}, {seg_gis_layer}')
-                print(f'IDs: {hru_gis_id}, {seg_gis_id}')
+                print(f'Layers: {config.hru_gis_layer}, {config.seg_gis_layer}')
+                print(f'IDs: {config.hru_gis_id}, {config.seg_gis_id}')
 
-            geo_shp.select_layer(hru_gis_layer)
-            geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', hru_gis_id, hru_order_subset,
-                                    included_fields=['nhm_id', 'model_idx', hru_gis_id])
+            geo_shp.select_layer(config.hru_gis_layer)
+            geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', config.hru_gis_id, hru_order_subset,
+                                    included_fields=['nhm_id', 'model_idx', config.hru_gis_id])
 
-            geo_shp.select_layer(seg_gis_layer)
-            geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', seg_gis_id, new_nhm_seg,
-                                    included_fields=[seg_gis_id, 'model_idx'])
+            geo_shp.select_layer(config.seg_gis_layer)
+            geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', config.seg_gis_id, new_nhm_seg,
+                                    included_fields=[config.seg_gis_id, 'model_idx'])
 
             # Original code
             # geo_shp.select_layer('nhru')
