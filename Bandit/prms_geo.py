@@ -3,6 +3,7 @@ from collections import OrderedDict
 from osgeo import gdal, ogr
 from typing import Optional, Union, Dict, List, OrderedDict as OrderedDictType, Tuple
 
+
 class GdalErrorHandler(object):
 
     """Error handling class for GDAL."""
