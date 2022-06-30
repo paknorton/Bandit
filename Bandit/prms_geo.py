@@ -1,14 +1,7 @@
 
 from collections import OrderedDict
-from osgeo import ogr
-
-try:
-    import gdal
-except ImportError:
-    # Python 3.6 seems to use an older version of gdal which is imported from
-    # osgeo instead directly.
-    from osgeo import gdal
-
+from osgeo import gdal, ogr
+from typing import Optional, Union, Dict, List, OrderedDict as OrderedDictType, Tuple
 
 class GdalErrorHandler(object):
 
@@ -24,12 +17,12 @@ class GdalErrorHandler(object):
         self.err_no = 0
         self.err_msg = ''
 
-    def handler(self, err_level, err_no, err_msg):
+    def handler(self, err_level: int, err_no: int, err_msg: str):
         """Set error message information.
 
-        :param int err_level: error level
-        :param int err_no: error number
-        :param str err_msg: error message
+        :param err_level: error level
+        :param err_no: error number
+        :param err_msg: error message
         """
 
         self.err_level = err_level
@@ -41,10 +34,10 @@ class Geo(object):
 
     """Class for subsetting GIS files."""
 
-    def __init__(self, filename):
+    def __init__(self, filename: str):
         """Create the Geo object.
 
-        :param str filename: name of file
+        :param filename: name of file geodatabase
         """
 
         err = GdalErrorHandler()
@@ -57,7 +50,7 @@ class Geo(object):
         self.__layers = None
         self.__selected_layer = None
 
-        # use OGR specific exceptions
+        # Use OGR specific exceptions
         ogr.UseExceptions()
 
         # Load the file - this assumes a file geodatabase
@@ -65,11 +58,10 @@ class Geo(object):
         self.__gdb = driver.Open(self.__filename)
 
     @property
-    def layers(self):
+    def layers(self) -> Dict[str, int]:
         """Get dictionary mapping layer names to their index.
 
         :returns: dictionary of layer name to index value
-        :rtype: dict[str, int]
         """
 
         # Returns a dictionary mapping layer names to their index
@@ -82,55 +74,53 @@ class Geo(object):
         return self.__layers
 
     @property
-    def selected_layer(self):
+    def selected_layer(self) -> Union[None, int]:
         """Get the currently selected layer.
 
         :returns: selected layer
-        :rtype: int or None
         """
 
         return self.__selected_layer
 
-    def select_layer(self, layer_name):
+    def select_layer(self, layer_name: str):
         """Set the selected layer.
 
-        :param str layer_name: name of layer to select
+        :param layer_name: name of layer to select
         """
 
         # Select a layer from the file geodatabase
         self.__selected_layer = self.__gdb.GetLayerByName(layer_name)
 
-    def filter_by_attribute(self, attr_name, attr_values):
+    def filter_by_attribute(self, attr_name: str, attr_values: List):
         """Filter current layer by attribute name and values.
 
-        :param str attr_name: name of attribute
-        :param list attr_values: list of attribute values
+        :param attr_name: name of attribute
+        :param attr_values: list of attribute values
         """
-
-        # Filter a layer by attribute name and values
 
         # Make sure the attr_values elements are strings
         attr_args = ','.join([str(xx) for xx in attr_values])
-        print(len(attr_args))
-        print('-'*50)
-        print(attr_args)
-        print('-' * 50)
+        # print(len(attr_args))
+        # print('-'*50)
+        # print(attr_args)
+        # print('-' * 50)
 
         self.__selected_layer.SetAttributeFilter(f'{attr_name} in ({attr_args})')
 
-    def write_shapefile(self, filename, attr_name, attr_values, included_fields=None):
+    def write_shapefile(self, filename: str,
+                        attr_name: str,
+                        attr_values: List,
+                        included_fields: Optional[List]=None):
         """Write subset to shapefile format.
 
-        :param str filename: name of shapefile to create
-        :param str attr_name: name of attribute for filtering
-        :param list attr_values: list of attribute values to include in subset
+        :param filename: name of shapefile to create
+        :param attr_name: name of attribute for filtering
+        :param attr_values: list of attribute values to include in subset
         :param included_fields: list of attribute field names from source shapefile to include in new shapefile
-        :type included_fields: None or list[str]
         """
 
-        # Create a shapefile for the current selected layer
-        # If a filter is set then a subset of features is written
-
+        # Create a shapefile for the current selected layer.
+        # If a filter is set then a subset of features is written.
         limit_fields = included_fields is not None
 
         out_driver = ogr.GetDriverByName('ESRI Shapefile')
@@ -193,15 +183,15 @@ class Geo(object):
         # Close the output datasource
         out_ds.Destroy()
 
-    def write_shapefile2(self, filename):
-        # Create a shapefile for the current selected layer
-        # Any applied filter will effect what is written to the new file
-        # TODO raise error if no layer is selected
-        out_driver = ogr.GetDriverByName('ESRI Shapefile')
-        out_ds = out_driver.CreateDataSource(filename)
-
-        out_ds.CopyLayer(self.__selected_layer, self.__selected_layer.GetName())
-        del out_ds
+    # def write_shapefile2(self, filename: str):
+    #     # Create a shapefile for the current selected layer
+    #     # Any applied filter will effect what is written to the new file
+    #     # TODO raise error if no layer is selected
+    #     out_driver = ogr.GetDriverByName('ESRI Shapefile')
+    #     out_ds = out_driver.CreateDataSource(filename)
+    #
+    #     out_ds.CopyLayer(self.__selected_layer, self.__selected_layer.GetName())
+    #     del out_ds
 
     # def write_shapefile3(self, filename, attr_name, attr_values, included_fields=None):
     #     # NOTE: This is for messing around with the geopackage format
