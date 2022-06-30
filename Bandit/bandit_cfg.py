@@ -6,24 +6,25 @@
 #              YAML is used for the backend
 
 from ruamel.yaml import YAML
+from typing import Dict, List, Optional, Union
 
 default_values = dict(start_date='1980-01-01',
                       end_date='2010-12-31',
                       check_DAG='False',
                       poi_dir='',
-                      output_dir='.',
+                      output_dir='',
                       control_filename='control.default',
                       param_filename='myparam.param',
-                      paramdb_dir='.',
-                      dyn_params_dir='.',
+                      paramdb_dir='',
+                      dyn_params_dir='',
                       outlets=[],
                       cutoffs=[],
                       hru_noroute=[],
                       include_model_output=False,
                       output_vars=[],
-                      output_vars_dir='.',
+                      output_vars_dir='',
                       output_cbh=False,
-                      cbh_dir='.',
+                      cbh_dir='',
                       cbh_var_map={},
                       output_streamflow=False,
                       streamflow_filename='sf_data',
@@ -38,13 +39,12 @@ default_values = dict(start_date='1980-01-01',
 class Cfg(object):
     """Configuration class for the Bandit NHM extraction program."""
 
-    def __init__(self, filename, cmdline=None):
+    def __init__(self, filename: str,
+                 cmdline: Optional[str]=None):
         """Init method for Cfg class.
 
-        Args:
-            filename (str): The configuration filename.
-            cmdline (str, optional): Currently unused. Defaults to None.
-
+        :param filename: Configuration filename
+        :param cmdline: Currently unused.
         """
 
         # yaml.add_representer(OrderedDict, dict_representer)
@@ -55,8 +55,11 @@ class Cfg(object):
         self.__cmdline = cmdline
         self.load(filename)
 
-    def __str__(self):
-        """Pretty-print the configuration items"""
+    def __str__(self) -> str:
+        """Pretty-print the configuration items
+
+        :return: String of configuration parameters and values
+        """
         outstr = ''
 
         for (kk, vv) in self.__cfgdict.items():
@@ -70,14 +73,28 @@ class Cfg(object):
                 outstr += f'{vv}\n'
         return outstr
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str) -> Union[int, float, str, List]:
+        """Get value for a configuration item.
+
+        :return: Configuration parameter value
+        """
         # Undefined attributes will look up the given configuration item
         return self.get_value(item)
 
-    def exists(self, name):
-        return name in self.__cfgdict
+    def exists(self, name: str) -> bool:
+        """Tests if configuration parameter exists
 
-    def is_empty(self, name):
+        :param name: Name of configuration parameter to check
+        :return: True if parameter exists
+        """
+        return name in self.__cfgdict or name in default_values
+
+    def is_empty(self, name: str) -> bool:
+        """Check if list or string parameter values are empty
+
+        :param name: Name of configuration parameter to check
+        :return: True is values is an empty list or string
+        """
         cval = self.get_value(name)
 
         if isinstance(cval, list):
@@ -88,58 +105,43 @@ class Cfg(object):
             return False
         return True
 
-    def get_value(self, varname):
+    def get_value(self, name: str) -> Union[str, int, float, List, Dict]:
         """Return the value for a given config variable.
 
-        Args:
-            varname (str): Configuration variable.
-
-        Returns:
-             The value of the configuration variable or raise KeyError if variable does not exist.
-
+        :param name: Name of configuration parameter
+        :return: Value(s) for the configuration parameter
         """
-
         try:
-            return self.__cfgdict.get(varname, default_values[varname])
+            return self.__cfgdict.get(name, default_values[name])
             # return self.__cfgdict[varname]
         except KeyError:
-            raise KeyError(f'Configuration variable, {varname}, does not exist') from None
+            raise KeyError(f'Configuration variable, {name}, does not exist') from None
             # return None
 
-    def load(self, filename):
+    def load(self, filename: str):
         """Load the YAML-format configuration file.
 
-        Args:
-            filename (str): Name of the configuration file.
-
+        :param filename: Name of YAML configuration filele.
         """
-
         tmp = self.yaml.load(open(filename, 'r'))
         self.__cfgdict = tmp
 
-    def update_value(self, variable, newval):
+    def update_value(self, name: str, newval: Union[List, str]):
         """Update an existing configuration variable with a new value
 
-        Args:
-            variable (str): The configuration variable to update.
-            newval (str, list): The value to assign to the variable.
-
-        Raises:
-            KeyError: If configuration variable does not exist.
-
+        :param name: Name of configuration parameter
+        :param newval: New value for parameter
         """
 
-        if variable in self.__cfgdict:
-            self.__cfgdict[variable] = newval
+        if name in self.__cfgdict:
+            self.__cfgdict[name] = newval
         else:
-            raise KeyError(f'Configuration variable, {variable}, does not exist')
+            raise KeyError(f'Configuration variable, {name}, does not exist')
 
-    def write(self, filename):
-        """"Write the configuration out to a file.
+    def write(self, filename: str):
+        """"Write the current configuration out to a file.
 
-        Args:
-            filename (str): Name of file to write configuration to.
-
+        :param filename: Name of file to write configuration to
         """
 
         outfile = open(filename, 'w')
