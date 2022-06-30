@@ -34,9 +34,6 @@ def main():
     elif not os.path.exists(config.paramdb_dir):
         print("Location of the NHM parameter database (paramdb_dir) does not exist!")
         exit(2)
-    # elif not os.path.exists(config.merged_paramdb_dir):
-    #     print("Location of the merged parameters database (merged_paramdb_dir) does not exist!")
-    #     exit(2)
     elif not os.path.exists(config.geodatabase_filename):
         print("The geodatabase file (geodatabase_filename) does not exist!")
         exit(2)
@@ -47,7 +44,7 @@ def main():
     # Define the path to the new job directory
     tl_jobsdir = config.output_dir
 
-    # check for / create output directory
+    # Create output directory if necessary
     new_job_dir = f'{tl_jobsdir}/{args.jobdir}'
 
     try:
