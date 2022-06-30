@@ -10,6 +10,8 @@ from pyPRMS.ParamDbRegion import ParamDbRegion
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 
+# NOTE: This utility doesn't apply to the current NHM paramdb. It was created to
+#       convert the by-region parameter database to the homogenous paramdb.
 def main():
     parser = argparse.ArgumentParser(description='Utility to convert paramDb by to region to monolithic paramDb')
     parser.add_argument('-c', '--config', help='Name of configuration file', nargs='?', default='bandit.cfg', type=str)
