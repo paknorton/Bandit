@@ -1,8 +1,11 @@
-gdal >= 2
+gdal >= 3
 pyyaml
 ruamel.yaml
-pandas
+pandas>=1
 numpy
 netcdf4
 networkx >= 2
 xarray
+pyprms
+ruamel
+setuptools
