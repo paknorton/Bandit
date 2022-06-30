@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 
-# from __future__ import (absolute_import, division, print_function)
-# from future.utils import iteritems, iterkeys
-
 import os
 import subprocess
 
+from typing import Dict, List, Optional, Union
 
 # Modified version of function from numpy setup.py
 # http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
 # Accessed on 2017-02-24
 
-def _minimal_ext_cmd(cmd):
-    # construct minimal environment
+
+def _minimal_ext_cmd(cmd: Union[List[str], str]) -> Union[str, bytes]:
+    """Run an external command and return the output.
+
+    :param cmd: command to execute
+    :returns: Output from command
+    """
     env = {}
 
+    # Construct a minimal environment
     for k in ['SYSTEMROOT', 'PATH']:
         v = os.environ.get(k)
         if v is not None:
@@ -28,7 +32,13 @@ def _minimal_ext_cmd(cmd):
     return result
 
 
-def git_commit_url(repo_dir):
+def git_commit_url(repo_dir: str) -> str:
+    """Get remote repository URL for a local repository.
+
+    :param repo_dir: path to local repository
+
+    :returns: URL for remote Git repository
+    """
     src_url = git_repo(repo_dir)
     src_commit = git_commit(repo_dir)
 
@@ -37,19 +47,14 @@ def git_commit_url(repo_dir):
     return dst_url
 
 
-def git_commit(repo_dir, length=None):
-    """Retrieve current git version from local directory.
+def git_commit(repo_dir: str, length: Optional[int]=None) -> str:
+    """Retrieve current commit number from local directory.
 
-    Args:
-        repo_dir (str): Local git repository directory.
-        length (int): Number of digits to return from commit
-
-    Returns:
-        str: Current git revision or 'Unknown'.
-
+    :param repo_dir: local Git repository directory
+    :param length: number of digits to return from commit number
+    :returns: current revision number for local repository
     """
 
-    # Return the git revision as a string
     try:
         if length is None:
             out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', 'HEAD'])
@@ -62,8 +67,13 @@ def git_commit(repo_dir, length=None):
     return git_revision
 
 
-def git_repo(repo_dir):
-    # Return the git repo URL as a string
+def git_repo(repo_dir: str) -> str:
+    """Get the remote Git URL for a local repository.
+
+    :param repo_dir: local Git repository directory
+    :returns: remote Git URL
+    """
+
     try:
         out = _minimal_ext_cmd(['git', '-C', repo_dir, 'config', '--get', 'remote.origin.url'])
         git_repo_url = out.strip().decode('ascii')
@@ -73,8 +83,13 @@ def git_repo(repo_dir):
     return git_repo_url
 
 
-def git_branch(repo_dir):
-    # Return the git branch as a string
+def git_branch(repo_dir: str) -> str:
+    """Get the current branch for a local repository
+
+    :param repo_dir: local Git repository directory
+    :returns: current branch for local repository
+    """
+
     try:
         out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', '--abbrev-ref', 'HEAD'])
         git_repo_branch = out.strip().decode('ascii')
