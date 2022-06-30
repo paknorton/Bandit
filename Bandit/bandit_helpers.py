@@ -23,8 +23,8 @@ def parse_gage(s: str) -> Tuple:
     On the command line (argparse) a declaration will typically look like::
         foo=hello or foo="hello world"
 
-    :param s: str
-    :return: Tuple of key and values
+    :param s: Streamgage-segment key,value string
+    :returns: Tuple of key and values
     """
 
     # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
@@ -42,7 +42,7 @@ def parse_gages(items: List[str]) -> Dict:
 
     :param items: List of key-value pairs
 
-    :return: Dictionary with key=streamgage_id and value=nhm_seg
+    :returns: Dictionary with key=streamgage_id and value=nhm_seg
     """
 
     # Adapted from: https://gist.github.com/fralau/061a4f6c13251367ef1d9a9a99fb3e8d
@@ -58,7 +58,7 @@ def set_date(adate: Union[datetime.datetime, datetime.date, str]) -> datetime.da
     """Return datetime object given a datetime or string of format YYYY-MM-DD
 
     :param adate: Datetime object or string (YYYY-MM-DD)
-    :return: Datetime object
+    :returns: Datetime object
     """
     if isinstance(adate, datetime.date):
         return datetime.datetime.combine(adate, datetime.time.min)
@@ -78,7 +78,7 @@ def subset_stream_network(dag_ds: nx.classes.digraph.DiGraph,
     :param uscutoff_seg: List of upstream cutoff segments
     :param dsmost_seg: List of outlet segments to start extraction from
 
-    :return: Stream network of extracted segments
+    :returns: Stream network of extracted segments
     """
     # Create the upstream graph
     # TODO: 2021-12-01 PAN - the reverse function is pretty inefficient for multi-location

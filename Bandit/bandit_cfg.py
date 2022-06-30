@@ -58,7 +58,7 @@ class Cfg(object):
     def __str__(self) -> str:
         """Pretty-print the configuration items
 
-        :return: String of configuration parameters and values
+        :returns: String of configuration parameters and values
         """
         outstr = ''
 
@@ -76,7 +76,7 @@ class Cfg(object):
     def __getattr__(self, item: str) -> Union[int, float, str, List]:
         """Get value for a configuration item.
 
-        :return: Configuration parameter value
+        :returns: Configuration parameter value
         """
         # Undefined attributes will look up the given configuration item
         return self.get_value(item)
@@ -85,7 +85,7 @@ class Cfg(object):
         """Tests if configuration parameter exists
 
         :param name: Name of configuration parameter to check
-        :return: True if parameter exists
+        :returns: True if parameter exists
         """
         return name in self.__cfgdict or name in default_values
 
@@ -93,7 +93,7 @@ class Cfg(object):
         """Check if list or string parameter values are empty
 
         :param name: Name of configuration parameter to check
-        :return: True is values is an empty list or string
+        :returns: True is values is an empty list or string
         """
         cval = self.get_value(name)
 
@@ -109,7 +109,7 @@ class Cfg(object):
         """Return the value for a given config variable.
 
         :param name: Name of configuration parameter
-        :return: Value(s) for the configuration parameter
+        :returns: Value(s) for the configuration parameter
         """
         try:
             return self.__cfgdict.get(name, default_values[name])
@@ -139,7 +139,7 @@ class Cfg(object):
             raise KeyError(f'Configuration variable, {name}, does not exist')
 
     def write(self, filename: str):
-        """"Write the current configuration out to a file.
+        """Write the current configuration out to a file.
 
         :param filename: Name of file to write configuration to
         """
