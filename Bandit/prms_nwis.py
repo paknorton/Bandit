@@ -2,7 +2,12 @@
 
 from collections import OrderedDict
 from datetime import datetime
-from typing import Dict, List, Optional, Sequence, Union
+from html.parser import HTMLParser
+from io import StringIO
+from typing import Dict, List, Optional, Sequence, Tuple, Union
+# from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 import datetime
 import logging
@@ -14,19 +19,12 @@ import socket
 import sys
 import time
 
-# from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
-
 from Bandit.bandit_helpers import set_date
-# from Bandit.pr_util import print_error
-
-from io import StringIO
-from urllib.request import urlopen
-from urllib.error import HTTPError, URLError
-from html.parser import HTMLParser
 
 
 class NWISErrorParser(HTMLParser):
-    # This is a quick 'n dirty error message parser for NWIS
+    """Simple error message parser for NWIS
+    """
     inBody = False
     inPara = False
     inBold = False
@@ -38,7 +36,7 @@ class NWISErrorParser(HTMLParser):
     error_info = {}
 
     # HTML Parser Methods
-    def handle_starttag(self, start_tag, attrs):
+    def handle_starttag(self, start_tag: str, attrs: str):
         if self.inBody and start_tag != 'h1':
             self.lsStartTags.append(start_tag)
             # print('Start tag: ', start_tag)
@@ -52,7 +50,7 @@ class NWISErrorParser(HTMLParser):
         if start_tag == 'b':
             self.inBold = True
 
-    def handle_endtag(self, end_tag):
+    def handle_endtag(self, end_tag: str):
         if end_tag == 'body':
             self.inBody = False
 
@@ -65,10 +63,10 @@ class NWISErrorParser(HTMLParser):
         if end_tag == 'b':
             self.inBold = False
 
-    def handle_startendtag(self, startend_tag, attrs):
+    def handle_startendtag(self, startend_tag: str, attrs: str):
         self.lsStartEndTags.append(startend_tag)
 
-    def handle_data(self, data):
+    def handle_data(self, data: str):
         if self.inBody:
             # print("Encountered some data  :", data)
 
@@ -80,7 +78,7 @@ class NWISErrorParser(HTMLParser):
                 else:
                     self.error_info[self.curr_key] = data
 
-    def handle_comment(self, data):
+    def handle_comment(self, data: str):
         self.lsComments.append(data)
 
 
@@ -92,14 +90,13 @@ nwis_logger = logging.getLogger('bandit.NWIS')
 
 
 class NWIS:
-
     """Class for accessing and manipulating streamflow information from the
     National Water Information System (NWIS; https://waterdata.usgs.gov/) provided by the
     United States Geological Survey (USGS; https://www.usgs.gov/).
     """
 
     # As written this class provides fucntions for downloading daily streamgage observations
-    # Additional functionality (e.g. monthyly, annual, other statistics) may be added at a future time.
+    # Additional functionality (e.g. monthly, annual, other statistics) may be added at a future time.
 
     def __init__(self, gage_ids: Optional[List] = None,
                  st_date: Optional[datetime.datetime] = None,
@@ -107,12 +104,10 @@ class NWIS:
                  verbose: Optional[bool] = False):
         """Create the NWIS object.
 
-        :param list[str] gage_ids: list of streamgages to retrieve
+        :param gage_ids: list of streamgages to retrieve
         :param st_date: start date for retrieving streamgage observations
-        :type st_date: None or datetime
         :param en_date: end date for retrieving streamgage observations
-        :type en_date: None or datetime
-        :param bool verbose: output additional debuggin information
+        :param verbose: output additional debugging information
         """
 
         self.logger = logging.getLogger('bandit.NWIS')
@@ -135,15 +130,18 @@ class NWIS:
         self.__t2 = re.compile('^5s.*$\n?', re.MULTILINE)  # remove field length lines
 
     @property
-    def data(self):
+    def data(self) -> pd.DataFrame:
+        """Get dataframe of streamflow observations.
+
+        :returns: DataFrame of streamflow observations
+        """
         return self.__outdata
 
     @property
-    def start_date(self):
+    def start_date(self) -> Union[None, datetime.datetime]:
         """Get the start date.
 
         :returns: start date
-        :rtype: None or datetime
         """
 
         return self.__stdate
@@ -153,7 +151,6 @@ class NWIS:
         """Set the start date.
 
         :param st_date: start date (either a datetime object or a string of the form YYYY-MM-DD)
-        :type st_date: datetime or str
         """
 
         # Set the starting date for retrieval
@@ -162,13 +159,11 @@ class NWIS:
         self.__outdata = None
 
     @property
-    def end_date(self):
+    def end_date(self) -> Union[None, datetime.datetime]:
         """Get the end date.
 
         :returns: end date
-        :rtype: None or datetime
         """
-
         return self.__endate
 
     @end_date.setter
@@ -176,30 +171,26 @@ class NWIS:
         """Set the end date.
 
         :param en_date: end date (either a datetime object or a string of the form YYYY-MM-DD)
-        :type en_date: datetime or str
         """
         self.__endate = set_date(en_date)
         self.__outdata = None
 
     @property
-    def gage_ids(self):
+    def gage_ids(self) -> List[str]:
         """Get list of streamgage IDs for retrieval.
 
         :returns: list of streamgage IDs
-        :rtype: list[str]
         """
-
         return self.__gageids
 
     @gage_ids.setter
-    def gage_ids(self, gage_ids):
+    def gage_ids(self, gage_ids: Union[List, Tuple, str]):
         """Set the streamgage ID(s) to retrieve from NWIS.
 
         :param gage_ids: streamgage ID(s)
-        :type gage_ids: list or tuple or str
         """
 
-        # Set the gage ids for retrieval this will clear any downloaded observations
+        # Set the gage ids for retrieval; this will clear any downloaded observations
         if isinstance(gage_ids, (list, tuple)):
             self.__gageids = gage_ids
         else:
@@ -207,14 +198,12 @@ class NWIS:
             self.__gageids = [gage_ids]
         self.__outdata = None
 
-    def check_for_flag(self, pat, data, col_id):
-        """Check for a given pattern in supplied data.
+    def check_for_flag(self, pat: str, data: pd.DataFrame, col_id: str):
+        """Checks for a given pattern in the data and log a warning if it occurs.
 
-        Checks for a given pattern in the data and log a warning if it occurs.
-
-        :param str pat: pattern to find
+        :param pat: pattern to find
         :param data: data for pattern matching
-        :param str col_id: column to search in data
+        :param col_id: column to search in data
         """
 
         # Check for pattern in data, log error if found and remove from data
@@ -230,7 +219,6 @@ class NWIS:
     def initialize_dataframe(self):
         """Clears downloaded data and initializes the output dataframe.
         """
-
         if not self.__endate:
             self.__endate = datetime.today()
         if not self.__stdate:
@@ -238,13 +226,13 @@ class NWIS:
 
         # Create an initial dataframe that contains all dates in the date range.
         # Any streamgage missing date(s) will have a NaN value for each missing date.
-        # Otherwise it is possible to have dates missing in the output.
+        # Otherwise, it is possible to have dates missing in the output.
         self.__date_range = pd.date_range(start=self.__stdate, end=self.__endate, freq='D')
         self.__outdata = pd.DataFrame(index=self.__date_range)
         self.__final_outorder = ['year', 'month', 'day', 'hour', 'minute', 'second']
 
     def get_daily_streamgage_observations(self):
-        """Retrieves daily observations.
+        """Retrieve daily streamflow observations.
 
         If gage_ids is set then retrieve observations for those streamgages; otherwise,
         return a single dummy dataset. If st_date and en_date are set then observations
@@ -414,10 +402,10 @@ class NWIS:
             self.__final_outorder.append(gg)
             sys.stdout.write('\r                                       \r')
 
-    def write_ascii(self, filename):
-        """Writes streamgage observations to a file in PRMS format.
+    def write_ascii(self, filename: str):
+        """Write streamgage observations to a file in PRMS format.
 
-        :param str filename: name of the file to create
+        :param filename: name of the file to create
         """
 
         # Create the year, month, day, hour, minute, second columns
@@ -462,8 +450,11 @@ class NWIS:
             sys.stdout.write(f'\r\tStreamflow data written to: {filename}\n')
             sys.stdout.flush()
 
-    def write_netcdf(self, filename):
-        """Write NWIS streamflow to netcdf format file"""
+    def write_netcdf(self, filename: str):
+        """Write NWIS streamflow to netcdf format file.
+
+        :param filename: Filename of netcdf file to create
+        """
 
         max_poiid_len = len(max(self.__gageids, key=len))
 
