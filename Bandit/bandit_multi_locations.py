@@ -130,10 +130,10 @@ def main():
     # jobdir = '/media/scratch/PRMS/bandit/jobs/hw_jobs'
     # default_config_file = '{}/bandit.cfg'.format(jobdir)
 
-    cmd_bandit = find_executable('bandit_v2')
+    cmd_bandit = find_executable('bandit')
 
     if not cmd_bandit:
-        print('ERROR: Unable to find bandit.py')
+        print('ERROR: Unable to find bandit executable')
         exit(1)
 
     num_threads = 8
