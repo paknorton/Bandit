@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-# import colorful as cf
 import datetime
 import logging
 import netCDF4 as nc
@@ -12,14 +11,15 @@ import platform
 import re
 import sys
 
-import Bandit.prms_nwis as prms_nwis
-from Bandit.bandit_helpers import set_date
-
 from collections import OrderedDict
 from io import StringIO
+from typing import Dict, List, Optional, Tuple, Union
 
 from urllib.request import urlopen  # , Request
 from urllib.error import HTTPError
+
+import Bandit.prms_nwis as prms_nwis
+from Bandit.bandit_helpers import set_date
 
 __version__ = 0.2
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
@@ -50,7 +50,12 @@ pgm_log.addHandler(flog)
 pgm_log.addHandler(clog)
 
 
-def read_csv(filename):
+def read_csv(filename: str) -> List[str]:
+    """Read paramdb CSV file and return list of data values
+
+    :param filename: name of paramdb CSV file to read
+    :returns: list of data values from file
+    """
     # Opens a paramdb csv file and returns the second field
     fhdl = open(filename)
     rawdata = fhdl.read().splitlines()
@@ -66,7 +71,12 @@ def read_csv(filename):
     return data
 
 
-def get_nhm_nwis_pois(filename):
+def get_nhm_nwis_pois(filename: str) -> List[str]:
+    """Get list of valid NWIS streamgages.
+
+    :param filename: name of file to read
+    :returns: list of NWIS streamgages
+    """
     fhdl = open(filename, 'r')
     nhm_gages = []
 
@@ -103,9 +113,12 @@ def get_nhm_nwis_pois(filename):
     return nhm_gages
 
 
-def get_nwis_site_fields():
-    # Retrieve a single station and pull out the field names and data types
+def get_nwis_site_fields() -> Dict:
+    """Get NWIS streamgage field information.
 
+    :returns: dictionary of field_name, datatype pairs
+    """
+    # Retrieve a single station and pull out the field names and data types
     stn_url = f'{base_url}/site/?format=rdb&sites=01646500&siteOutput=expanded&' + \
               'siteStatus=active&parameterCd=00060&siteType=ST'
 
@@ -132,7 +145,12 @@ def get_nwis_site_fields():
     return nwis_final
 
 
-def _retrieve_from_nwis(url):
+def _retrieve_from_nwis(url: str) -> str:
+    """Get streamgage site page for given URL.
+
+    :param url: URL to streamgage page on NWIS
+    :returns: streamgage site page
+    """
     response = urlopen(url)
     encoding = response.info().get_param('charset', failobj='utf8')
     streamgage_site_page = response.read().decode(encoding)
@@ -144,7 +162,18 @@ def _retrieve_from_nwis(url):
     return streamgage_site_page
 
 
-def get_nwis_sites(stdate, endate, sites=None, regions=None):
+def get_nwis_sites(stdate: datetime.datetime,
+                   endate: datetime.datetime,
+                   sites: Optional[List, Tuple, str]=None,
+                   regions: Optional[List, Tuple, str]=None) -> pd.DataFrame:
+    """Get NWIS streamgage site information
+
+    :param stdate: start date for extraction
+    :param endate: end date for extraction
+    :param sites: streamgage(s) to pull from NWIS
+    :param regions: region(s) to pull from NWIS
+    :returns: dataframe of streamgage site information
+    """
     cols = get_nwis_site_fields()
 
     # Columns to include in the final dataframe
@@ -248,8 +277,15 @@ def get_nwis_sites(stdate, endate, sites=None, regions=None):
     return nwis_sites
 
 
-def write_nwis_netcdf(df_stn, df_streamflow, filename):
-    # Write the streamflow data to a netCDF format file
+def write_nwis_netcdf(df_stn: pd.DataFrame,
+                      df_streamflow: pd.DataFrame,
+                      filename: str):
+    """Write daily streamflow for select sites to netCDF file.
+
+    :param df_stn: dataframe of streamgage information
+    :param df_streamflow: dateframe of daily streamflow
+    :param filename: name of netCDF file to write streamflow to
+    """
     site_list = df_streamflow.columns.tolist()
     stdate = min(df_streamflow.index.tolist())
 
@@ -334,15 +370,12 @@ def write_nwis_netcdf(df_stn, df_streamflow, filename):
 
 
 def main():
-    # cf.use_256_ansi_colors()
-
     parser = argparse.ArgumentParser(description='Setup new job for Bandit extraction')
     parser.add_argument('-d', '--dstdir', help='Destination directory for netCDF files')
     parser.add_argument('--daterange',
                         help='Starting and ending calendar date (YYYY-MM-DD YYYY-MM-DD)',
                         nargs=2, metavar=('startDate', 'endDate'), required=True)
     parser.add_argument('-p', '--poi', help='POI agency file derived from GF')
-    # parser.add_argument('-s', '--src', help='HYDAT sqlite3 database')
 
     args = parser.parse_args()
 
