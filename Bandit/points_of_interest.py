@@ -1,31 +1,30 @@
-# from abc import ABCMeta, abstractmethod
-# from typing import Callable
-
 import logging
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
-# import re
 import sys
 import xarray as xr
 
 from datetime import datetime
+from typing import List, Optional, Union
 
 from Bandit.bandit_helpers import set_date
-# from Bandit.pr_util import print_error
 
 
 class POI:
     """Class for accessing point-of-interest observations."""
 
-    def __init__(self, src_path=None, gage_ids=None, st_date=None, en_date=None, verbose=False):
+    def __init__(self, src_path: Optional[str]=None,
+                 gage_ids: Optional[List[str]]=None,
+                 st_date: Optional[datetime.datetime]=None,
+                 en_date: Optional[datetime.datetime]=None,
+                 verbose: Optional[bool]=False):
         """Create the POI object.
 
-        :param list[str] gage_ids: list of streamgages to retrieve
+        :param src_path: path to POI netcdf files
+        :param gage_ids: list of streamgages to retrieve
         :param st_date: start date for retrieving streamgage observations
-        :type st_date: None or datetime
         :param en_date: end date for retrieving streamgage observations
-        :type en_date: None or datetime
         :param bool verbose: output additional debuggin information
         """
 
@@ -48,68 +47,65 @@ class POI:
         self.read()
 
     @property
-    def data(self):
+    def data(self) -> xr.Dataset:
+        """Returns the source netcdf dataset.
+
+        :returns: source netCDF xarray Dataset
+        """
         return self.__outdata
 
     @property
-    def start_date(self):
+    def start_date(self) -> Union[datetime.datetime, None]:
         """Get the start date.
 
-        :returns: start date
-        :rtype: None or datetime
+        :returns: start date of retrieved observations
         """
 
         return self.__stdate
 
     @start_date.setter
-    def start_date(self, st_date):
-        """Set the start date.
+    def start_date(self, st_date: Union[datetime.datetime, str]):
+        """Set the start date for observations.
 
-        :param st_date: start date (either a datetime object or a string of the form YYYY-MM-DD)
-        :type st_date: datetime or str
+        :param st_date: set start date for observations (either a datetime object or a string of the form YYYY-MM-DD)
         """
 
-        # Set the starting date for retrieval
         # As written this will clear any streamgage observations that have been downloaded.
         self.__stdate = set_date(st_date)
         self.__outdata = None
 
     @property
-    def end_date(self):
-        """Get the end date.
+    def end_date(self) -> Union[datetime.datetime, None]:
+        """Get the end date for observations.
 
-        :returns: end date
-        :rtype: None or datetime
+        :returns: end date of retrieved observations
         """
 
         return self.__endate
 
     @end_date.setter
-    def end_date(self, en_date):
-        """Set the end date.
+    def end_date(self, en_date: Union[datetime.datetime, None]):
+        """Set the end date for observations.
 
-        :param en_date: end date (either a datetime object or a string of the form YYYY-MM-DD)
-        :type en_date: datetime or str
+        :param en_date: end date for observations (either a datetime object or a string of the form YYYY-MM-DD)
         """
         self.__endate = set_date(en_date)
         self.__outdata = None
 
     @property
-    def gage_ids(self):
+    def gage_ids(self) -> List[str]:
         """Get list of streamgage IDs for retrieval.
 
         :returns: list of streamgage IDs
-        :rtype: list[str]
         """
 
         return self.__gageids
 
     @gage_ids.setter
-    def gage_ids(self, gage_ids):
-        """Set the streamgage ID(s) to retrieve from NWIS.
+    def gage_ids(self, gage_ids: Union[List[str], str]):
+        """Set the streamgage ID(s) to retrieve.
 
         :param gage_ids: streamgage ID(s)
-        :type gage_ids: list or tuple or str
         """
 
         # Set the gage ids for retrieval this will clear any downloaded observations
@@ -121,7 +117,7 @@ class POI:
         self.__outdata = None
 
     def read(self):
-        """Read POI files stored in netCDF format"""
+        """Read POI files stored in netCDF format."""
 
         if self.__gageids:
             # print('\t\tOpen dataset')
@@ -135,7 +131,12 @@ class POI:
         else:
             self.logger.warning('No poi_ids were specified.')
 
-    def get(self, var: str):
+    def get(self, var: str) -> pd.DataFrame:
+        """Get a subset of data for a given variable.
+
+        :param var: Name of variable from netCDF file
+        :returns: Pandas DataFrame of extracted data
+        """
         if 'time' in self.__outdata[var].dims:
             if self.__stdate is not None and self.__endate is not None:
                 try:
@@ -150,10 +151,10 @@ class POI:
             data = self.__outdata[var].loc[self.__gageids].to_pandas()
         return data
 
-    def write_ascii(self, filename):
+    def write_ascii(self, filename: str):
         """Writes POI observations to a file in PRMS format.
 
-        :param str filename: name of the file to create
+        :param filename: name of the file to create
         """
 
         out_order = [kk for kk in self.__gageids]
@@ -203,8 +204,11 @@ class POI:
             sys.stdout.write(f'\r\tStreamflow data written to: {filename}\n')
             sys.stdout.flush()
 
-    def write_netcdf(self, filename):
-        """Write POI streamflow to netcdf format file"""
+    def write_netcdf(self, filename: str):
+        """Write POI streamflow to netcdf format file.
+
+        :param filename: name of the netCDF file to create
+        """
 
         poiname_list = self.get('poi_name').tolist()
 
@@ -282,134 +286,3 @@ class POI:
         draino[:] = self.get('drainage_area').to_numpy(dtype=np.float)
         draineffo[:] = self.get('drainage_area_contrib').to_numpy(dtype=np.float)
         nco.close()
-
-
-# class DataSourceFactory:
-#     registry = {}
-#
-#     def register(self, name, connector):
-#         self.registry[name] = connector
-#         # print(connector)
-#
-#     def create_service(self, name: str, **kwargs):
-#         svc_class = self.registry.get(name)
-#
-#         if not svc_class:
-#             raise ValueError(name)
-#
-#         # print(f'DataFactory.create_service(): {name} service retrieved')
-#         # print(svc_class)
-#         return svc_class(**kwargs)
-#
-#
-# class ServiceBase(metaclass=ABCMeta):
-#     """Base class for datasource services"""
-#     def __init__(self, **kwargs):
-#         pass
-#
-#     @abstractmethod
-#     def get_obs(self):
-#         # print('Getting some data')
-#         pass
-#
-#
-# class ServiceHYDAT(ServiceBase):
-#     """Service class for accessing streamflow originally from the HYDAT database"""
-#
-#     def __init__(self, db_hdl, **kwargs):
-#         super().__init__(**kwargs)
-#         self._db_hdl = db_hdl
-#         print(f'ServiceHYDAT.__init__(): dbl_hdl = {self._db_hdl}')
-#
-#     def get_obs(self):
-#         print('Get HYDAT data')
-#
-#
-# class ServiceHYDATConnector:
-#     """Connector class for a persistent connection to a datasource"""
-#     def __init__(self, **kwargs):
-#         # print('ServiceHYDAT_connector.__init__()')
-#         self._instance = None
-#
-#     def __call__(self, HYDAT_db_filename, **_ignored):
-#         # print('ServiceHYDAT_connector.__call__()')
-#         if not self._instance:
-#             # print('    *new* ServiceHYDAT instance')
-#             db_hdl = self.connect(HYDAT_db_filename)
-#             self._instance = ServiceHYDAT(db_hdl)
-#         return self._instance
-#
-#     def connect(self, db_filename):
-#         # This would connect to the sqlite3 db and return the handle
-#         # print(f'Connecting to {db_filename}')
-#         return 'mydb_hdl'
-#
-#
-# class POI(object):
-#     """Points of Interest class"""
-#     def __init__(self, poi_ids=None, st_date=None, en_date=None, verbose=False):
-#
-#         # Create ordereddict of poi_id -> plugin (e.g. NWIS, HYDAT)
-#         # Instantiate datasource plugins
-#         #   ? read from a plugins directory?
-#
-#         # Iterate over poi_ids
-#         #   - add current poi_id to ordereddict pointing to matching object
-#         #   * could just iterate and call the object functions directly
-#
-#         # Provides lookup for poi agency and other variables
-#         self.__poi_info = None
-#
-#         self.__stdate = st_date
-#         self.__endate = en_date
-#         self.__poi_ids = poi_ids
-#         self.__verbose = verbose
-#
-#     def read(self):
-#         """Read the observations for all POIs"""
-#         pass
-#
-#     def write(self):
-#         """Write POI observations to a file"""
-#
-#         # Can write to ASCII, netCDF, others?
-#         pass
-#
-#
-# class DataDriver(object):
-#     """Abstract class for datasources"""
-#     def __init__(self):
-#         self.__driver_name = 'Base class'
-#         pass
-#
-#     def read(self):
-#         """Abstract read method"""
-#         assert False, 'DataDriver.read() must be defined by child class'
-#
-#     def write(self):
-#         """Method to write data to output file"""
-#
-#
-# class DataDriverNWIS(DataDriver):
-#     """Driver for accessing NWIS REST service"""
-#     def __init__(self):
-#         pass
-#
-#     def read(self):
-#         # Read streamflow from NWIS
-#         pass
-#
-#
-# class DataDriverHYDAT(DataDriver):
-#     """Driver for accessing HYDAT streamflow"""
-#     def __init__(self):
-#         # Init connection to HYDAT database
-#
-#         datasource = 'HYDAT.sqlite3'
-#
-#         field_map = {}
-#         pass
-#
-#     def read(self):
-#         # Read streamflow from HYDAT database
-#         pass
