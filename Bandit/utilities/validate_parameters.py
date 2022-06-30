@@ -11,6 +11,7 @@ import pyPRMS.ParameterFile as pfile
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 
+# TODO: 2022-06-30 PAN - this helper script is incomplete; is it still needed?
 def main():
     parser = argparse.ArgumentParser(description='Validate parameter file or paramdb parameters')
     parser.add_argument('-c', '--control', required=True, help='Name of control file', nargs='?', default='control.default', type=str)
