@@ -10,12 +10,25 @@ import sqlite3
 import sys
 import unicodedata
 
+from typing import Dict, List, Optional, Union
+
 from Bandit.bandit_helpers import set_date
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 
-def get_hydat_daily_streamflow(dbcon, stn_list, stdate, endate):
+def get_hydat_daily_streamflow(dbcon: sqlite3.Connection,
+                               stn_list: List[str],
+                               stdate: datetime.datetime,
+                               endate: datetime.datetime) -> pd.DateFrame:
+    """Get daily streamflow from HYDAT database for select stations and dates.
+
+    :param dbcon: database connection
+    :param stn_list: list of streamflow stations to extract
+    :param stdate: start date for extraction
+    :param endate: end date for extraction
+    :returns: dataframe of extracted daily streamflow
+    """
     flow_query = f'SELECT * FROM DLY_FLOWS'
 
     # Read daily flows from sqlite3 database into pandas
@@ -62,8 +75,13 @@ def get_hydat_daily_streamflow(dbcon, stn_list, stdate, endate):
     return df4
 
 
-def get_hydat_stations(dbcon):
-    # Get stations information from HYDAT database
+def get_hydat_stations(dbcon: sqlite3.Connection) -> pd.DataFrame:
+    """Get station information from HYDAT database.
+
+    :param dbcon: database connection
+    :returns: dataframe of station information
+    """
+
     stn_query = 'SELECT STATION_NUMBER, STATION_NAME, LATITUDE, ' + \
                 'LONGITUDE, DRAINAGE_AREA_GROSS, DRAINAGE_AREA_EFFECT FROM STATIONS'
     df_stn = pd.read_sql_query(stn_query, dbcon)
@@ -85,7 +103,12 @@ def get_hydat_stations(dbcon):
     return df_stn
 
 
-def get_nhm_hydat_pois(filename):
+def get_nhm_hydat_pois(filename: str) -> List[str]:
+    """Get list of HYDAT POIs in the National Hydrologic Model.
+
+    :param filename: CSV filename containing NHM POI information
+    :returns: list of HYDAT POIs
+    """
     # Build ordered dictionary of geospatial fabric POIs
     col_names = ['GNIS_Name', 'Type_Gage', 'Type_Ref', 'Gage_Source', 'poi_segment_v1_1']
     col_types = [np.str_, np.str_, np.str_, np.str_, int]
@@ -116,7 +139,15 @@ def get_nhm_hydat_pois(filename):
     return ec_gages
 
 
-def write_hydat_netcdf(df_stn, df_streamflow, filename):
+def write_hydat_netcdf(df_stn: pd.DataFrame,
+                       df_streamflow: pd.DataFrame,
+                       filename: str):
+    """Write HYDAT streamflow to netCDF file.
+
+    :param df_stn: dataframe of station information
+    :param df_streamflow: dataframe of daily streamflow
+    :param filename: name of netCDF file to write extraction streamflow to
+    """
     site_list = df_streamflow.columns.tolist()
     stdate = min(df_streamflow.index.tolist())
 
