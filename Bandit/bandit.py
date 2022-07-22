@@ -646,10 +646,11 @@ def main():
         if args.cbh_netcdf:
             # Pull the filename prefix off of the first file found in the
             # source netcdf CBH directory.
-            file_it = glob.iglob(config.cbh_dir)
-            cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
+            # file_it = glob.iglob(config.cbh_dir)
+            # cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
 
-            cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
+            # cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
+            cbh_outfile = f'{outdir}/cbh.nc'
             cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()))
 
             # Set the control file variables for the CBH files
@@ -657,11 +658,15 @@ def main():
                 ctl.get(cfv).values = os.path.basename(cbh_outfile)
 
         else:
-            cbh_hdl.write_ascii(variables=list(config.cbh_var_map.keys()))
+            for cvar, cfv in config.cbh_var_map.items():
+                print(f'--- {cvar}')
+                cfile = ctl.get(cfv).values
+                cbh_hdl.write_ascii(cfile, variable=cvar)
+            # cbh_hdl.write_ascii(variables=list(config.cbh_var_map.keys()))
 
             # Set the control file variables for the CBH files
-            for cbhvar, cfv in config.cbh_var_map.items():
-                ctl.get(cfv).values = f'{cbhvar}.cbh'
+            # for cbhvar, cfv in config.cbh_var_map.items():
+            #     ctl.get(cfv).values = f'{cbhvar}.cbh'
 
         # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 
@@ -671,6 +676,7 @@ def main():
     # 2019-08-07 PAN: first prototype for extractions of output variables
     if config.include_model_output:
         # TODO: 2020-03-12 PAN - this is brittle, fix it.
+        # TODO: 2022-06-30 PAN - add option to write netCDF format
         seg_vars = ['seginc_gwflow', 'seginc_potet', 'seginc_sroff', 'seginc_ssflow',
                     'seginc_swrad', 'segment_delta_flow', 'seg_gwflow', 'seg_inflow',
                     'seg_lateral_inflow', 'seg_outflow', 'seg_sroff', 'seg_ssflow',
