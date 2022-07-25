@@ -3,9 +3,9 @@
 import argparse
 import datetime
 import errno
-import glob
+# import glob
 import logging
-import networkx as nx
+import networkx as nx   # type: ignore
 import numpy as np
 import os
 import sys
@@ -182,8 +182,13 @@ def main():
     #     seg_gis_layer = None
     #     seg_gis_id = None
 
+    if args.prms_version == 6:
+        args.cbh_netcdf = True
+        args.param_netcdf = True
+        args.streamflow_netcdf = True
+
     # Load the control file
-    ctl = ControlFile(config.control_filename)
+    ctl = ControlFile(config.control_filename, version=args.prms_version)
 
     # dyn_params_dir = ''
     if ctl.has_dynamic_parameters:
@@ -533,7 +538,7 @@ def main():
                 elif new_ps.dimensions.get('nwateruse') == 0:
                     new_params.remove(xx)
             elif xx == 'gvr_hru_id':
-                if ctl.get('mapOutON_OFF').values == 0:
+                if not ctl.exists('mapOutON_OFF') or ctl.get('mapOutON_OFF').values == 0:
                     new_params.remove(xx)
             elif xx in ['hru_lat', 'hru_lon', ]:
                 if not nhm_params.exists(xx):
