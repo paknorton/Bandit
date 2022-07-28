@@ -753,9 +753,14 @@ def main():
                                   sep=' ', index=False, header=False, encoding=None, chunksize=50)
                 out_ascii.close()
 
-    # Write an updated control file to the output directory
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Write control file
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     ctl.write(f'{config.control_filename}.bandit')
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Write streamflow
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if config.output_streamflow:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -764,7 +769,7 @@ def main():
             if args.verbose:
                 print(f'Retrieving streamgage observations for {len(new_poi_gage_id)} stations')
 
-            if config.exists('poi_dir'):
+            if config.exists('poi_dir') and config.poi_dir != '':
                 bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
                 streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
                                  gage_ids=new_poi_gage_id, verbose=args.verbose)
