@@ -800,8 +800,8 @@ def main():
             print('-'*40)
             print('Writing shapefiles for model subset')
 
-        if not os.path.isdir(config.geodatabase_filename):
-            bandit_log.error(f'File geodatabase, {config.geodatabase_filename}, does not exist. Shapefiles will not be created')
+        if not os.path.exists(config.geodatabase_filename):
+            bandit_log.error(f'Source GIS file, {config.geodatabase_filename}, does not exist. Shapefiles will not be created')
         else:
             geo_shp = prms_geo.Geo(config.geodatabase_filename)
 
@@ -822,9 +822,10 @@ def main():
                 print(f'Layers: {config.hru_gis_layer}, {config.seg_gis_layer}')
                 print(f'IDs: {config.hru_gis_id}, {config.seg_gis_id}')
 
+            # add nhm_id to included fields to include v1.0 national ids
             geo_shp.select_layer(config.hru_gis_layer)
             geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', config.hru_gis_id, hru_order_subset,
-                                    included_fields=['nhm_id', 'model_idx', config.hru_gis_id])
+                                    included_fields=['model_idx', config.hru_gis_id])
 
             geo_shp.select_layer(config.seg_gis_layer)
             geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', config.seg_gis_id, new_nhm_seg,
