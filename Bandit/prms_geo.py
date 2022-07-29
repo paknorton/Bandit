@@ -1,4 +1,4 @@
-
+import os
 from collections import OrderedDict
 from osgeo import gdal, ogr
 from typing import Optional, Union, Dict, List, OrderedDict as OrderedDictType, Tuple
@@ -48,14 +48,20 @@ class Geo(object):
         gdal.UseExceptions()
 
         self.__filename = filename
-        self.__layers = None
+        self.__layers: Optional[OrderedDictType] = None
         self.__selected_layer = None
 
         # Use OGR specific exceptions
         ogr.UseExceptions()
 
         # Load the file - this assumes a file geodatabase
-        driver = ogr.GetDriverByName('OpenFileGDB')
+        if os.path.splitext(self.__filename)[1] == '.gpkg':
+            driver = ogr.GetDriverByName('GPKG')
+        elif os.path.splitext(self.__filename)[1] == '.gdb':
+            driver = ogr.GetDriverByName('OpenFileGDB')
+        else:
+            raise NotImplementedError(f'No driver has been defined yet for {self.__filename}')
+
         self.__gdb = driver.Open(self.__filename)
 
     @property
@@ -66,7 +72,7 @@ class Geo(object):
         """
 
         # Returns a dictionary mapping layer names to their index
-        if not self.__layers:
+        if self.__layers is None:
             self.__layers = OrderedDict()
 
             for lyr_idx in range(self.__gdb.GetLayerCount()):
