@@ -134,54 +134,6 @@ def main():
     # List of additional HRUs (have no route to segment within subset)
     hru_noroute = config.hru_noroute
 
-    # List of output variables to subset
-    # try:
-    #     include_model_output = config.include_model_output
-    #     output_vars = config.output_vars
-    #     output_vars_dir = config.output_vars_dir
-    # except KeyError:
-    #     include_model_output = False
-    #     output_vars = []
-    #     output_vars_dir = ''
-
-    # Control what is checked and output for subset
-    # check_dag = config.check_DAG
-
-    # try:
-    #     output_cbh = config.output_cbh
-    #
-    #     # Location of the NHM CBH files
-    #     cbh_dir = config.cbh_dir
-    # except KeyError:
-    #     output_cbh = False
-    #     cbh_dir = ''
-
-    # try:
-    #     output_streamflow = config.output_streamflow
-    #
-    #     # What to name the streamflow output file
-    #     obs_filename = config.streamflow_filename
-    # except KeyError:
-    #     output_streamflow = False
-    #     obs_filename = ''
-
-    # try:
-    #     output_shapefiles = config.output_shapefiles
-    #
-    #     # Full path and filename to the geodatabase to use for outputting shapefile subsets
-    #     geo_file = config.geodatabase_filename
-    #     hru_gis_layer = config.hru_gis_layer
-    #     hru_gis_id = config.hru_gis_id
-    #     seg_gis_layer = config.seg_gis_layer
-    #     seg_gis_id = config.seg_gis_id
-    # except KeyError:
-    #     output_shapefiles = False
-    #     geo_file = ''
-    #     hru_gis_layer = None
-    #     hru_gis_id = None
-    #     seg_gis_layer = None
-    #     seg_gis_id = None
-
     if args.prms_version == 6:
         args.cbh_netcdf = True
         args.param_netcdf = True
@@ -324,7 +276,7 @@ def main():
                 hru_to_seg[hid] = vv
 
     if set(hru_to_seg.values()) == set(hru_noroute):
-        # This occurs when the are no ROUTED HRUs for any of the stream segments
+        # This occurs when there are no ROUTED HRUs for any of the stream segments
         bandit_log.error('No HRUs associated with any of the segments; exiting.')
         exit(2)
     # print('{0} seg_to_hru {0}'.format('-'*15))
@@ -340,7 +292,7 @@ def main():
         new_hru_segment = [new_nhm_seg_to_idx1[kk] if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in
                            hru_to_seg.values()]
     else:
-        # Get NHM HRU ids ordered by the segments in the model subset - entries are 1-based
+        # Get NHM HRU ids ordered by the segments in the model subset - indices are 1-based
         hru_order_subset = []
         for xx in new_nhm_seg:
             if xx in seg_to_hru:
@@ -805,7 +757,7 @@ def main():
         else:
             geo_shp = prms_geo.Geo(config.geodatabase_filename)
 
-            # Create GIS sub-directory if it doesn't already exist
+            # Create GIS subdirectory if it doesn't already exist
             gis_dir = f'{outdir}/GIS'
             try:
                 os.makedirs(gis_dir)
