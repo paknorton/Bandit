@@ -29,7 +29,7 @@ from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.ControlFile import ControlFile
 from pyPRMS.ParamDb import ParamDb
 from pyPRMS.ParameterSet import ParameterSet
-from pyPRMS.ValidParams import ValidParams
+# from pyPRMS.ValidParams import ValidParams
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -199,16 +199,24 @@ def main():
     bandit_log.info(f'Repo branch: {git_branch(paramdb_dir)}')
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Load master list of valid parameters
-    vpdb = ValidParams()
-
-    # Build list of parameters required for the selected control file modules
-    required_params = vpdb.get_params_for_modules(modules=list(ctl.modules.values()))
-
     # Load the NHMparamdb
     print('Loading NHM ParamDb')
-    pdb = ParamDb(paramdb_dir)
+    pdb = ParamDb(paramdb_dir, verify=True)
+    pdb.control = ctl
+
+    if not args.no_filter_params:
+        # Reduce the parameters to those required by the selected modules
+        pdb.reduce_by_modules()
+
+    # Default the various *ON_OFF variables to 0 (off)
+    # The original values are needed to reduce parameters by module
+    # but it's best to disable them in the final control file since
+    # no output variables are defined for them.
+    disable_vars = ['basinOutON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
+                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
+    for vv in disable_vars:
+        ctl.get(vv).values = '0'
+
     nhm_params = pdb.parameters
     nhm_global_dimensions = pdb.dimensions
 
@@ -458,112 +466,75 @@ def main():
     # Build a ParameterSet for extracted model
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     new_ps = ParameterSet()
+    new_global_dims = new_ps.dimensions
 
+    # Add the global dimensions
     for dd, dv in dims.items():
         new_ps.dimensions.add(dd, dv)
 
-        if dd == 'npoigages':
-            # 20170217 PAN: nobs is missing from the paramdb but is necessary
-            new_ps.dimensions.add('nobs', dv)
-
-    new_params = list(required_params)
-
-    # WARNING: 2019-04-23 PAN
-    #          Very hacky way to remove parameters that shouldn't always get
-    #          included. Need to figure out a better way.
-    check_list = ['basin_solsta', 'gvr_hru_id', 'hru_solsta', 'humidity_percent',
-                  'irr_type', 'obsout_segment', 'rad_conv', 'rain_code', 'hru_lon']
-
-    for xx in check_list:
-        if xx in new_params:
-            if xx in ['basin_solsta', 'hru_solsta', 'rad_conv']:
-                if not new_ps.dimensions.exists('nsol'):
-                    new_params.remove(xx)
-                elif new_ps.dimensions.get('nsol') == 0:
-                    new_params.remove(xx)
-            elif xx == 'humidity_percent':
-                if not new_ps.dimensions.exists('nhumid'):
-                    new_params.remove(xx)
-                elif new_ps.dimensions.get('nhumid') == 0:
-                    new_params.remove(xx)
-            elif xx == 'irr_type':
-                if not new_ps.dimensions.exists('nwateruse'):
-                    new_params.remove(xx)
-                elif new_ps.dimensions.get('nwateruse') == 0:
-                    new_params.remove(xx)
-            elif xx == 'gvr_hru_id':
-                if not ctl.exists('mapOutON_OFF') or ctl.get('mapOutON_OFF').values == 0:
-                    new_params.remove(xx)
-            elif xx in ['hru_lat', 'hru_lon', ]:
-                if not nhm_params.exists(xx):
-                    new_params.remove(xx)
-
-    new_params.sort()
     for pp in params:
-        if pp in new_params or args.no_filter_params:
-            src_param = nhm_params.get(pp)
+        src_param = nhm_params.get(pp)
 
-            new_ps.parameters.add(src_param.name)
+        if args.verbose:
+            sys.stdout.write('\r                                       ')
+            sys.stdout.write(f'\rProcessing {src_param.name} ')
+            sys.stdout.flush()
 
-            ndims = src_param.ndims
+        new_ps.parameters.add(name=pp, info=src_param)
+        cnew_param = new_ps.parameters.get(pp)
 
-            if args.verbose:
-                sys.stdout.write('\r                                       ')
-                sys.stdout.write(f'\rProcessing {src_param.name} ')
-                sys.stdout.flush()
+        ndims = src_param.ndims
+        dim_order = list(src_param.dimensions.keys())
 
-            dim_order = [dd for dd in src_param.dimensions.keys()]
+        for dd in dim_order:
+            cnew_param.dimensions.add(dd, new_global_dims.get(dd).size)
 
-            for dd in src_param.dimensions.keys():
-                new_ps.parameters.get(src_param.name).dimensions.add(dd, new_ps.dimensions.get(dd).size)
-                new_ps.parameters.get(src_param.name).datatype = src_param.datatype
+        first_dimension = dim_order[0]
+        outdata = None
 
-            first_dimension = dim_order[0]
-            outdata = None
-
-            # Write out the data for the parameter
-            if ndims == 1:
-                # 1D Parameters
-                if first_dimension == 'one':
-                    outdata = src_param.data
-                elif first_dimension == 'nsegment':
-                    if pp in ['tosegment']:
-                        outdata = np.array(new_tosegment)
-                    else:
-                        outdata = nhm_params.get_subset(pp, new_nhm_seg)
-                elif first_dimension == 'ndeplval':
-                    # snarea_thresh - this is really a 2D in disguise, however,
-                    # it is stored in C-order unlike other 2D arrays
-                    outdata = nhm_params.get_subset(pp, hru_order_subset)
-                elif first_dimension == 'npoigages':
-                    if pp == 'poi_gage_segment':
-                        outdata = np.array(new_poi_gage_segment)
-                    elif pp == 'poi_gage_id':
-                        outdata = np.array(new_poi_gage_id)
-                    elif pp == 'poi_type':
-                        outdata = np.array(new_poi_type)
-                    else:
-                        bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
-                elif first_dimension in HRU_DIMS:
-                    if pp == 'hru_deplcrv':
-                        outdata = nhm_params.get_subset(pp, hru_order_subset)
-                    elif pp == 'hru_segment':
-                        outdata = np.array(new_hru_segment)
-                    else:
-                        outdata = nhm_params.get_subset(pp, hru_order_subset)
+        # Write out the data for the parameter
+        if ndims == 1:
+            # 1D Parameters
+            if first_dimension == 'one':
+                outdata = src_param.data
+            elif first_dimension == 'nsegment':
+                if pp in ['tosegment']:
+                    outdata = np.array(new_tosegment)
                 else:
-                    bandit_log.error(f'No rules to handle dimension {first_dimension}')
-            elif ndims == 2:
-                # 2D Parameters
-                if first_dimension == 'nsegment':
                     outdata = nhm_params.get_subset(pp, new_nhm_seg)
-                elif first_dimension in HRU_DIMS:
-                    outdata = nhm_params.get_subset(pp, hru_order_subset)
+            elif first_dimension == 'ndeplval':
+                # snarea_thresh - this is really a 2D in disguise, however,
+                # it is stored in C-order unlike other 2D arrays
+                outdata = nhm_params.get_subset(pp, hru_order_subset)
+            elif first_dimension == 'npoigages':
+                if pp == 'poi_gage_segment':
+                    outdata = np.array(new_poi_gage_segment)
+                elif pp == 'poi_gage_id':
+                    outdata = np.array(new_poi_gage_id)
+                elif pp == 'poi_type':
+                    outdata = np.array(new_poi_type)
                 else:
-                    err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
-                    bandit_log.error(err_txt)
+                    bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
+            elif first_dimension in HRU_DIMS:
+                if pp == 'hru_deplcrv':
+                    outdata = nhm_params.get_subset(pp, hru_order_subset)
+                elif pp == 'hru_segment':
+                    outdata = np.array(new_hru_segment)
+                else:
+                    outdata = nhm_params.get_subset(pp, hru_order_subset)
+            else:
+                bandit_log.error(f'No rules to handle dimension {first_dimension}')
+        elif ndims == 2:
+            # 2D Parameters
+            if first_dimension == 'nsegment':
+                outdata = nhm_params.get_subset(pp, new_nhm_seg)
+            elif first_dimension in HRU_DIMS:
+                outdata = nhm_params.get_subset(pp, hru_order_subset)
+            else:
+                err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
+                bandit_log.error(err_txt)
 
-            new_ps.parameters.get(src_param.name).data = outdata
+        cnew_param.data = outdata
 
     # Write the new parameter file
     header = [f'Written by Bandit version {__version__}',
