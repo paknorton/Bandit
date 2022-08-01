@@ -11,6 +11,7 @@ import os
 import sys
 
 from collections import OrderedDict
+from typing import List
 
 import Bandit.bandit_cfg as bc
 import Bandit.dynamic_parameters as dyn_params
@@ -50,6 +51,27 @@ clog.setFormatter(log_fmt)
 
 bandit_log.addHandler(flog)
 bandit_log.addHandler(clog)
+
+
+def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
+    dims = {kk.name: kk.size for kk in src_global_dims}
+
+    # Resize dimensions to the model subset
+    crap_dims = dims.copy()   # need a copy since we modify dims
+    for dd, dv in crap_dims.items():
+        # dimensions 'nmonths' and 'one' are never changed
+        if dd in HRU_DIMS:
+            dims[dd] = num_hru
+        elif dd == 'nsegment':
+            dims[dd] = num_seg
+        elif dd == 'ndeplval':
+            dims[dd] = num_deplcrv * 11
+            dims['ndepl'] = num_deplcrv
+        elif dd == 'npoigages':
+            dims[dd] = num_poi
+            dims['nobs'] = num_poi
+
+    return dims
 
 
 def main():
@@ -332,7 +354,7 @@ def main():
                 if hru_segment[nhm_id_to_idx[xx]] == 0:
                     new_hru_segment.append(0)
 
-    hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
+    # hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
     bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
     bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
 
@@ -347,16 +369,8 @@ def main():
     # A single snarea_curve can be referenced by multiple HRUs
     hru_deplcrv_subset = nhm_params.get_subset('hru_deplcrv', hru_order_subset)
 
-    uniq_deplcrv = list(set(hru_deplcrv_subset))
-    uniq_deplcrv0 = [xx - 1 for xx in uniq_deplcrv]
-
-    uniq_dict = {}
-    for ii, xx in enumerate(uniq_deplcrv):
-        uniq_dict[xx] = ii + 1
-
-    # Create new hru_deplcrv and renumber
-    new_hru_deplcrv = [uniq_dict[xx] for xx in hru_deplcrv_subset]
-    bandit_log.info(f'Size of hru_deplcrv for subset: {len(new_hru_deplcrv)}')
+    # noinspection PyTypeChecker
+    uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()
 
     # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -433,28 +447,16 @@ def main():
 
     params.sort()
 
-    dims = {}
-    for kk in nhm_global_dimensions.values():
-        dims[kk.name] = kk.size
+    # Build dictionary of resized dimensions for the model subset
+    dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
+                       num_hru=len(hru_order_subset),
+                       num_seg=len(new_nhm_seg),
+                       num_deplcrv=len(uniq_deplcrv),
+                       num_poi=len(new_poi_gage_segment))
 
-    # Resize dimensions to the model subset
-    crap_dims = dims.copy()  # need a copy since we modify dims
-    for dd, dv in crap_dims.items():
-        # dimensions 'nmonths' and 'one' are never changed
-        if dd in HRU_DIMS:
-            dims[dd] = len(hru_order_subset0)
-        elif dd == 'nsegment':
-            dims[dd] = len(new_nhm_seg)
-        elif dd == 'ndeplval':
-            dims[dd] = len(uniq_deplcrv0) * 11
-            # if 'ndepl' not in dims:
-            dims['ndepl'] = len(uniq_deplcrv0)
-        elif dd == 'npoigages':
-            dims[dd] = len(new_poi_gage_segment)
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Build a ParameterSet for output
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Build a ParameterSet for extracted model
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     new_ps = ParameterSet()
 
     for dd, dv in dims.items():
@@ -530,9 +532,9 @@ def main():
                     else:
                         outdata = nhm_params.get_subset(pp, new_nhm_seg)
                 elif first_dimension == 'ndeplval':
-                    # This is really a 2D in disguise, however, it is stored in C-order unlike
-                    # other 2D arrays
-                    outdata = src_param.data.reshape((-1, 11))[tuple(uniq_deplcrv0), :].reshape((-1))
+                    # snarea_thresh - this is really a 2D in disguise, however,
+                    # it is stored in C-order unlike other 2D arrays
+                    outdata = nhm_params.get_subset(pp, hru_order_subset)
                 elif first_dimension == 'npoigages':
                     if pp == 'poi_gage_segment':
                         outdata = np.array(new_poi_gage_segment)
@@ -544,7 +546,7 @@ def main():
                         bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
                 elif first_dimension in HRU_DIMS:
                     if pp == 'hru_deplcrv':
-                        outdata = np.array(new_hru_deplcrv)
+                        outdata = nhm_params.get_subset(pp, hru_order_subset)
                     elif pp == 'hru_segment':
                         outdata = np.array(new_hru_segment)
                     else:
