@@ -78,19 +78,20 @@ def read_file(filename):
 
     values_by_id = OrderedDict()
 
-    src_file = open(filename, 'r')
-    src_file.readline()
+    if len(filename) > 0:
+        src_file = open(filename, 'r')
+        src_file.readline()
 
-    # Read in the non-routed HRUs by location
-    for line in src_file:
-        cols = line.strip().replace(' ', '').split(',')
-        try:
-            # Assume first column is a number
-            cols = [int(xx) for xx in cols]
-            values_by_id[cols[0]] = cols[1:]
-        except ValueError:
-            # First column is probably a string
-            values_by_id[cols[0]] = [int(xx) for xx in cols[1:]]
+        # Read in the non-routed HRUs by location
+        for line in src_file:
+            cols = line.strip().replace(' ', '').split(',')
+            try:
+                # Assume first column is a number
+                cols = [int(xx) for xx in cols]
+                values_by_id[cols[0]] = cols[1:]
+            except ValueError:
+                # First column is probably a string
+                values_by_id[cols[0]] = [int(xx) for xx in cols[1:]]
     return values_by_id
 
 
@@ -102,8 +103,9 @@ def main():
     parser = argparse.ArgumentParser(description='Batch script for Bandit extractions')
 
     # parser.add_argument('-j', '--jobdir', help='Job directory to work in')
-    parser.add_argument('-s', '--segoutlets', help='File containing segment outlets by location')
-    parser.add_argument('-n', '--nrhrus', help='File containing non-routed HRUs by location')
+    parser.add_argument('-s', '--segoutlets', help='File containing segment outlets by location', default='', type=str)
+    parser.add_argument('-c', '--segcutoffs', help='File containing upstream cutoff segments by location', default='', type=str)
+    parser.add_argument('-n', '--nrhrus', help='File containing non-routed HRUs by location', default='', type=str)
     parser.add_argument('-p', '--prefix', help='Directory prefix to add')
 
     # parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
@@ -120,13 +122,23 @@ def main():
         print('ERROR: Must specify the segment outlets file.')
         exit(1)
 
-    if args.nrhrus:
-        noroute_hrus_by_loc = read_file(f'{job_dir}/{args.nrhrus}')
-    else:
-        noroute_hrus_by_loc = None
+    # if args.nrhrus:
+    noroute_hrus_by_loc = read_file(f'{job_dir}/{args.nrhrus}')
+    # else:
+    #     noroute_hrus_by_loc = None
+
+    # if args.segcutoffs:
+    uscutoff_seg_by_loc = read_file(f'{job_dir}/{args.segcutoffs}')
+    # else:
+    #     uscutoff_seg_by_loc = None
 
     segments_by_loc = read_file(f'{job_dir}/{args.segoutlets}')
 
+    # print(f'{segments_by_loc=}')
+    # print('-'*60)
+    # print(f'{uscutoff_seg_by_loc=}')
+    # print('-'*60)
+    # exit()
     # jobdir = '/media/scratch/PRMS/bandit/jobs/hw_jobs'
     # default_config_file = '{}/bandit.cfg'.format(jobdir)
 
@@ -197,8 +209,14 @@ def main():
         # Update the outlets in the basin.cfg file and write into the headwater directory
         config.update_value('outlets', vv)
 
-        if noroute_hrus_by_loc is not None and kk in noroute_hrus_by_loc:
-            config.update_value('hru_noroute', noroute_hrus_by_loc[kk])
+        config.update_value('cutoffs', uscutoff_seg_by_loc.get(kk, []))
+        config.update_value('hru_noroute', noroute_hrus_by_loc.get(kk, []))
+
+        # if uscutoff_seg_by_loc is not None and kk in uscutoff_seg_by_loc:
+        #     config.update_value('cutoffs', uscutoff_seg_by_loc[kk])
+
+        # if noroute_hrus_by_loc is not None and kk in noroute_hrus_by_loc:
+        #     config.update_value('hru_noroute', noroute_hrus_by_loc[kk])
 
         # TODO: This causes the control_filename to be rewritten in the parent
         #       directory; so this happens for each location. Need to fix.
