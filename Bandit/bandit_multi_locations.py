@@ -122,15 +122,15 @@ def main():
         print('ERROR: Must specify the segment outlets file.')
         exit(1)
 
-    # if args.nrhrus:
-    noroute_hrus_by_loc = read_file(f'{job_dir}/{args.nrhrus}')
-    # else:
-    #     noroute_hrus_by_loc = None
+    if args.nrhrus:
+        noroute_hrus_by_loc = read_file(f'{job_dir}/{args.nrhrus}')
+    else:
+        noroute_hrus_by_loc = {}
 
-    # if args.segcutoffs:
-    uscutoff_seg_by_loc = read_file(f'{job_dir}/{args.segcutoffs}')
-    # else:
-    #     uscutoff_seg_by_loc = None
+    if args.segcutoffs:
+        uscutoff_seg_by_loc = read_file(f'{job_dir}/{args.segcutoffs}')
+    else:
+        uscutoff_seg_by_loc = {}
 
     segments_by_loc = read_file(f'{job_dir}/{args.segoutlets}')
 
