@@ -170,11 +170,6 @@ def main():
             if not os.path.exists(config.dyn_params_dir):
                 bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
                 exit(2)
-            # if os.path.exists(config.dyn_params_dir):
-            #     dyn_params_dir = config.dyn_params_dir
-            # else:
-            #     bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
-            #     exit(2)
         else:
             bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified ' +
                              'in the config file')
@@ -209,7 +204,7 @@ def main():
         pdb.reduce_by_modules()
 
     # Default the various *ON_OFF variables to 0 (off)
-    # The original values are needed to reduce parameters by module
+    # The original values are needed to reduce parameters by module,
     # but it's best to disable them in the final control file since
     # no output variables are defined for them.
     disable_vars = ['basinOutON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
@@ -259,12 +254,15 @@ def main():
     dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
     # Create list of toseg ids for the model subset
-    toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
-    bandit_log.info(f'Number of segments in subset: {len(toseg_idx)}')
+    # toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
+    # bandit_log.info(f'Number of segments in subset: {len(toseg_idx)}')
+    # print(f'{toseg_idx=}')
 
     # Use the mapping to create subsets of nhm_seg, tosegment_nhm, and tosegment
     # NOTE: toseg_idx and new_nhm_seg are the same thing
     new_nhm_seg = [ee[0] for ee in dag_ds_subset.edges]
+    bandit_log.info(f'Number of segments in subset: {len(new_nhm_seg)}')
+    # print(f'{new_nhm_seg=}')
 
     # Using a dictionary mapping nhm_seg to 1-based index for speed
     new_nhm_seg_to_idx1 = OrderedDict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
@@ -399,7 +397,7 @@ def main():
         # indices to subset poi_gage_id and poi_type.
         # The poi_gage_segment will need to be renumbered for the subset of segments.
 
-        # To subset poi_gage_segment we have to lookup each segment in the subset
+        # To subset poi_gage_segment we have to look up each segment in the subset
         nhm_seg_dict = nhm_params.get('nhm_seg').index_map
         poi_gage_dict = nhm_params.get('poi_gage_segment').index_map
 
@@ -726,7 +724,8 @@ def main():
             print('Writing shapefiles for model subset')
 
         if not os.path.exists(config.geodatabase_filename):
-            bandit_log.error(f'Source GIS file, {config.geodatabase_filename}, does not exist. Shapefiles will not be created')
+            bandit_log.error(f'Source GIS file, {config.geodatabase_filename}, '
+                             f'does not exist. Shapefiles will not be created')
         else:
             geo_shp = prms_geo.Geo(config.geodatabase_filename)
 
