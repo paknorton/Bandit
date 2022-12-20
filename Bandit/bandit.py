@@ -53,6 +53,30 @@ bandit_log.addHandler(flog)
 bandit_log.addHandler(clog)
 
 
+def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, hru_noroute):
+    # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
+    # new_nhm_seg and hru_noroute.
+    seg_to_hru = OrderedDict()
+    hru_to_seg = OrderedDict()
+
+    for ii, vv in enumerate(orig_hru_segment):
+        # Contains both new_nhm_seg values and non-routed HRU values
+        # keys are 1-based, values in arrays are 1-based
+        hid = orig_nhm_id[ii]
+        if vv in nhm_seg_subset:
+            seg_to_hru.setdefault(vv, []).append(hid)
+            hru_to_seg[hid] = vv
+        elif hid in hru_noroute:
+            if vv != 0:
+                err_txt = f'User-supplied non-routed HRU {hid} that routes to stream segment {vv}; skipping.'
+                bandit_log.error(err_txt)
+            else:
+                seg_to_hru.setdefault(vv, []).append(hid)
+                hru_to_seg[hid] = vv
+
+    return seg_to_hru, hru_to_seg
+
+
 def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
     dims = {kk.name: kk.size for kk in src_global_dims}
 
@@ -253,16 +277,9 @@ def main():
 
     dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
-    # Create list of toseg ids for the model subset
-    # toseg_idx = list(set(xx[0] for xx in dag_ds_subset.edges))
-    # bandit_log.info(f'Number of segments in subset: {len(toseg_idx)}')
-    # print(f'{toseg_idx=}')
-
-    # Use the mapping to create subsets of nhm_seg, tosegment_nhm, and tosegment
-    # NOTE: toseg_idx and new_nhm_seg are the same thing
+    # Segments in model subset
     new_nhm_seg = [ee[0] for ee in dag_ds_subset.edges]
     bandit_log.info(f'Number of segments in subset: {len(new_nhm_seg)}')
-    # print(f'{new_nhm_seg=}')
 
     # Using a dictionary mapping nhm_seg to 1-based index for speed
     new_nhm_seg_to_idx1 = OrderedDict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
@@ -272,7 +289,7 @@ def main():
                      else 0 for ee in dag_ds_subset.edges]
 
     # NOTE: With monolithic nhmParamDb files hru_segment becomes hru_segment_nhm and the
-    # regional hru_segments are gone.
+    #       regional hru_segments are gone.
     # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
     #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
     #                 needs to be loaded and used to map the nhm HRU ids to their
@@ -282,35 +299,14 @@ def main():
     nhm_id_to_idx = nhm_params.get('nhm_id').index_map
     bandit_log.info(f'Number of NHM hru_segment entries: {len(hru_segment)}')
 
-    # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
+    # Create a dictionaries mapping hru_segment segments to hru_segment 1-based indices filtered by
     # new_nhm_seg and hru_noroute.
-    seg_to_hru = OrderedDict()
-    hru_to_seg = OrderedDict()
-
-    for ii, vv in enumerate(hru_segment):
-        # Contains both new_nhm_seg values and non-routed HRU values
-        # keys are 1-based, values in arrays are 1-based
-        if vv in new_nhm_seg:
-            hid = nhm_id[ii]
-            seg_to_hru.setdefault(vv, []).append(hid)
-            hru_to_seg[hid] = vv
-        elif nhm_id[ii] in hru_noroute:
-            if vv != 0:
-                err_txt = f'User-supplied non-routed HRU {nhm_id[ii]} routes to stream segment {vv}; skipping.'
-                bandit_log.error(err_txt)
-            else:
-                hid = nhm_id[ii]
-                seg_to_hru.setdefault(vv, []).append(hid)
-                hru_to_seg[hid] = vv
+    seg_to_hru, hru_to_seg = get_hru_and_seg_subset_maps(hru_segment, nhm_id, new_nhm_seg, hru_noroute)
 
     if set(hru_to_seg.values()) == set(hru_noroute):
         # This occurs when there are no ROUTED HRUs for any of the stream segments
         bandit_log.error('No HRUs associated with any of the segments; exiting.')
         exit(2)
-    # print('{0} seg_to_hru {0}'.format('-'*15))
-    # print(seg_to_hru)
-    # print('{0} hru_to_seg {0}'.format('-'*15))
-    # print(hru_to_seg)
 
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
@@ -376,7 +372,7 @@ def main():
     hru_deplcrv_subset = nhm_params.get_subset('hru_deplcrv', hru_order_subset)
 
     # noinspection PyTypeChecker
-    uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()
+    uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()  # type: ignore
 
     # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
