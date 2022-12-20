@@ -77,6 +77,55 @@ def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, h
     return seg_to_hru, hru_to_seg
 
 
+def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_idx,
+                     new_nhm_seg, new_nhm_seg_to_idx1, hru_noroute, keep_hru_order=False):
+    # HRU-related parameters can either be output with the legacy, segment-oriented order
+    # or can be output maintaining their original HRU-relative order from the parameter database.
+    if keep_hru_order:
+        hru_order_subset = [kk for kk in hru_to_seg.keys()]
+
+        new_hru_segment = [new_nhm_seg_to_idx1[kk] if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in
+                           hru_to_seg.values()]
+    else:
+        # Get NHM HRU ids ordered by the segments in the model subset - indices are 1-based
+        hru_order_subset = []
+        for xx in new_nhm_seg:
+            if xx in seg_to_hru:
+                for yy in seg_to_hru[xx]:
+                    hru_order_subset.append(yy)
+            else:
+                print(f'Segment {xx} has no HRUs connected to it')
+                bandit_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
+
+        # Append the additional non-routed HRUs to the list
+        if len(hru_noroute) > 0:
+            for xx in hru_noroute:
+                if orig_hru_segment[orig_nhm_id_to_idx[xx]] == 0:
+                    bandit_log.info(f'User-supplied HRU {xx} is not connected to any stream segment')
+                    hru_order_subset.append(xx)
+                else:
+                    err_txt = f'User-supplied HRU {xx} routes to stream segment ' + \
+                              f'{orig_hru_segment[orig_nhm_id_to_idx[xx]]} - Skipping.'
+                    bandit_log.error(err_txt)
+
+        # Renumber the hru_segments for the subset
+        new_hru_segment = []
+
+        for xx in new_nhm_seg:
+            if xx in seg_to_hru:
+                for _ in seg_to_hru[xx]:
+                    # The new indices should be 1-based from PRMS
+                    new_hru_segment.append(new_nhm_seg_to_idx1[xx])
+
+        # Append zeroes to new_hru_segment for each additional non-routed HRU
+        if len(hru_noroute) > 0:
+            for xx in hru_noroute:
+                if orig_hru_segment[orig_nhm_id_to_idx[xx]] == 0:
+                    new_hru_segment.append(0)
+
+    return hru_order_subset, new_hru_segment
+
+
 def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
     dims = {kk.name: kk.size for kk in src_global_dims}
 
@@ -310,53 +359,11 @@ def main():
 
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
-    if args.keep_hru_order:
-        hru_order_subset = [kk for kk in hru_to_seg.keys()]
+    hru_order_subset, new_hru_segment = get_output_order(hru_to_seg, seg_to_hru, hru_segment,
+                                                         nhm_id_to_idx, new_nhm_seg,
+                                                         new_nhm_seg_to_idx1, hru_noroute,
+                                                         keep_hru_order=args.keep_hru_order)
 
-        new_hru_segment = [new_nhm_seg_to_idx1[kk] if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in
-                           hru_to_seg.values()]
-    else:
-        # Get NHM HRU ids ordered by the segments in the model subset - indices are 1-based
-        hru_order_subset = []
-        for xx in new_nhm_seg:
-            if xx in seg_to_hru:
-                for yy in seg_to_hru[xx]:
-                    hru_order_subset.append(yy)
-            else:
-                print(f'Segment {xx} has no HRUs connected to it')
-                bandit_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
-
-        # if len(hru_order_subset) == 0:
-        #     bandit_log.error('No HRUs associated with any of the segments; exiting.')
-        #     exit(2)
-
-        # Append the additional non-routed HRUs to the list
-        if len(hru_noroute) > 0:
-            for xx in hru_noroute:
-                if hru_segment[nhm_id_to_idx[xx]] == 0:
-                    bandit_log.info(f'User-supplied HRU {xx} is not connected to any stream segment')
-                    hru_order_subset.append(xx)
-                else:
-                    err_txt = f'User-supplied HRU {xx} routes to stream segment ' + \
-                              f'{hru_segment[nhm_id_to_idx[xx]]} - Skipping.'
-                    bandit_log.error(err_txt)
-
-        # Renumber the hru_segments for the subset
-        new_hru_segment = []
-
-        for xx in new_nhm_seg:
-            if xx in seg_to_hru:
-                for _ in seg_to_hru[xx]:
-                    # The new indices should be 1-based from PRMS
-                    new_hru_segment.append(new_nhm_seg_to_idx1[xx])
-
-        # Append zeroes to new_hru_segment for each additional non-routed HRU
-        if len(hru_noroute) > 0:
-            for xx in hru_noroute:
-                if hru_segment[nhm_id_to_idx[xx]] == 0:
-                    new_hru_segment.append(0)
-
-    # hru_order_subset0 = [nhm_id_to_idx[xx] for xx in hru_order_subset]
     bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
     bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
 
