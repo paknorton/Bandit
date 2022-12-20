@@ -126,6 +126,69 @@ def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_id
     return hru_order_subset, new_hru_segment
 
 
+def get_poi_subset(nhm_params, new_nhm_seg, new_nhm_seg_to_idx1, seg_to_hru, addl_gages=None):
+    # Subset poi_gage_segment
+    new_poi_gage_segment = []
+    new_poi_gage_id = []
+    new_poi_type = []
+
+    if nhm_params.exists('poi_gage_segment'):
+        poi_gage_segment = nhm_params.get('poi_gage_segment').tolist()
+        bandit_log.info(f'Size of NHM poi_gage_segment: {len(poi_gage_segment)}')
+
+        poi_gage_id = nhm_params.get('poi_gage_id').tolist()
+        poi_type = nhm_params.get('poi_type').tolist()
+
+        # We want to get the indices of the poi_gage_segments that match the
+        # segments that are part of the subset. We can then use these
+        # indices to subset poi_gage_id and poi_type.
+        # The poi_gage_segment will need to be renumbered for the subset of segments.
+
+        # To subset poi_gage_segment we have to look up each segment in the subset
+        nhm_seg_dict = nhm_params.get('nhm_seg').index_map
+        poi_gage_dict = nhm_params.get('poi_gage_segment').index_map
+
+        for ss in new_nhm_seg:
+            sidx = nhm_seg_dict[ss] + 1
+            if sidx in poi_gage_segment:
+                # print('   {}'.format(poi_gage_segment.index(sidx)))
+                new_poi_gage_segment.append(new_nhm_seg_to_idx1[sidx])
+                new_poi_gage_id.append(poi_gage_id[poi_gage_dict[sidx]])
+                new_poi_type.append(poi_type[poi_gage_dict[sidx]])
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Add any valid user-specified streamgage, nhm_seg pairs
+        if addl_gages:
+            for ss, vv in addl_gages.items():
+                if ss in new_poi_gage_id:
+                    idx = new_poi_gage_id.index(ss)
+                    warn_txt = f'Existing NHM POI, {ss}, overridden on commandline ' + \
+                               f'(was {new_poi_gage_segment[idx]}, now {new_nhm_seg_to_idx1[vv]})'
+                    bandit_log.warning(warn_txt)
+                    new_poi_gage_segment[idx] = new_nhm_seg_to_idx1[vv]
+                    new_poi_type[idx] = 0
+                elif new_nhm_seg_to_idx1[vv] in new_poi_gage_segment:
+                    sidx = new_poi_gage_segment.index(new_nhm_seg_to_idx1[vv])
+                    warn_txt = f'User-specified streamgage ({ss}) ' + \
+                               f'has same nhm_seg ({new_nhm_seg_to_idx1[vv]}) ' + \
+                               f'as existing POI ({new_poi_gage_id[sidx]}); replacing streamgage ID'
+                    bandit_log.warning(warn_txt)
+                    new_poi_gage_id[sidx] = ss
+                    new_poi_type[sidx] = 0
+                elif vv not in seg_to_hru.keys():
+                    warn_txt = f'User-specified streamgage ({ss}) has nhm_seg={vv} which is not part ' + \
+                               f'of the model subset; skipping.'
+                    bandit_log.warning(warn_txt)
+                else:
+                    new_poi_gage_id.append(ss)
+                    new_poi_gage_segment.append(new_nhm_seg_to_idx1[vv])
+                    new_poi_type.append(0)
+                    bandit_log.info(f'Added user-specified POI streamgage ({ss}) at nhm_seg={vv}')
+
+        # Subset poi_gage_segment
+    return new_poi_gage_segment, new_poi_gage_id, new_poi_type
+
+
 def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
     dims = {kk.name: kk.size for kk in src_global_dims}
 
@@ -384,62 +447,10 @@ def main():
     # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
-    new_poi_gage_segment = []
-    new_poi_gage_id = []
-    new_poi_type = []
-
-    if nhm_params.exists('poi_gage_segment'):
-        poi_gage_segment = nhm_params.get('poi_gage_segment').tolist()
-        bandit_log.info(f'Size of NHM poi_gage_segment: {len(poi_gage_segment)}')
-
-        poi_gage_id = nhm_params.get('poi_gage_id').tolist()
-        poi_type = nhm_params.get('poi_type').tolist()
-
-        # We want to get the indices of the poi_gage_segments that match the
-        # segments that are part of the subset. We can then use these
-        # indices to subset poi_gage_id and poi_type.
-        # The poi_gage_segment will need to be renumbered for the subset of segments.
-
-        # To subset poi_gage_segment we have to look up each segment in the subset
-        nhm_seg_dict = nhm_params.get('nhm_seg').index_map
-        poi_gage_dict = nhm_params.get('poi_gage_segment').index_map
-
-        for ss in new_nhm_seg:
-            sidx = nhm_seg_dict[ss] + 1
-            if sidx in poi_gage_segment:
-                # print('   {}'.format(poi_gage_segment.index(sidx)))
-                new_poi_gage_segment.append(new_nhm_seg_to_idx1[sidx])
-                new_poi_gage_id.append(poi_gage_id[poi_gage_dict[sidx]])
-                new_poi_type.append(poi_type[poi_gage_dict[sidx]])
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Add any valid user-specified streamgage, nhm_seg pairs
-        if addl_gages:
-            for ss, vv in addl_gages.items():
-                if ss in new_poi_gage_id:
-                    idx = new_poi_gage_id.index(ss)
-                    warn_txt = f'Existing NHM POI, {ss}, overridden on commandline ' + \
-                               f'(was {new_poi_gage_segment[idx]}, now {new_nhm_seg_to_idx1[vv]})'
-                    bandit_log.warning(warn_txt)
-                    new_poi_gage_segment[idx] = new_nhm_seg_to_idx1[vv]
-                    new_poi_type[idx] = 0
-                elif new_nhm_seg_to_idx1[vv] in new_poi_gage_segment:
-                    sidx = new_poi_gage_segment.index(new_nhm_seg_to_idx1[vv])
-                    warn_txt = f'User-specified streamgage ({ss}) ' + \
-                               f'has same nhm_seg ({new_nhm_seg_to_idx1[vv]}) ' + \
-                               f'as existing POI ({new_poi_gage_id[sidx]}); replacing streamgage ID'
-                    bandit_log.warning(warn_txt)
-                    new_poi_gage_id[sidx] = ss
-                    new_poi_type[sidx] = 0
-                elif vv not in seg_to_hru.keys():
-                    warn_txt = f'User-specified streamgage ({ss}) has nhm_seg={vv} which is not part ' + \
-                               f'of the model subset; skipping.'
-                    bandit_log.warning(warn_txt)
-                else:
-                    new_poi_gage_id.append(ss)
-                    new_poi_gage_segment.append(new_nhm_seg_to_idx1[vv])
-                    new_poi_type.append(0)
-                    bandit_log.info(f'Added user-specified POI streamgage ({ss}) at nhm_seg={vv}')
+    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(nhm_params, new_nhm_seg,
+                                                                         new_nhm_seg_to_idx1,
+                                                                         seg_to_hru,
+                                                                         addl_gages=addl_gages)
 
     # ==================================================================
     # ==================================================================
