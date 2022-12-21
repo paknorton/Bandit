@@ -3,7 +3,6 @@
 import argparse
 import datetime
 import errno
-# import glob
 import logging
 import networkx as nx   # type: ignore
 import numpy as np
@@ -19,7 +18,7 @@ import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 
 from Bandit import __version__
-from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network
+from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network, get_hru_and_seg_subset_maps, get_output_order, get_poi_subset, resize_dims
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI
@@ -29,7 +28,6 @@ from pyPRMS.CbhNetcdf import CbhNetcdf
 from pyPRMS.ControlFile import ControlFile
 from pyPRMS.ParamDb import ParamDb
 from pyPRMS.ParameterSet import ParameterSet
-# from pyPRMS.ValidParams import ValidParams
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -51,163 +49,6 @@ clog.setFormatter(log_fmt)
 
 bandit_log.addHandler(flog)
 bandit_log.addHandler(clog)
-
-
-def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, hru_noroute):
-    # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
-    # new_nhm_seg and hru_noroute.
-    seg_to_hru = OrderedDict()
-    hru_to_seg = OrderedDict()
-
-    for ii, vv in enumerate(orig_hru_segment):
-        # Contains both new_nhm_seg values and non-routed HRU values
-        # keys are 1-based, values in arrays are 1-based
-        hid = orig_nhm_id[ii]
-        if vv in nhm_seg_subset:
-            seg_to_hru.setdefault(vv, []).append(hid)
-            hru_to_seg[hid] = vv
-        elif hid in hru_noroute:
-            if vv != 0:
-                err_txt = f'User-supplied non-routed HRU {hid} that routes to stream segment {vv}; skipping.'
-                bandit_log.error(err_txt)
-            else:
-                seg_to_hru.setdefault(vv, []).append(hid)
-                hru_to_seg[hid] = vv
-
-    return seg_to_hru, hru_to_seg
-
-
-def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_idx,
-                     new_nhm_seg, new_nhm_seg_to_idx1, hru_noroute, keep_hru_order=False):
-    # HRU-related parameters can either be output with the legacy, segment-oriented order
-    # or can be output maintaining their original HRU-relative order from the parameter database.
-    if keep_hru_order:
-        hru_order_subset = [kk for kk in hru_to_seg.keys()]
-
-        new_hru_segment = [new_nhm_seg_to_idx1[kk] if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in
-                           hru_to_seg.values()]
-    else:
-        # Get NHM HRU ids ordered by the segments in the model subset - indices are 1-based
-        hru_order_subset = []
-        for xx in new_nhm_seg:
-            if xx in seg_to_hru:
-                for yy in seg_to_hru[xx]:
-                    hru_order_subset.append(yy)
-            else:
-                print(f'Segment {xx} has no HRUs connected to it')
-                bandit_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
-
-        # Append the additional non-routed HRUs to the list
-        if len(hru_noroute) > 0:
-            for xx in hru_noroute:
-                if orig_hru_segment[orig_nhm_id_to_idx[xx]] == 0:
-                    bandit_log.info(f'User-supplied HRU {xx} is not connected to any stream segment')
-                    hru_order_subset.append(xx)
-                else:
-                    err_txt = f'User-supplied HRU {xx} routes to stream segment ' + \
-                              f'{orig_hru_segment[orig_nhm_id_to_idx[xx]]} - Skipping.'
-                    bandit_log.error(err_txt)
-
-        # Renumber the hru_segments for the subset
-        new_hru_segment = []
-
-        for xx in new_nhm_seg:
-            if xx in seg_to_hru:
-                for _ in seg_to_hru[xx]:
-                    # The new indices should be 1-based from PRMS
-                    new_hru_segment.append(new_nhm_seg_to_idx1[xx])
-
-        # Append zeroes to new_hru_segment for each additional non-routed HRU
-        if len(hru_noroute) > 0:
-            for xx in hru_noroute:
-                if orig_hru_segment[orig_nhm_id_to_idx[xx]] == 0:
-                    new_hru_segment.append(0)
-
-    return hru_order_subset, new_hru_segment
-
-
-def get_poi_subset(nhm_params, new_nhm_seg, new_nhm_seg_to_idx1, seg_to_hru, addl_gages=None):
-    # Subset poi_gage_segment
-    new_poi_gage_segment = []
-    new_poi_gage_id = []
-    new_poi_type = []
-
-    if nhm_params.exists('poi_gage_segment'):
-        poi_gage_segment = nhm_params.get('poi_gage_segment').tolist()
-        bandit_log.info(f'Size of NHM poi_gage_segment: {len(poi_gage_segment)}')
-
-        poi_gage_id = nhm_params.get('poi_gage_id').tolist()
-        poi_type = nhm_params.get('poi_type').tolist()
-
-        # We want to get the indices of the poi_gage_segments that match the
-        # segments that are part of the subset. We can then use these
-        # indices to subset poi_gage_id and poi_type.
-        # The poi_gage_segment will need to be renumbered for the subset of segments.
-
-        # To subset poi_gage_segment we have to look up each segment in the subset
-        nhm_seg_dict = nhm_params.get('nhm_seg').index_map
-        poi_gage_dict = nhm_params.get('poi_gage_segment').index_map
-
-        for ss in new_nhm_seg:
-            sidx = nhm_seg_dict[ss] + 1
-            if sidx in poi_gage_segment:
-                # print('   {}'.format(poi_gage_segment.index(sidx)))
-                new_poi_gage_segment.append(new_nhm_seg_to_idx1[sidx])
-                new_poi_gage_id.append(poi_gage_id[poi_gage_dict[sidx]])
-                new_poi_type.append(poi_type[poi_gage_dict[sidx]])
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Add any valid user-specified streamgage, nhm_seg pairs
-        if addl_gages:
-            for ss, vv in addl_gages.items():
-                if ss in new_poi_gage_id:
-                    idx = new_poi_gage_id.index(ss)
-                    warn_txt = f'Existing NHM POI, {ss}, overridden on commandline ' + \
-                               f'(was {new_poi_gage_segment[idx]}, now {new_nhm_seg_to_idx1[vv]})'
-                    bandit_log.warning(warn_txt)
-                    new_poi_gage_segment[idx] = new_nhm_seg_to_idx1[vv]
-                    new_poi_type[idx] = 0
-                elif new_nhm_seg_to_idx1[vv] in new_poi_gage_segment:
-                    sidx = new_poi_gage_segment.index(new_nhm_seg_to_idx1[vv])
-                    warn_txt = f'User-specified streamgage ({ss}) ' + \
-                               f'has same nhm_seg ({new_nhm_seg_to_idx1[vv]}) ' + \
-                               f'as existing POI ({new_poi_gage_id[sidx]}); replacing streamgage ID'
-                    bandit_log.warning(warn_txt)
-                    new_poi_gage_id[sidx] = ss
-                    new_poi_type[sidx] = 0
-                elif vv not in seg_to_hru.keys():
-                    warn_txt = f'User-specified streamgage ({ss}) has nhm_seg={vv} which is not part ' + \
-                               f'of the model subset; skipping.'
-                    bandit_log.warning(warn_txt)
-                else:
-                    new_poi_gage_id.append(ss)
-                    new_poi_gage_segment.append(new_nhm_seg_to_idx1[vv])
-                    new_poi_type.append(0)
-                    bandit_log.info(f'Added user-specified POI streamgage ({ss}) at nhm_seg={vv}')
-
-        # Subset poi_gage_segment
-    return new_poi_gage_segment, new_poi_gage_id, new_poi_type
-
-
-def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
-    dims = {kk.name: kk.size for kk in src_global_dims}
-
-    # Resize dimensions to the model subset
-    crap_dims = dims.copy()   # need a copy since we modify dims
-    for dd, dv in crap_dims.items():
-        # dimensions 'nmonths' and 'one' are never changed
-        if dd in HRU_DIMS:
-            dims[dd] = num_hru
-        elif dd == 'nsegment':
-            dims[dd] = num_seg
-        elif dd == 'ndeplval':
-            dims[dd] = num_deplcrv * 11
-            dims['ndepl'] = num_deplcrv
-        elif dd == 'npoigages':
-            dims[dd] = num_poi
-            dims['nobs'] = num_poi
-
-    return dims
 
 
 def main():
@@ -300,7 +141,6 @@ def main():
     # Load the control file
     ctl = ControlFile(config.control_filename, version=args.prms_version)
 
-    # dyn_params_dir = ''
     if ctl.has_dynamic_parameters:
         if config.dyn_params_dir:
             if not os.path.exists(config.dyn_params_dir):
@@ -320,10 +160,7 @@ def main():
     ctl.get('start_time').values = [st_date.year, st_date.month, st_date.day, 0, 0, 0]
     ctl.get('end_time').values = [en_date.year, en_date.month, en_date.day, 0, 0, 0]
 
-    # ===============================================================
-    # params_file = '{}/{}'.format(merged_paramdb_dir, PARAMETERS_XML)
-
-    # Output revision of NhmParamDb and the revision used by merged paramdb
+    # Output revision of NhmParamDb
     git_url = git_commit_url(paramdb_dir)
     nhmparamdb_revision = git_commit(paramdb_dir, length=7)
     bandit_log.info(f'Using parameter database from: {git_repo(paramdb_dir)}')
@@ -331,7 +168,8 @@ def main():
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
 
     # Load the NHMparamdb
-    print('Loading NHM ParamDb')
+    if args.verbose:
+        print('Loading NHM ParamDb')
     pdb = ParamDb(paramdb_dir, verify=True)
     pdb.control = ctl
 
@@ -353,13 +191,12 @@ def main():
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Get tosegment_nhm
-    # NOTE: tosegment is now tosegment_nhm and the regional tosegment is gone.
     # Convert to list for fastest access to array
     # tosegment = nhm_params.get('tosegment_nhm').tolist()
     nhm_seg = nhm_params.get('nhm_seg').tolist()
 
     if args.verbose:
-        print('Generating stream network from tosegment_nhm')
+        print('Generating stream network')
 
     # First check if any of the requested stream segments exist in the NHM.
     # An intersection of 0 elements can occur when all stream segments are
@@ -374,8 +211,8 @@ def main():
     # Build the stream network
     dag_ds = pdb.parameters.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
 
-    bandit_log.debug('Number of NHM downstream nodes: {}'.format(dag_ds.number_of_nodes()))
-    bandit_log.debug('Number of NHM downstream edges: {}'.format(dag_ds.number_of_edges()))
+    bandit_log.debug(f'Number of NHM downstream nodes: {dag_ds.number_of_nodes()}')
+    bandit_log.debug(f'Number of NHM downstream edges: {dag_ds.number_of_edges()}')
 
     if config.check_DAG:
         if not nx.is_directed_acyclic_graph(dag_ds):
@@ -400,8 +237,6 @@ def main():
     new_tosegment = [new_nhm_seg_to_idx1[ee[1]] if ee[1] in new_nhm_seg_to_idx1
                      else 0 for ee in dag_ds_subset.edges]
 
-    # NOTE: With monolithic nhmParamDb files hru_segment becomes hru_segment_nhm and the
-    #       regional hru_segments are gone.
     # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
     #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
     #                 needs to be loaded and used to map the nhm HRU ids to their
@@ -432,12 +267,12 @@ def main():
 
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
-    # toseg_idx contains the in-order indices for the subset of tosegments
+    # new_hru_segment contains the in-order indices for the subset of tosegments
     # --------------------------------------------------------------------------
 
     # ==========================================================================
     # ==========================================================================
-    # Get subset of hru_deplcrv using hru_order
+    # Get subset of hru_deplcrv using hru_order_subset
     # A single snarea_curve can be referenced by multiple HRUs
     hru_deplcrv_subset = nhm_params.get_subset('hru_deplcrv', hru_order_subset)
 
@@ -563,8 +398,6 @@ def main():
 
     if args.verbose:
         sys.stdout.write('\n')
-    #     sys.stdout.write('\r                                       ')
-    #     sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
     sys.stdout.flush()
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -586,12 +419,6 @@ def main():
             raise ValueError('Missing netcdf CBH files')
 
         if args.cbh_netcdf:
-            # Pull the filename prefix off of the first file found in the
-            # source netcdf CBH directory.
-            # file_it = glob.iglob(config.cbh_dir)
-            # cbh_prefix = os.path.basename(next(file_it)).split('_')[0]
-
-            # cbh_outfile = f'{outdir}/{cbh_prefix}.nc'
             cbh_outfile = f'{outdir}/cbh.nc'
             cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()))
 
@@ -601,16 +428,11 @@ def main():
 
         else:
             for cvar, cfv in config.cbh_var_map.items():
-                print(f'--- {cvar}')
+                if args.verbose:
+                    print(f'--- {cvar}')
+
                 cfile = ctl.get(cfv).values
                 cbh_hdl.write_ascii(cfile, variable=cvar)
-            # cbh_hdl.write_ascii(variables=list(config.cbh_var_map.keys()))
-
-            # Set the control file variables for the CBH files
-            # for cbhvar, cfv in config.cbh_var_map.items():
-            #     ctl.get(cfv).values = f'{cbhvar}.cbh'
-
-        # bandit_log.info('{} written to: {}'.format(vv, '{}/{}.cbh'.format(outdir, vv)))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write output variables
@@ -624,12 +446,11 @@ def main():
                     'seg_lateral_inflow', 'seg_outflow', 'seg_sroff', 'seg_ssflow',
                     'seg_upstream_inflow']
 
-        # if len(hru_order_subset) > 0 or len(new_nhm_seg) > 0:
         try:
             os.makedirs(f'{outdir}/model_output')
-            print('Creating directory model_output, for model output variables')
+            bandit_log.info('Creating directory model_output, for model output variables')
         except OSError:
-            print('Using existing model_output directory for output variables')
+            bandit_log.info('Using existing model_output directory for output variables')
 
         for vv in config.output_vars:
             if args.verbose:
@@ -722,9 +543,6 @@ def main():
             else:
                 streamflow.write_ascii(filename=f'{outdir}/{config.streamflow_filename}')
         else:
-            # TODO: 2021-03-30 PAN - prms_nwis has a mechanism for creating the sf_data file
-            #       with a dummy record when no POIs are provided
-            print('Writing dummy streamflow data file')
             streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=args.verbose)
             streamflow.get_daily_streamgage_observations()
             streamflow.write_ascii(filename=f'{config.streamflow_filename}')
@@ -754,8 +572,6 @@ def main():
                     pass
 
             # Output a shapefile of the selected HRUs
-            # print('\tHRUs')
-            # geo_shp.select_layer('nhruNationalIdentifier')
             if args.verbose:
                 print(f'Layers: {config.hru_gis_layer}, {config.seg_gis_layer}')
                 print(f'IDs: {config.hru_gis_id}, {config.seg_gis_id}')
