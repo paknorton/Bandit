@@ -14,7 +14,7 @@ except ImportError:
 
 from pyPRMS.constants import HRU_DIMS
 
-bandit_helper_log = logging.getLogger('bandit.helper')
+bandit_helper_log = logging.getLogger('bandit.helpers')
 
 
 def parse_gage(s: str) -> Tuple:
@@ -179,6 +179,7 @@ def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_id
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
     if keep_hru_order:
+        # NOTE: Segments that have no HRUs connected to them are not logged
         hru_order_subset = [kk for kk in hru_to_seg.keys()]
 
         new_hru_segment = [new_nhm_seg_to_idx1[kk] if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in
@@ -191,7 +192,6 @@ def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_id
                 for yy in seg_to_hru[xx]:
                     hru_order_subset.append(yy)
             else:
-                print(f'Segment {xx} has no HRUs connected to it')
                 bandit_helper_log.warning(f'Stream segment {xx} has no HRUs connected to it.')
 
         # Append the additional non-routed HRUs to the list
