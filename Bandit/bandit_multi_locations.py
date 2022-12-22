@@ -47,7 +47,7 @@ class WorkerThread(threading.Thread):
         # cycles are wasted while waiting.
         # Also, 'get' is given a timeout, so stoprequest is always checked,
         # even if there's nothing in the queue.
-        while not self.stoprequest.isSet():
+        while not self.stoprequest.is_set():
             try:
                 thecmd = self.input_q.get(True, 0.05)
                 retcode = self.run_cmd(thecmd)
@@ -104,13 +104,16 @@ def main():
 
     # parser.add_argument('-j', '--jobdir', help='Job directory to work in')
     parser.add_argument('-s', '--segoutlets', help='File containing segment outlets by location', default='', type=str)
-    parser.add_argument('-c', '--segcutoffs', help='File containing upstream cutoff segments by location', default='', type=str)
+    parser.add_argument('-c', '--segcutoffs', help='File containing upstream cutoff segments by location',
+                        default='', type=str)
     parser.add_argument('-n', '--nrhrus', help='File containing non-routed HRUs by location', default='', type=str)
     parser.add_argument('-p', '--prefix', help='Directory prefix to add')
 
-    # parser.add_argument('--check_DAG', help='Verify the streamflow network', action='store_true')
-
     args = parser.parse_args()
+
+    if not args.segoutlets:
+        print('ERROR: Must specify the segment outlets file.')
+        exit(1)
 
     # Should be in the current job directory
     job_dir = os.getcwd()
@@ -118,9 +121,10 @@ def main():
     # Read the default configuration file
     config = bc.Cfg(f'{job_dir}/bandit.cfg')
 
-    if not args.segoutlets:
-        print('ERROR: Must specify the segment outlets file.')
-        exit(1)
+    # Update control_filename to include the main extraction path
+    config.update_value('control_filename', f'{job_dir}/control.default')
+
+    segments_by_loc = read_file(f'{job_dir}/{args.segoutlets}')
 
     if args.nrhrus:
         noroute_hrus_by_loc = read_file(f'{job_dir}/{args.nrhrus}')
@@ -131,16 +135,6 @@ def main():
         uscutoff_seg_by_loc = read_file(f'{job_dir}/{args.segcutoffs}')
     else:
         uscutoff_seg_by_loc = {}
-
-    segments_by_loc = read_file(f'{job_dir}/{args.segoutlets}')
-
-    # print(f'{segments_by_loc=}')
-    # print('-'*60)
-    # print(f'{uscutoff_seg_by_loc=}')
-    # print('-'*60)
-    # exit()
-    # jobdir = '/media/scratch/PRMS/bandit/jobs/hw_jobs'
-    # default_config_file = '{}/bandit.cfg'.format(jobdir)
 
     cmd_bandit = find_executable('bandit')
 
@@ -172,20 +166,6 @@ def main():
     # - create directory hw_# (where # is the hwAreaId)
     # - copy default bandit.cfg into directory
     # - run bandit on the directory
-
-    if not os.path.exists(job_dir):
-        try:
-            os.makedirs(job_dir)
-        except OSError as err:
-            print(f'\tError creating directory: {err}')
-            exit(1)
-
-    # st_dir = os.getcwd()
-    os.chdir(job_dir)
-
-    # Read the default configuration file
-    # config = bc.Cfg(default_config_file)
-
     work_count = 0
 
     for kk, vv in segments_by_loc.items():
@@ -208,20 +188,10 @@ def main():
 
         # Update the outlets in the basin.cfg file and write into the headwater directory
         config.update_value('outlets', vv)
-
         config.update_value('cutoffs', uscutoff_seg_by_loc.get(kk, []))
         config.update_value('hru_noroute', noroute_hrus_by_loc.get(kk, []))
-
-        # if uscutoff_seg_by_loc is not None and kk in uscutoff_seg_by_loc:
-        #     config.update_value('cutoffs', uscutoff_seg_by_loc[kk])
-
-        # if noroute_hrus_by_loc is not None and kk in noroute_hrus_by_loc:
-        #     config.update_value('hru_noroute', noroute_hrus_by_loc[kk])
-
-        # TODO: This causes the control_filename to be rewritten in the parent
-        #       directory; so this happens for each location. Need to fix.
-        config.update_value('control_filename', f'{job_dir}/control.default')
         config.update_value('output_dir', f'{job_dir}/{cdir}')
+
         config.write(f'{cdir}/bandit.cfg')
 
         # Run bandit
@@ -229,20 +199,17 @@ def main():
         work_count += 1
         cmd = f'{cmd_bandit} --no_filter_params --keep_hru_order -j {job_dir}/{cdir}'
 
-        os.chdir(cdir)
         cmd_q.put(cmd)
-        os.chdir(job_dir)
 
-    print(f'work_count = {work_count:4d}')
+    print(f'Total number of locations: {work_count}')
 
     # Output results
     while work_count > 0:
         result = result_q.get()
 
-        sys.stdout.write(f'\rwork_count: {work_count:4d}')
+        sys.stdout.write(f'\rExtractions remaining: {work_count:4d}')
         sys.stdout.flush()
 
-        # print "Thread %s return code = %d" % (result[0], result[2])
         work_count -= 1
 
         if result[2] != 0 and result[2] < 200:
