@@ -5,36 +5,40 @@
 # Description: Configuration class for Model Bandit
 #              YAML is used for the backend
 
-from ruamel.yaml import YAML
-from typing import Dict, List, Optional, Union
+import ruamel.yaml
+# import sys
+# from ruamel.yaml import YAML
+from typing import Dict, List, Optional, Union, Any
 
-default_values = dict(start_date='1980-01-01',
-                      end_date='2010-12-31',
-                      check_DAG='False',
-                      poi_dir='',
-                      output_dir='',
-                      control_filename='control.default',
-                      param_filename='myparam.param',
-                      paramdb_dir='',
-                      dyn_params_dir='',
-                      outlets=[],
-                      cutoffs=[],
-                      hru_noroute=[],
-                      include_model_output=False,
-                      output_vars=[],
-                      output_vars_dir='',
-                      output_cbh=False,
-                      cbh_dir='',
-                      cbh_var_map={},
-                      output_streamflow=False,
-                      streamflow_filename='sf_data',
-                      streamgage_file='',
-                      output_shapefiles=False,
-                      geodatabase_filename='',
-                      hru_gis_layer=None,
-                      hru_gis_id=None,
-                      seg_gis_layer=None,
-                      seg_gis_id=None)
+ConfigElem = Union[int, float, str, List[Any], Dict[Any, Any]]
+
+default_values: Dict[str, ConfigElem] = dict(start_date='1980-01-01',
+                                             end_date='2010-12-31',
+                                             check_DAG='False',
+                                             poi_dir='',
+                                             output_dir='',
+                                             control_filename='control.default',
+                                             param_filename='myparam.param',
+                                             paramdb_dir='',
+                                             dyn_params_dir='',
+                                             outlets=[],
+                                             cutoffs=[],
+                                             hru_noroute=[],
+                                             include_model_output=False,
+                                             output_vars=[],
+                                             output_vars_dir='',
+                                             output_cbh=False,
+                                             cbh_dir='',
+                                             cbh_var_map={},
+                                             output_streamflow=False,
+                                             streamflow_filename='sf_data',
+                                             streamgage_file='',
+                                             output_shapefiles=False,
+                                             geodatabase_filename='',
+                                             hru_gis_layer='',
+                                             hru_gis_id='',
+                                             seg_gis_layer='',
+                                             seg_gis_id='')
 
 
 class Cfg(object):
@@ -50,9 +54,9 @@ class Cfg(object):
 
         # yaml.add_representer(OrderedDict, dict_representer)
         # yaml.add_constructor(_mapping_tag, dict_constructor)
-        self.yaml = YAML()
+        self.yaml = ruamel.yaml.YAML()
 
-        self.__cfgdict = None
+        self.__cfgdict: Dict[str, ConfigElem] = {}
         self.__cmdline = cmdline
         self.load(filename)
 
@@ -61,6 +65,7 @@ class Cfg(object):
 
         :returns: String of configuration parameters and values
         """
+
         outstr = ''
 
         for (kk, vv) in self.__cfgdict.items():
@@ -74,7 +79,7 @@ class Cfg(object):
                 outstr += f'{vv}\n'
         return outstr
 
-    def __getattr__(self, item: str) -> Union[int, float, str, List]:
+    def __getattr__(self, item: str) -> ConfigElem:
         """Get value for a configuration item.
 
         :returns: Configuration parameter value
@@ -106,7 +111,7 @@ class Cfg(object):
             return False
         return True
 
-    def get_value(self, name: str) -> Union[str, int, float, List, Dict]:
+    def get_value(self, name: str) -> ConfigElem:
         """Return the value for a given config variable.
 
         :param name: Name of configuration parameter
@@ -133,9 +138,12 @@ class Cfg(object):
         :param name: Name of configuration parameter
         :param newval: New value for parameter
         """
-
+        # print(f'update: {name}: {newval}')
         if name in self.__cfgdict:
-            self.__cfgdict[name] = newval
+            if isinstance(self.__cfgdict[name], list):
+                self.__cfgdict[name] = self.yaml_seq(newval)
+            else:
+                self.__cfgdict[name] = newval
         else:
             raise KeyError(f'Configuration variable, {name}, does not exist')
 
@@ -147,3 +155,12 @@ class Cfg(object):
 
         outfile = open(filename, 'w')
         self.yaml.dump(self.__cfgdict, outfile)
+
+    @staticmethod
+    def yaml_seq(*somelist):
+        """Lists with existing flow style"""
+
+        # Based off of: https://stackoverflow.com/questions/56937691/making-yaml-ruamel-yaml-always-dump-lists-inline
+        ret = ruamel.yaml.comments.CommentedSeq(somelist)
+        ret.fa.set_flow_style()
+        return ret
