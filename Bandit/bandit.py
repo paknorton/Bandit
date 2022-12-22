@@ -38,16 +38,16 @@ bandit_log.setLevel(logging.DEBUG)
 log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
 
 # Handler for file logs
-flog = logging.FileHandler('bandit.log')
-flog.setLevel(logging.DEBUG)
-flog.setFormatter(log_fmt)
+# flog = logging.FileHandler('bandit.log')
+# flog.setLevel(logging.DEBUG)
+# flog.setFormatter(log_fmt)
 
 # Handler for console logs
 clog = logging.StreamHandler()
 clog.setLevel(logging.ERROR)
 clog.setFormatter(log_fmt)
 
-bandit_log.addHandler(flog)
+# bandit_log.addHandler(flog)
 bandit_log.addHandler(clog)
 
 
@@ -95,6 +95,13 @@ def main():
         else:
             print(f'ERROR: Invalid jobs directory: {args.job}')
             exit(-1)
+
+    # Handler for file logs
+    flog = logging.FileHandler(f'{os.getcwd()}/bandit.log')
+    flog.setLevel(logging.DEBUG)
+    flog.setFormatter(log_fmt)
+
+    bandit_log.addHandler(flog)
 
     bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
 
@@ -391,7 +398,8 @@ def main():
         param_filename = f'{base_filename}.nc'
         new_ps.write_netcdf(f'{outdir}/{param_filename}')
     else:
-        print(f'\nWriting version {args.prms_version} parameter file')
+        if args.verbose:
+            print(f'\nWriting version {args.prms_version} parameter file')
         new_ps.write_parameter_file(f'{outdir}/{param_filename}', header=header, prms_version=args.prms_version)
 
     ctl.get('param_file').values = param_filename
@@ -514,7 +522,7 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write control file
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    ctl.write(f'{config.control_filename}.bandit')
+    ctl.write(f'{os.path.basename(config.get_value("control_filename"))}.bandit')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write streamflow
