@@ -141,7 +141,10 @@ class Cfg(object):
         # print(f'update: {name}: {newval}')
         if name in self.__cfgdict:
             if isinstance(self.__cfgdict[name], list):
-                self.__cfgdict[name] = self.yaml_seq(newval)
+                if isinstance(newval, list):
+                    self.__cfgdict[name] = newval
+                else:
+                    self.__cfgdict[name] = self.yaml_seq(newval)
             else:
                 self.__cfgdict[name] = newval
         else:
