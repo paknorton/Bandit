@@ -5,12 +5,7 @@ import networkx as nx   # type: ignore
 import re
 
 from collections import OrderedDict
-
-try:
-    from typing import Optional, Union, Dict, List, OrderedDict as OrderedDictType, Set, Tuple
-except ImportError:
-    # pre-python 3.7.2
-    from typing import Optional, Union, Dict, List, MutableMapping as OrderedDictType, Tuple  # type: ignore
+from typing import Union, Dict, List, Set, Tuple
 
 from pyPRMS.constants import HRU_DIMS
 
@@ -149,6 +144,7 @@ def subset_stream_network(dag_ds: nx.classes.digraph.DiGraph,
         dag_ds_subset = dag_ds
 
     return dag_ds_subset
+
 
 def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, hru_noroute):
     # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
