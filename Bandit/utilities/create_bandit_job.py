@@ -34,8 +34,8 @@ def main():
     elif not os.path.exists(config.paramdb_dir):
         print("Location of the NHM parameter database (paramdb_dir) does not exist!")
         exit(2)
-    elif not os.path.exists(config.geodatabase_filename):
-        print("The geodatabase file (geodatabase_filename) does not exist!")
+    elif not os.path.exists(config.gis['src_filename']):
+        print("The geodatabase file (gis.src_filename) does not exist!")
         exit(2)
     elif not os.path.exists(config.output_dir):
         print("The main jobs directory (output_dir) does not exist!")
