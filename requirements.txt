@@ -6,6 +6,5 @@ numpy
 netcdf4
 networkx >= 2
 xarray
-pyprms
-ruamel
 setuptools
+pyogrio~=0.4.2
