@@ -8,13 +8,14 @@ import networkx as nx   # type: ignore
 import numpy as np
 import os
 import sys
+import time
 
 from collections import OrderedDict
 from typing import List
 
 import Bandit.bandit_cfg as bc
 import Bandit.dynamic_parameters as dyn_params
-import Bandit.prms_geo as prms_geo
+# import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 
 from Bandit import __version__
@@ -29,6 +30,15 @@ from pyPRMS.ControlFile import ControlFile
 from pyPRMS.ParamDb import ParamDb
 from pyPRMS.ParameterSet import ParameterSet
 
+# os.environ['USE_PYGEOS'] = '0'
+# import geopandas as gpd
+
+import pyogrio as pyg  # type: ignore
+import warnings
+warnings.filterwarnings("ignore", message=".*Measured \(M\) geometry types are not supported.*")
+
+# from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
+
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 # Setup the logging
@@ -37,17 +47,11 @@ bandit_log.setLevel(logging.DEBUG)
 
 log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
 
-# Handler for file logs
-# flog = logging.FileHandler('bandit.log')
-# flog.setLevel(logging.DEBUG)
-# flog.setFormatter(log_fmt)
-
 # Handler for console logs
 clog = logging.StreamHandler()
 clog.setLevel(logging.ERROR)
 clog.setFormatter(log_fmt)
 
-# bandit_log.addHandler(flog)
 bandit_log.addHandler(clog)
 
 
@@ -96,7 +100,7 @@ def main():
             print(f'ERROR: Invalid jobs directory: {args.job}')
             exit(-1)
 
-    # Handler for file logs
+    # Handler for logging to file
     flog = logging.FileHandler(f'{os.getcwd()}/bandit.log')
     flog.setLevel(logging.DEBUG)
     flog.setFormatter(log_fmt)
@@ -121,9 +125,6 @@ def main():
 
     # Where to output the subset
     outdir = config.output_dir
-
-    # The control file to use
-    # control_filename = config.control_filename
 
     # What to name the output parameter file
     param_filename = config.param_filename
@@ -559,16 +560,16 @@ def main():
     # *******************************************
     # Create a shapefile of the selected HRUs
     if config.output_shapefiles:
+        stime = time.time()
+
         if args.verbose:
             print('-'*40)
             print('Writing shapefiles for model subset')
 
-        if not os.path.exists(config.geodatabase_filename):
-            bandit_log.error(f'Source GIS file, {config.geodatabase_filename}, '
+        if len(config.gis) == 0 or not os.path.exists(config.gis['src_filename']):
+            bandit_log.error(f'Source GIS file'
                              f'does not exist. Shapefiles will not be created')
         else:
-            geo_shp = prms_geo.Geo(config.geodatabase_filename)
-
             # Create GIS subdirectory if it doesn't already exist
             gis_dir = f'{outdir}/GIS'
             try:
@@ -579,43 +580,95 @@ def main():
                 else:
                     pass
 
-            # Output a shapefile of the selected HRUs
-            if args.verbose:
-                print(f'Layers: {config.hru_gis_layer}, {config.seg_gis_layer}')
-                print(f'IDs: {config.hru_gis_id}, {config.seg_gis_id}')
+            geo_outfile = f'{gis_dir}/model_layers.{config.gis["dst_extension"]}'
 
-            # add nhm_id to included fields to include v1.0 national ids
-            geo_shp.select_layer(config.hru_gis_layer)
-            geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', config.hru_gis_id, hru_order_subset,
-                                    included_fields=['model_idx', config.hru_gis_id])
+            for kk, vv in config.gis['layers'].items():
+                vv['include_fields'].extend([vv['key']])
 
-            geo_shp.select_layer(config.seg_gis_layer)
-            geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', config.seg_gis_id, new_nhm_seg,
-                                    included_fields=[config.seg_gis_id, 'model_idx'])
+                if vv['type'] == 'nhru':
+                    geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
+                                                  columns=[vv['include_fields']], force_2d=True,
+                                                  where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
+                    bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
+                    bb.insert(0, 'model_idx', [idx+1 for idx, _ in enumerate(hru_order_subset)])
+                    bb = bb.rename(columns={vv['key']: 'nhm_id'})
 
-            # Original code
-            # geo_shp.select_layer('nhru')
-            #        geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
-            # geo_shp.write_shapefile('{}/GIS/HRU_subset.shp'.format(outdir), 'hru_id_nat', hru_order_subset,
-            #                         included_fields=['nhm_id', 'model_idx', 'region', 'hru_id_nat'])
+                    if config.gis["dst_extension"] == 'gpkg':
+                        bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                    else:
+                        geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
+                        bb.to_file(geo_outfile)
+                elif vv['type'] == 'nsegment':
+                    geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
+                                                  columns=[vv['include_fields']], force_2d=True,
+                                                  where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
+                    bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
+                    bb.insert(0, 'model_idx', [idx+1 for idx, _ in enumerate(new_nhm_seg)])
+                    bb = bb.rename(columns={vv['key']: 'nhm_seg'})
 
-            #        geo_shp.write_shapefile3('{}/GIS/HRU_subset.gdb'.format(outdir), 'hru_id_nat', hru_order_subset)
+                    if config.gis["dst_extension"] == 'gpkg':
+                        bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                    else:
+                        geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
+                        bb.to_file(geo_outfile)
+                elif vv['type'] == 'npoigages':
+                    geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
+                                                  columns=[vv['include_fields']], force_2d=True)
+                    bb = geo_file[geo_file['Type_Gage'].isin(new_poi_gage_id)]
+                    bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
 
-            #        geo_shp.filter_by_attribute('hru_id_nat', hru_order_subset)
-            #        geo_shp.write_shapefile2('{}/HRU_subset.shp'.format(outdir))
-            #        geo_shp.write_kml('{}/HRU_subset.kml'.format(outdir))
+                    if config.gis["dst_extension"] == 'gpkg':
+                        bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                    else:
+                        geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
+                        bb.to_file(geo_outfile)
 
-            # Output a shapefile of the selected stream segments
-            # print('\tSegments')
-            # geo_shp.select_layer('nsegmentNationalIdentifier')
-            # geo_shp.write_shapefile('{}/GIS/Segments_subset.shp'.format(outdir), 'seg_id_nat', new_nhm_seg,
-            #                         included_fields=['seg_id_nat', 'model_idx', 'region'])
+                    # bb.to_file(geo_outfile, layer='POIs', driver='GPKG')
+                else:
+                    bandit_log.warning(f'Layer, {kk}, has unknown type, {vv["type"]}; skipping.')
 
-            #       geo_shp.filter_by_attribute('seg_id_nat', uniq_seg_us)
-            #       geo_shp.write_shapefile2('{}/Segments_subset.shp'.format(outdir))
+        if args.verbose:
+            print(f'Geo write time: {time.time() - stime:0.3f} s', flush=True)
 
-            del geo_shp
-
+    # if config.output_shapefiles:
+    #     stime = time.time()
+    #     if args.verbose:
+    #         print('-'*40)
+    #         print('Writing shapefiles for model subset')
+    #
+    #     if not os.path.exists(config.geodatabase_filename):
+    #         bandit_log.error(f'Source GIS file, {config.geodatabase_filename}, '
+    #                          f'does not exist. Shapefiles will not be created')
+    #     else:
+    #         geo_shp = prms_geo.Geo(config.geodatabase_filename)
+    #
+    #         # Create GIS subdirectory if it doesn't already exist
+    #         gis_dir = f'{outdir}/GIS'
+    #         try:
+    #             os.makedirs(gis_dir)
+    #         except OSError as exception:
+    #             if exception.errno != errno.EEXIST:
+    #                 raise
+    #             else:
+    #                 pass
+    #
+    #         # Output a shapefile of the selected HRUs
+    #         if args.verbose:
+    #             print(f'Layers: {config.hru_gis_layer}, {config.seg_gis_layer}')
+    #             print(f'IDs: {config.hru_gis_id}, {config.seg_gis_id}')
+    #
+    #         # add nhm_id to included fields to include v1.0 national ids
+    #         geo_shp.select_layer(config.hru_gis_layer)
+    #         geo_shp.write_shapefile(f'{outdir}/GIS/HRU_subset.shp', config.hru_gis_id, hru_order_subset,
+    #                                 included_fields=['model_idx', config.hru_gis_id])
+    #
+    #         geo_shp.select_layer(config.seg_gis_layer)
+    #         geo_shp.write_shapefile(f'{outdir}/GIS/Segments_subset.shp', config.seg_gis_id, new_nhm_seg,
+    #                                 included_fields=[config.seg_gis_id, 'model_idx'])
+    #
+    #         del geo_shp
+    #
+    #     print(f'Geo write time: {time.time() - stime:0.3f} s', flush=True)
     bandit_log.info(f'========== END {datetime.datetime.now().isoformat()} ==========')
 
     os.chdir(stdir)
