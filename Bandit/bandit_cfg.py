@@ -6,8 +6,6 @@
 #              YAML is used for the backend
 
 import ruamel.yaml
-# import sys
-# from ruamel.yaml import YAML
 from typing import Dict, List, Optional, Union, Any
 
 ConfigElem = Union[int, float, str, List[Any], Dict[Any, Any]]
@@ -34,11 +32,12 @@ default_values: Dict[str, ConfigElem] = dict(start_date='1980-01-01',
                                              streamflow_filename='sf_data',
                                              streamgage_file='',
                                              output_shapefiles=False,
-                                             geodatabase_filename='',
-                                             hru_gis_layer='',
-                                             hru_gis_id='',
-                                             seg_gis_layer='',
-                                             seg_gis_id='')
+                                             gis={})
+                                             # geodatabase_filename='',
+                                             # hru_gis_layer='',
+                                             # hru_gis_id='',
+                                             # seg_gis_layer='',
+                                             # seg_gis_id='')
 
 
 class Cfg(object):
