@@ -590,8 +590,9 @@ def main():
                                                   columns=[vv['include_fields']], force_2d=True,
                                                   where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
                     bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
-                    bb.insert(0, 'model_idx', [idx+1 for idx, _ in enumerate(hru_order_subset)])
                     bb = bb.rename(columns={vv['key']: 'nhm_id'})
+                    local_ids = new_ps.parameters.get_dataframe('nhm_id').reset_index()
+                    bb = bb.merge(local_ids, on='nhm_id')
 
                     if config.gis["dst_extension"] == 'gpkg':
                         bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
@@ -603,8 +604,9 @@ def main():
                                                   columns=[vv['include_fields']], force_2d=True,
                                                   where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
                     bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
-                    bb.insert(0, 'model_idx', [idx+1 for idx, _ in enumerate(new_nhm_seg)])
                     bb = bb.rename(columns={vv['key']: 'nhm_seg'})
+                    local_ids = new_ps.parameters.get_dataframe('nhm_seg').reset_index()
+                    bb = bb.merge(local_ids, on='nhm_seg')
 
                     if config.gis["dst_extension"] == 'gpkg':
                         bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
