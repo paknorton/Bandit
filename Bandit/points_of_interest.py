@@ -1,8 +1,8 @@
 import datetime
 import logging
-import netCDF4 as nc
+import netCDF4 as nc  # type: ignore
 import numpy as np
-import pandas as pd
+import pandas as pd  # type: ignore
 import sys
 import xarray as xr
 
@@ -279,11 +279,11 @@ class POI:
                                calendar=cal_type)
 
         # Write the streamgage observations
-        varo[:, :] = data.to_numpy(dtype=np.float)
+        varo[:, :] = data.to_numpy(dtype=float)
 
         poinameo[:] = nc.stringtochar(np.array(poiname_list).astype('S'))
-        lato[:] = self.get('latitude').to_numpy(dtype=np.float)
-        lono[:] = self.get('longitude').to_numpy(dtype=np.float)
-        draino[:] = self.get('drainage_area').to_numpy(dtype=np.float)
-        draineffo[:] = self.get('drainage_area_contrib').to_numpy(dtype=np.float)
+        lato[:] = self.get('latitude').to_numpy(dtype=float)
+        lono[:] = self.get('longitude').to_numpy(dtype=float)
+        draino[:] = self.get('drainage_area').to_numpy(dtype=float)
+        draineffo[:] = self.get('drainage_area_contrib').to_numpy(dtype=float)
         nco.close()
