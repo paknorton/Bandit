@@ -588,7 +588,7 @@ def main():
 
                 if vv['type'] == 'nhru':
                     geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
-                                                  columns=[vv['include_fields']], force_2d=True,
+                                                  columns=vv['include_fields'], force_2d=True,
                                                   where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
                     bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
                     bb = bb.rename(columns={vv['key']: 'nhm_id'})
@@ -602,7 +602,7 @@ def main():
                         bb.to_file(geo_outfile)
                 elif vv['type'] == 'nsegment':
                     geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
-                                                  columns=[vv['include_fields']], force_2d=True,
+                                                  columns=vv['include_fields'], force_2d=True,
                                                   where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
                     bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
                     bb = bb.rename(columns={vv['key']: 'nhm_seg'})
@@ -616,7 +616,7 @@ def main():
                         bb.to_file(geo_outfile)
                 elif vv['type'] == 'npoigages':
                     geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
-                                                  columns=[vv['include_fields']], force_2d=True)
+                                                  columns=vv['include_fields'], force_2d=True)
                     bb = geo_file[geo_file['Type_Gage'].isin(new_poi_gage_id)]
                     bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
 
