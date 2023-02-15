@@ -453,8 +453,8 @@ def main():
         seg_vars = ['seginc_gwflow', 'seginc_potet', 'seginc_sroff', 'seginc_ssflow',
                     'seginc_swrad', 'segment_delta_flow', 'seg_gwflow', 'seg_inflow',
                     'seg_lateral_inflow', 'seg_outflow', 'seg_sroff', 'seg_ssflow',
-                    'seg_upstream_inflow', 'seg_acc_gwflow', 'seg_acc_potet',
-                    'seg_acc_sroff', 'seg_acc_ssflow']
+                    'seg_upstream_inflow', 'seg_cum_gwflow', 'seg_cum_potet',
+                    'seg_cum_sroff', 'seg_cum_ssflow']
 
         try:
             os.makedirs(f'{outdir}/model_output')
