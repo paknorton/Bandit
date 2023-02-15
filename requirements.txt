@@ -7,4 +7,4 @@ netcdf4
 networkx >= 2
 xarray
 setuptools
-pyogrio~=0.4.2
+pyogrio>=0.4.2
