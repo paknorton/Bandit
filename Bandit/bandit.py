@@ -25,10 +25,10 @@ from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI
 
 from pyPRMS.constants import HRU_DIMS
-from pyPRMS.CbhNetcdf import CbhNetcdf
-from pyPRMS.ControlFile import ControlFile
-from pyPRMS.ParamDb import ParamDb
-from pyPRMS.ParameterSet import ParameterSet
+from pyPRMS import CbhNetcdf
+from pyPRMS import ControlFile
+from pyPRMS import ParamDb
+from pyPRMS import ParameterSet
 
 # os.environ['USE_PYGEOS'] = '0'
 # import geopandas as gpd

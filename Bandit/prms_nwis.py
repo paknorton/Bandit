@@ -11,9 +11,9 @@ from urllib.request import urlopen
 
 import datetime
 import logging
-import netCDF4 as nc
+import netCDF4 as nc   # type: ignore
 import numpy as np
-import pandas as pd
+import pandas as pd   # type: ignore
 import re
 import socket
 import sys

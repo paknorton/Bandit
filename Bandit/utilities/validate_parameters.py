@@ -3,10 +3,11 @@
 
 import argparse
 import os
-from pyPRMS.ControlFile import ControlFile
-import pyPRMS.ValidParams as vparm
-import pyPRMS.ParamDbRegion as nhm
-import pyPRMS.ParameterFile as pfile
+from pyPRMS import ControlFile
+from pyPRMS import ValidParams as vparm
+# from pyPRMS import ParamDbRegion
+from pyPRMS import ParamDb
+from pyPRMS import ParameterFile
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -23,10 +24,10 @@ def main():
 
     if os.path.splitext(args.param_src)[1] == '.param':
         print('Reading {}'.format(args.param_src))
-        pdb = pfile.ParameterFile(args.param_src)
+        pdb = ParameterFile(args.param_src)
     elif os.path.isdir(args.param_src):
         print('Reading {}'.format(args.param_src))
-        pdb = nhm.NhmParamDb(args.param_src)
+        pdb = ParamDb(args.param_src)
     else:
         print('ERROR: No valid parameter set specified')
         exit(1)
@@ -86,7 +87,8 @@ def main():
                             pass
                     elif yy == 'gvr_hru_id':
                         try:
-                            if ctl.get_var('mapOutON_OFF') and ctl.get_values('mapOutON_OFF') == 1:
+                            if ctl.control_variables['mapOutON_OFF'] and \
+                                    ctl.control_variables['mapOutON_OFF'] == 1:
                                 print('\tMissing: {}'.format(yy))
                         except ValueError:
                             pass

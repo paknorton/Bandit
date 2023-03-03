@@ -200,12 +200,24 @@ class Geo(object):
     #     out_ds.CopyLayer(self.__selected_layer, self.__selected_layer.GetName())
     #     del out_ds
 
-    # def write_shapefile3(self, filename, attr_name, attr_values, included_fields=None):
+    # def write_shapefile3(self, filename: str,
+    #                      attr_name: str,
+    #                      attr_values: List,
+    #                      included_fields: Optional[List]=None):
+    #     """Write subset to shapefile format.
+    #
+    #     :param filename: name of shapefile to create
+    #     :param attr_name: name of attribute for filtering
+    #     :param attr_values: list of attribute values to include in subset
+    #     :param included_fields: list of attribute field names from source shapefile to include in new shapefile
+    #     """
+    #
     #     # NOTE: This is for messing around with the geopackage format
     #
     #     # Create a shapefile for the current selected layer
     #     # If a filter is set then a subset of features is written
-    #     print(attr_values)
+    #     limit_fields = included_fields is not None
+    #
     #     out_driver = ogr.GetDriverByName('GPKG')
     #
     #     out_ds = out_driver.CreateDataSource('crap.gpkg')
@@ -215,13 +227,21 @@ class Geo(object):
     #     # Copy field definitions from input to output file
     #     in_layer_def = self.__selected_layer.GetLayerDefn()
     #
+    #     orig_fld_names = []
     #     for ii in range(in_layer_def.GetFieldCount()):
     #         fld_def = in_layer_def.GetFieldDefn(ii)
     #         fld_name = fld_def.GetName()
     #
-    #         if included_fields and fld_name not in included_fields:
+    #         if limit_fields and fld_name not in included_fields:
     #             continue
+    #
+    #         orig_fld_names.append(fld_name)
     #         out_layer.CreateField(fld_def)
+    #
+    #     # Add local model_idx field
+    #     fld_def = ogr.FieldDefn('model_idx', ogr.OFTInteger)
+    #     orig_fld_names.append('model_idx')
+    #     out_layer.CreateField(fld_def)
     #
     #     # Get feature definitions for the output layer
     #     out_layer_def = out_layer.GetLayerDefn()
@@ -232,15 +252,19 @@ class Geo(object):
     #     # Add features to the output layer
     #     for in_feat in self.__selected_layer:
     #         if in_feat.GetField(attr_name) in attr_values:
-    #             print(in_feat.GetField(attr_name))
+    #             # print(in_feat.GetField(attr_name))
     #             # Add field values from the input layer
     #             for ii in range(out_layer_def.GetFieldCount()):
     #                 fld_def = out_layer_def.GetFieldDefn(ii)
     #                 fld_name = fld_def.GetName()
     #
-    #                 if included_fields and fld_name not in included_fields:
-    #                     continue
-    #                 out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(), in_feat.GetField(ii))
+    #                 if fld_name == 'model_idx':
+    #                     # Output a 1-based array index value
+    #                     out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(),
+    #                                       attr_values.index(in_feat.GetField(attr_name))+1)
+    #                 else:
+    #                     out_feat.SetField(out_layer_def.GetFieldDefn(ii).GetNameRef(),
+    #                                       in_feat.GetField(orig_fld_names[ii]))
     #
     #             # Set geometry as centroid
     #             # geom = in_feat.GetGeometryRef()
@@ -249,6 +273,8 @@ class Geo(object):
     #             # Set geometry
     #             geom = in_feat.geometry()
     #             out_feat.SetGeometry(geom)
+    #
+    #             print(out_feat)
     #
     #             # Add the new feature to the output layer
     #             out_layer.CreateFeature(out_feat)

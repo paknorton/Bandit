@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 import datetime
-import pandas as pd
+import pandas as pd   # type: ignore
 import xarray as xr
 
 

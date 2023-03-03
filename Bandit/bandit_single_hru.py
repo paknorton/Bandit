@@ -22,11 +22,11 @@ from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
 
 from pyPRMS.constants import HRU_DIMS
-from pyPRMS.CbhNetcdf import CbhNetcdf
-from pyPRMS.ControlFile import ControlFile
-from pyPRMS.ParamDb import ParamDb
-from pyPRMS.ParameterSet import ParameterSet
-from pyPRMS.ValidParams import ValidParams
+from pyPRMS import CbhNetcdf
+from pyPRMS import ControlFile
+from pyPRMS import ParamDb
+from pyPRMS import ParameterSet
+from pyPRMS import ValidParams
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -280,133 +280,98 @@ def main():
         # ==================================================================
         # ==================================================================
         # Process the parameters and create a parameter file for the subset
-        dims = {}
-        for kk in nhm_global_dimensions.values():
-            dims[kk.name] = kk.size
+        params = list(nhm_params.keys())
 
-        # Remove dimensions not used in single-hru extractions
-        if not args.include_stream:
-            del dims['nsegment']
+        # Remove the POI-related parameters if we have no POIs
+        if len(new_poi_gage_segment) == 0:
+            bandit_log.warning('No POI gages found for subset; removing POI-related parameters.')
 
-        del dims['npoigages']
+            for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
+                if rp in params:
+                    params.remove(rp)
+
+        params.sort()
 
         # Resize dimensions to the model subset
-        crap_dims = dims.copy()  # need a copy since we modify dims
-        for dd, dv in crap_dims.items():
-            # dimensions 'nmonths' and 'one' are never changed
-            if dd in HRU_DIMS:
-                dims[dd] = len(hru_order_subset)
-            elif args.include_stream and dd == 'nsegment':
-                dims[dd] = 1
-            elif dd == 'ndeplval':
-                dims[dd] = len(uniq_deplcrv0) * 11
-                dims['ndepl'] = len(uniq_deplcrv0)
+        dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
+                           num_hru=len(hru_order_subset),
+                           num_seg=len(new_nhm_seg),
+                           num_deplcrv=len(uniq_deplcrv),
+                           num_poi=len(new_poi_gage_segment))
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Build a ParameterSet for output
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Build a ParameterSet for extracted model
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         new_ps = ParameterSet()
+        new_global_dims = new_ps.dimensions
 
+        # Add the global dimensions
         for dd, dv in dims.items():
             new_ps.dimensions.add(dd, dv)
 
-        # Add nobs (missing from paramdb but needed)
-        new_ps.dimensions.add('nobs', 1)
-
-        new_params = list(required_params)
-
-        # WARNING: 2019-04-23 PAN
-        #          Very hacky way to remove parameters that shouldn't always get
-        #          included. Need to figure out a better way.
-        check_list = ['basin_solsta', 'gvr_hru_id', 'hru_solsta', 'humidity_percent',
-                      'irr_type', 'obsout_segment', 'rad_conv', 'rain_code', 'hru_lon']
-
-        for xx in check_list:
-            if xx in new_params:
-                if xx in ['basin_solsta', 'hru_solsta', 'rad_conv']:
-                    if not new_ps.dimensions.exists('nsol'):
-                        new_params.remove(xx)
-                    elif new_ps.dimensions.get('nsol') == 0:
-                        new_params.remove(xx)
-                elif xx == 'humidity_percent':
-                    if not new_ps.dimensions.exists('nhumid'):
-                        new_params.remove(xx)
-                    elif new_ps.dimensions.get('nhumid') == 0:
-                        new_params.remove(xx)
-                elif xx == 'irr_type':
-                    if not new_ps.dimensions.exists('nwateruse'):
-                        new_params.remove(xx)
-                    elif new_ps.dimensions.get('nwateruse') == 0:
-                        new_params.remove(xx)
-                elif xx == 'gvr_hru_id':
-                    if ctl.get('mapOutON_OFF').values == 0:
-                        new_params.remove(xx)
-                elif xx in ['hru_lat', 'hru_lon', ]:
-                    if not nhm_params.exists(xx):
-                        new_params.remove(xx)
-
-        new_params.sort()
         for pp in params:
-            if pp in new_params or args.no_filter_params:
-                src_param = nhm_params.get(pp)
-                new_ps.parameters.add(src_param.name)
-                ndims = src_param.ndims
+            src_param = nhm_params.get(pp)
 
-                if args.verbose:
-                    sys.stdout.write('\r                                       ')
-                    sys.stdout.write(f'\rProcessing {src_param.name} ')
-                    sys.stdout.flush()
+            if args.verbose:
+                sys.stdout.write('\r                                       ')
+                sys.stdout.write(f'\rProcessing {src_param.name} ')
+                sys.stdout.flush()
 
-                dim_order = [dd for dd in src_param.dimensions.keys()]
+            new_ps.parameters.add(name=pp, info=src_param)
+            cnew_param = new_ps.parameters.get(pp)
 
-                for dd in src_param.dimensions.keys():
-                    new_ps.parameters.get(src_param.name).dimensions.add(dd, new_ps.dimensions.get(dd).size)
-                    new_ps.parameters.get(src_param.name).datatype = src_param.datatype
+            ndims = src_param.ndims
+            dim_order = list(src_param.dimensions.keys())
 
-                first_dimension = dim_order[0]
-                outdata = None
+            for dd in dim_order:
+                cnew_param.dimensions.add(dd, new_global_dims.get(dd).size)
 
-                # Write out the data for the parameter
-                if ndims == 1:
-                    # 1D Parameters
-                    if first_dimension == 'one':
-                        outdata = src_param.data
-                    elif args.include_stream and first_dimension == 'nsegment':
-                        if pp in ['tosegment']:
-                            outdata = np.array(0)
-                        else:
-                            outdata = nhm_params.get_subset(pp, new_nhm_seg)
-                    elif first_dimension == 'ndeplval':
-                        # This is really a 2D in disguise, however, it is stored in C-order unlike
-                        # other 2D arrays
-                        outdata = src_param.data.reshape((-1, 11))[tuple(uniq_deplcrv0), :].reshape((-1))
-                    elif first_dimension in HRU_DIMS:
-                        if pp == 'hru_deplcrv':
-                            outdata = np.array(new_hru_deplcrv)
-                        elif pp == 'hru_segment':
-                            if args.include_stream:
-                                outdata = np.array(1)
-                            else:
-                                print(f'ERROR: {src_param.name} should not be here')
-                                pass
-                        else:
-                            outdata = nhm_params.get_subset(pp, hru_order_subset)
+            first_dimension = dim_order[0]
+            outdata = None
+
+            # Write out the data for the parameter
+            if ndims == 1:
+                # 1D Parameters
+                if first_dimension == 'one':
+                    outdata = src_param.data
+                elif first_dimension == 'nsegment':
+                    if pp in ['tosegment']:
+                        outdata = np.array(new_tosegment)
                     else:
-                        bandit_log.error(f'No rules to handle dimension {first_dimension}')
-                elif ndims == 2:
-                    # 2D Parameters
-                    if first_dimension == 'nsegment':
-                        if args.include_stream:
-                            outdata = nhm_params.get_subset(pp, new_nhm_seg)
-                        else:
-                            print(f'ERROR: {src_param.name} should not be here')
-                    elif first_dimension in HRU_DIMS:
+                        outdata = nhm_params.get_subset(pp, new_nhm_seg)
+                elif first_dimension == 'ndeplval':
+                    # snarea_thresh - this is really a 2D in disguise, however,
+                    # it is stored in C-order unlike other 2D arrays
+                    outdata = nhm_params.get_subset(pp, hru_order_subset)
+                elif first_dimension == 'npoigages':
+                    if pp == 'poi_gage_segment':
+                        outdata = np.array(new_poi_gage_segment)
+                    elif pp == 'poi_gage_id':
+                        outdata = np.array(new_poi_gage_id)
+                    elif pp == 'poi_type':
+                        outdata = np.array(new_poi_type)
+                    else:
+                        bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
+                elif first_dimension in HRU_DIMS:
+                    if pp == 'hru_deplcrv':
                         outdata = nhm_params.get_subset(pp, hru_order_subset)
+                    elif pp == 'hru_segment':
+                        outdata = np.array(new_hru_segment)
                     else:
-                        err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
-                        bandit_log.error(err_txt)
+                        outdata = nhm_params.get_subset(pp, hru_order_subset)
+                else:
+                    bandit_log.error(f'No rules to handle dimension {first_dimension}')
+            elif ndims == 2:
+                # 2D Parameters
+                if first_dimension == 'nsegment':
+                    outdata = nhm_params.get_subset(pp, new_nhm_seg)
+                elif first_dimension in HRU_DIMS:
+                    outdata = nhm_params.get_subset(pp, hru_order_subset)
+                else:
+                    err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
+                    bandit_log.error(err_txt)
 
-                new_ps.parameters.get(src_param.name).data = outdata
+            cnew_param.data = outdata
 
         # We're far enough along without error to go ahead and make the directory
         try:

@@ -20,7 +20,7 @@ __author__ = 'Parker Norton (pnorton@usgs.gov)'
 def get_hydat_daily_streamflow(dbcon: sqlite3.Connection,
                                stn_list: List[str],
                                stdate: datetime.datetime,
-                               endate: datetime.datetime) -> pd.DateFrame:
+                               endate: datetime.datetime) -> pd.DataFrame:
     """Get daily streamflow from HYDAT database for select stations and dates.
 
     :param dbcon: database connection

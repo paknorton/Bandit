@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from Bandit import bandit_cfg as bc
-from pyPRMS.ParamDb import ParamDb
+from pyPRMS import ParamDb
 
 from collections import OrderedDict
 import os

@@ -164,8 +164,8 @@ def _retrieve_from_nwis(url: str) -> str:
 
 def get_nwis_sites(stdate: datetime.datetime,
                    endate: datetime.datetime,
-                   sites: Optional[List, Tuple, str]=None,
-                   regions: Optional[List, Tuple, str]=None) -> pd.DataFrame:
+                   sites: Optional[List, Tuple, str] = None,
+                   regions: Optional[List, Tuple, str] = None) -> pd.DataFrame:
     """Get NWIS streamgage site information
 
     :param stdate: start date for extraction
