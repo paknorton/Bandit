@@ -43,7 +43,7 @@ def git_commit_url(repo_dir: str) -> str:
     src_commit = git_commit(repo_dir)
 
     dst_url = src_url.replace(':', '/').replace('.git', '').replace('git@', 'https://')
-    dst_url += f'/commit/{src_commit}'
+    dst_url += f'/-/commit/{src_commit}'
     return dst_url
 
 
