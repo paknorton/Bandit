@@ -617,7 +617,7 @@ def main():
                 elif vv['type'] == 'npoigages':
                     geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
                                                   columns=vv['include_fields'], force_2d=True)
-                    bb = geo_file[geo_file['Type_Gage'].isin(new_poi_gage_id)]
+                    bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
                     bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
 
                     if config.gis["dst_extension"] == 'gpkg':
