@@ -36,7 +36,8 @@ from pyPRMS import ParameterSet
 import pyogrio as pyg  # type: ignore
 import warnings
 warnings.filterwarnings("ignore", message=".*Measured \(M\) geometry types are not supported.*")
-
+warnings.filterwarnings('ignore', message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
+warnings.filterwarnings('ignore', message='.*Slicing with an out-of-order index is generating 10 times more chunks.*')
 # from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
