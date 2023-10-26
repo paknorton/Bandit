@@ -430,7 +430,10 @@ def main():
 
         if args.cbh_netcdf:
             cbh_outfile = f'{outdir}/cbh.nc'
-            cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()))
+
+            global_attrs = dict(bandit_version=__version__, paramdb_url=git_url)
+            cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()),
+                                 global_attrs=global_attrs)
 
             # Set the control file variables for the CBH files
             for cfv in config.cbh_var_map.values():
@@ -618,6 +621,14 @@ def main():
                 elif vv['type'] == 'npoigages':
                     geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
                                                   columns=vv['include_fields'], force_2d=True)
+
+                    print('-'*30)
+                    print(new_poi_gage_id)
+                    print('-'*20)
+                    print(geo_file.info())
+                    print('-'*20)
+                    print(geo_file.head())
+
                     bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
                     bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
 
