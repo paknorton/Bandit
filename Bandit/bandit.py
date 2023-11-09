@@ -28,10 +28,11 @@ from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI
 
 from pyPRMS.constants import HRU_DIMS
+from pyPRMS.metadata.metadata import MetaData
 from pyPRMS import CbhNetcdf
 from pyPRMS import ControlFile
 from pyPRMS import ParamDb
-from pyPRMS import ParameterSet
+from pyPRMS import Parameters
 
 # os.environ['USE_PYGEOS'] = '0'
 # import geopandas as gpd
@@ -154,8 +155,11 @@ def main():
         args.param_netcdf = True
         args.streamflow_netcdf = True
 
+    # Load PRMS metadata
+    prms_meta = MetaData(verbose=False).metadata
+
     # Load the control file
-    ctl = ControlFile(config.control_filename, version=args.prms_version)
+    ctl = ControlFile(config.control_filename, metadata=prms_meta, version=args.prms_version)
 
     if ctl.has_dynamic_parameters:
         if config.dyn_params_dir:
@@ -173,8 +177,10 @@ def main():
 
     # Adjust the start and end dates in the control file to reflect
     # date range from bandit config file
-    ctl.get('start_time').values = [st_date.year, st_date.month, st_date.day, 0, 0, 0]
-    ctl.get('end_time').values = [en_date.year, en_date.month, en_date.day, 0, 0, 0]
+    ctl.get('start_time').values = st_date
+    ctl.get('end_time').values = en_date
+    # ctl.get('start_time').values = [st_date.year, st_date.month, st_date.day, 0, 0, 0]
+    # ctl.get('end_time').values = [en_date.year, en_date.month, en_date.day, 0, 0, 0]
 
     # Output revision of NhmParamDb
     git_url = git_commit_url(paramdb_dir)
@@ -186,12 +192,17 @@ def main():
     # Load the NHMparamdb
     if args.verbose:
         con.print('Loading NHM ParamDb', style='green4')
-    pdb = ParamDb(paramdb_dir, verify=True)
+
+    pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=args.verbose)
     pdb.control = ctl
+
+    # Add defaults for parameters that are missing but required for the select modules
+    pdb.add_missing_parameters()
 
     if not args.no_filter_params:
         # Reduce the parameters to those required by the selected modules
-        pdb.reduce_by_modules()
+        pdb.remove(pdb.unneeded_parameters)
+        # pdb.reduce_by_modules()
 
     # Default the various *ON_OFF variables to 0 (off)
     # The original values are needed to reduce parameters by module,
@@ -200,16 +211,17 @@ def main():
     disable_vars = ['basinOutON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
                     'nsegmentOutON_OFF', 'nsubOutON_OFF']
     for vv in disable_vars:
-        ctl.get(vv).values = '0'
+        ctl.get(vv).values = 0
 
-    nhm_params = pdb.parameters
+    # nhm_params = pdb.parameters
     nhm_global_dimensions = pdb.dimensions
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Get tosegment_nhm
     # Convert to list for fastest access to array
     # tosegment = nhm_params.get('tosegment_nhm').tolist()
-    nhm_seg = nhm_params.get('nhm_seg').tolist()
+    nhm_seg = pdb.get('nhm_seg').tolist()
+    # nhm_seg = nhm_params.get('nhm_seg').tolist()
 
     if args.verbose:
         con.print('Generating stream network', style='green4')
@@ -225,7 +237,8 @@ def main():
         exit(200)
 
     # Build the stream network
-    dag_ds = pdb.parameters.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
+    dag_ds = pdb.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
+    # dag_ds = pdb.parameters.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
 
     bandit_log.debug(f'Number of NHM downstream nodes: {dag_ds.number_of_nodes()}')
     bandit_log.debug(f'Number of NHM downstream edges: {dag_ds.number_of_edges()}')
@@ -257,9 +270,12 @@ def main():
     #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
     #                 needs to be loaded and used to map the nhm HRU ids to their
     #                 respective indices.
-    hru_segment = nhm_params.get('hru_segment_nhm').tolist()
-    nhm_id = nhm_params.get('nhm_id').tolist()
-    nhm_id_to_idx = nhm_params.get('nhm_id').index_map
+    hru_segment = pdb.get('hru_segment_nhm').tolist()
+    nhm_id = pdb.get('nhm_id').tolist()
+    nhm_id_to_idx = pdb.get('nhm_id').index_map
+    # hru_segment = nhm_params.get('hru_segment_nhm').tolist()
+    # nhm_id = nhm_params.get('nhm_id').tolist()
+    # nhm_id_to_idx = nhm_params.get('nhm_id').index_map
     bandit_log.info(f'Number of NHM hru_segment entries: {len(hru_segment)}')
 
     # Create a dictionaries mapping hru_segment segments to hru_segment 1-based indices filtered by
@@ -290,7 +306,8 @@ def main():
     # ==========================================================================
     # Get subset of hru_deplcrv using hru_order_subset
     # A single snarea_curve can be referenced by multiple HRUs
-    hru_deplcrv_subset = nhm_params.get_subset('hru_deplcrv', hru_order_subset)
+    hru_deplcrv_subset = pdb.get_subset('hru_deplcrv', hru_order_subset)
+    # hru_deplcrv_subset = nhm_params.get_subset('hru_deplcrv', hru_order_subset)
 
     # noinspection PyTypeChecker
     uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()  # type: ignore
@@ -298,7 +315,7 @@ def main():
     # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
-    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(nhm_params, new_nhm_seg,
+    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg,
                                                                          new_nhm_seg_to_idx1,
                                                                          seg_to_hru,
                                                                          addl_gages=addl_gages)
@@ -306,7 +323,8 @@ def main():
     # ==================================================================
     # ==================================================================
     # Process the parameters and create a parameter file for the subset
-    params = list(nhm_params.keys())
+    params = list(pdb.keys())
+    # params = list(nhm_params.keys())
 
     # Remove the POI-related parameters if we have no POIs
     if len(new_poi_gage_segment) == 0:
@@ -326,9 +344,9 @@ def main():
                        num_poi=len(new_poi_gage_segment))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Build a ParameterSet for extracted model
+    # Build Parameters for extracted model
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    new_ps = ParameterSet()
+    new_ps = Parameters(metadata=prms_meta)
     new_global_dims = new_ps.dimensions
 
     # Add the global dimensions
@@ -336,39 +354,51 @@ def main():
         new_ps.dimensions.add(dd, dv)
 
     for pp in params:
-        src_param = nhm_params.get(pp)
+        if pp in ['nhm_deplcrv']:
+            # WARNING: 2023-11-09 PAN - these don't always exist in the parameter database
+            continue
+
+        src_param = pdb.get(pp)
+        # src_param = nhm_params.get(pp)
 
         # if args.verbose:
         #     sys.stdout.write('\r                                       ')
         #     sys.stdout.write(f'\rProcessing {src_param.name} ')
         #     sys.stdout.flush()
 
-        new_ps.parameters.add(name=pp, info=src_param)
-        cnew_param = new_ps.parameters.get(pp)
+        new_ps.add(name=pp)
+        cnew_param = new_ps.get(pp)
+        # new_ps.parameters.add(name=pp, info=src_param)
+        # cnew_param = new_ps.parameters.get(pp)
 
-        ndims = src_param.ndims
+        ndims = src_param.ndim
         dim_order = list(src_param.dimensions.keys())
 
-        for dd in dim_order:
-            cnew_param.dimensions.add(dd, new_global_dims.get(dd).size)
+        # for dd in dim_order:
+        #     cnew_param.dimensions.add(dd, new_global_dims.get(dd).size)
 
         first_dimension = dim_order[0]
         outdata = None
 
         # Write out the data for the parameter
-        if ndims == 1:
+        if ndims == 0:
+            # Scalar parameters
+            outdata = src_param.data
+        elif ndims == 1:
             # 1D Parameters
-            if first_dimension == 'one':
-                outdata = src_param.data
-            elif first_dimension == 'nsegment':
+            # if first_dimension == 'one':
+            #     outdata = src_param.data
+            if first_dimension == 'nsegment':
                 if pp in ['tosegment']:
                     outdata = np.array(new_tosegment)
                 else:
-                    outdata = nhm_params.get_subset(pp, new_nhm_seg)
+                    outdata = pdb.get_subset(pp, new_nhm_seg)
+                    # outdata = nhm_params.get_subset(pp, new_nhm_seg)
             elif first_dimension == 'ndeplval':
                 # snarea_thresh - this is really a 2D in disguise, however,
                 # it is stored in C-order unlike other 2D arrays
-                outdata = nhm_params.get_subset(pp, hru_order_subset)
+                outdata = pdb.get_subset(pp, hru_order_subset)
+                # outdata = nhm_params.get_subset(pp, hru_order_subset)
             elif first_dimension == 'npoigages':
                 if pp == 'poi_gage_segment':
                     outdata = np.array(new_poi_gage_segment)
@@ -380,19 +410,23 @@ def main():
                     bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
             elif first_dimension in HRU_DIMS:
                 if pp == 'hru_deplcrv':
-                    outdata = nhm_params.get_subset(pp, hru_order_subset)
+                    outdata = pdb.get_subset(pp, hru_order_subset)
+                    # outdata = nhm_params.get_subset(pp, hru_order_subset)
                 elif pp == 'hru_segment':
                     outdata = np.array(new_hru_segment)
                 else:
-                    outdata = nhm_params.get_subset(pp, hru_order_subset)
+                    outdata = pdb.get_subset(pp, hru_order_subset)
+                    # outdata = nhm_params.get_subset(pp, hru_order_subset)
             else:
                 bandit_log.error(f'No rules to handle dimension {first_dimension}')
         elif ndims == 2:
             # 2D Parameters
             if first_dimension == 'nsegment':
-                outdata = nhm_params.get_subset(pp, new_nhm_seg)
+                outdata = pdb.get_subset(pp, new_nhm_seg)
+                # outdata = nhm_params.get_subset(pp, new_nhm_seg)
             elif first_dimension in HRU_DIMS:
-                outdata = nhm_params.get_subset(pp, hru_order_subset)
+                outdata = pdb.get_subset(pp, hru_order_subset)
+                # outdata = nhm_params.get_subset(pp, hru_order_subset)
             else:
                 err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
                 bandit_log.error(err_txt)

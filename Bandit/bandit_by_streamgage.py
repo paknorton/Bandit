@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from Bandit import bandit_cfg as bc
+from pyPRMS.metadata.metadata import MetaData
 from pyPRMS import ParamDb
 
 from collections import OrderedDict
@@ -101,6 +102,7 @@ def main():
 
     parser.add_argument('-s', '--streamgages', help='File containing streamgage POI IDs', default='', type=str)
     parser.add_argument('-p', '--prefix', help='Directory prefix to add')
+    parser.add_argument('-v', '--verbose', help='Output additional information', action='store_true')
 
     args = parser.parse_args()
 
@@ -146,8 +148,11 @@ def main():
             thread.join()
             sys.exit(1)
 
+    # Load PRMS metadata
+    prms_meta = MetaData(verbose=False).metadata
+
     # Get the POI-to-segment mappings from the parameter database
-    pdb = ParamDb(config.paramdb_dir, verify=True)
+    pdb = ParamDb(config.paramdb_dir, metadata=prms_meta, verbose=args.verbose)
     nhm_params = pdb.parameters
 
     # Get dictionary which maps poi_gage_id to poi_gage_segment
