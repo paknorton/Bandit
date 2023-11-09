@@ -458,7 +458,7 @@ class NWIS:
 
         max_poiid_len = len(max(self.__gageids, key=len))
 
-        # Create a netCDF file for the CBH data
+        # Create a netCDF file for the streamflow data
         nco = nc.Dataset(filename, 'w', clobber=True)
 
         # Create the dimensions
