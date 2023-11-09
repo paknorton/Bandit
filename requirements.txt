@@ -1,3 +1,4 @@
+dask
 gdal >= 3
 pyyaml
 ruamel.yaml
@@ -5,6 +6,7 @@ pandas>=1
 numpy
 netcdf4
 networkx >= 2
+rich
 xarray
 setuptools
 pyogrio>=0.4.2
