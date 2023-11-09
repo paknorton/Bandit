@@ -2,6 +2,7 @@
 import datetime
 import logging
 import networkx as nx   # type: ignore
+import numpy as np
 import re
 
 from collections import OrderedDict
@@ -56,11 +57,14 @@ def set_date(adate: Union[datetime.datetime, datetime.date, str]) -> datetime.da
     :param adate: Datetime object or string (YYYY-MM-DD)
     :returns: Datetime object
     """
+    # TODO: 20230725 PAN - this is identical to function in pyPRMS.prms_helpers
     if isinstance(adate, datetime.date):
         return datetime.datetime.combine(adate, datetime.time.min)
         # return adate
     elif isinstance(adate, datetime.datetime):
         return adate
+    elif isinstance(adate, np.ndarray):
+        return datetime.datetime(*adate)
     else:
         return datetime.datetime(*[int(x) for x in re.split('[- :]', adate)])  # type: ignore
 
