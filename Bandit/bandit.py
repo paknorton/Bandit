@@ -13,6 +13,9 @@ import time
 from collections import OrderedDict
 from typing import List
 
+from rich.console import Console
+from rich import pretty
+
 import Bandit.bandit_cfg as bc
 import Bandit.dynamic_parameters as dyn_params
 # import Bandit.prms_geo as prms_geo
@@ -39,6 +42,10 @@ warnings.filterwarnings("ignore", message=".*Measured \(M\) geometry types are n
 warnings.filterwarnings('ignore', message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
 warnings.filterwarnings('ignore', message='.*Slicing with an out-of-order index is generating 10 times more chunks.*')
 # from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
+
+# Rich library
+pretty.install()
+con = Console()
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -178,7 +185,7 @@ def main():
 
     # Load the NHMparamdb
     if args.verbose:
-        print('Loading NHM ParamDb')
+        con.print('Loading NHM ParamDb', style='green4')
     pdb = ParamDb(paramdb_dir, verify=True)
     pdb.control = ctl
 
@@ -205,7 +212,7 @@ def main():
     nhm_seg = nhm_params.get('nhm_seg').tolist()
 
     if args.verbose:
-        print('Generating stream network')
+        con.print('Generating stream network', style='green4')
 
     # First check if any of the requested stream segments exist in the NHM.
     # An intersection of 0 elements can occur when all stream segments are
@@ -231,7 +238,7 @@ def main():
                 bandit_log.error(f'Cycle found for segment {xx}')
 
     if args.verbose:
-        print('\tExtracting model subset')
+        con.print('    Extracting model subset', style='blue')
 
     dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
@@ -331,10 +338,10 @@ def main():
     for pp in params:
         src_param = nhm_params.get(pp)
 
-        if args.verbose:
-            sys.stdout.write('\r                                       ')
-            sys.stdout.write(f'\rProcessing {src_param.name} ')
-            sys.stdout.flush()
+        # if args.verbose:
+        #     sys.stdout.write('\r                                       ')
+        #     sys.stdout.write(f'\rProcessing {src_param.name} ')
+        #     sys.stdout.flush()
 
         new_ps.parameters.add(name=pp, info=src_param)
         cnew_param = new_ps.parameters.get(pp)
@@ -401,7 +408,7 @@ def main():
         new_ps.write_netcdf(f'{outdir}/{param_filename}')
     else:
         if args.verbose:
-            print(f'\nWriting version {args.prms_version} parameter file')
+            con.print(f'\nWriting version {args.prms_version} parameter file', style='green4')
         new_ps.write_parameter_file(f'{outdir}/{param_filename}', header=header, prms_version=args.prms_version)
 
     ctl.get('param_file').values = param_filename

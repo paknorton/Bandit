@@ -10,6 +10,11 @@ import subprocess
 import sys
 import threading
 
+from rich.console import Console
+from rich import pretty
+pretty.install()
+
+con = Console()
 
 class WorkerThread(threading.Thread):
     """ A worker thread that takes directory names from a queue, finds all
@@ -74,11 +79,11 @@ def get_streamgage_segments(filename, poi_id_to_seg):
         poiseg = poi_id_to_seg.setdefault(kk, None)
 
         if poiseg is None:
-            print(f'Streamgage {kk} is not a POI in the parameter database; skipping')
+            con.print(f'Streamgage {kk} is not a POI in the parameter database; skipping', style='dark_orange3')
         elif poiseg == 0:
-            print(f'Streamgage {kk} has poi_gage_segment = 0; skipping')
+            con.print(f'Streamgage {kk} has poi_gage_segment = 0; skipping', style='dark_orange3')
         elif kk in segs_by_poi:
-            print(f'Streamgage {kk} has multiple assigned segments in the parameter database; skipping')
+            con.print(f'Streamgage {kk} has multiple assigned segments in the parameter database; skipping', style='red')
             print(f'    {kk} -> {segs_by_poi[kk]}')
             print(f'    {kk} -> {poiseg}')
         else:
@@ -161,7 +166,7 @@ def main():
             try:
                 os.makedirs(cdir)
             except OSError as err:
-                print(f'\tError creating directory: {err}')
+                con.print(f'\tError creating directory: {err}', style='red')
                 exit(1)
 
         # Update the outlets and output_dir config variables
@@ -176,7 +181,7 @@ def main():
 
         cmd_q.put(cmd)
 
-    print(f'Total number of streamgages: {work_count}')
+    con.print(f'Total number of streamgages: {work_count}')
 
     # Output results
     while work_count > 0:
