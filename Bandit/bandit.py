@@ -39,9 +39,11 @@ from pyPRMS import Parameters
 
 import pyogrio as pyg  # type: ignore
 import warnings
-warnings.filterwarnings("ignore", message=".*Measured \(M\) geometry types are not supported.*")
+# warnings.filterwarnings('ignore', category=RuntimeWarning)
+warnings.filterwarnings('ignore', message='.*Measured \(M\) geometry types are not supported.*')
 warnings.filterwarnings('ignore', message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
 warnings.filterwarnings('ignore', message='.*Slicing with an out-of-order index is generating 10 times more chunks.*')
+warnings.filterwarnings('ignore', message='.*organizePolygons\(\) received a polygon with more than 100 parts.*')
 # from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
 
 # Rich library
@@ -552,7 +554,7 @@ def main():
         # Download the streamgage information from NWIS
         if len(new_poi_gage_id) > 0:
             if args.verbose:
-                print(f'Retrieving streamgage observations for {len(new_poi_gage_id)} stations')
+                con.print(f'Retrieving streamgage observations for {len(new_poi_gage_id)} stations', style='green4')
 
             if config.exists('poi_dir') and config.poi_dir != '':
                 bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
@@ -570,6 +572,8 @@ def main():
             else:
                 streamflow.write_ascii(filename=f'{outdir}/{config.streamflow_filename}')
         else:
+            if args.verbose:
+                con.print('No POIs exist in model subset; writing dummy data', style='gold3')
             streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=args.verbose)
             streamflow.get_daily_streamgage_observations()
             streamflow.write_ascii(filename=f'{config.streamflow_filename}')
@@ -582,7 +586,7 @@ def main():
 
         if args.verbose:
             print('-'*40)
-            print('Writing shapefiles for model subset')
+            con.print('Writing shapefiles for model subset', style='green4')
 
         if len(config.gis) == 0 or not os.path.exists(config.gis['src_filename']):
             bandit_log.error(f'Source GIS file'
@@ -632,17 +636,20 @@ def main():
                         geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
                         bb.to_file(geo_outfile)
                 elif vv['type'] == 'npoigages':
-                    geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
-                                                  columns=vv['include_fields'], force_2d=True)
+                    if len(new_poi_gage_id) > 0:
+                        geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
+                                                      columns=vv['include_fields'], force_2d=True)
 
-                    bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
-                    bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
+                        bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
+                        bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
 
-                    if config.gis["dst_extension"] == 'gpkg':
-                        bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                        if config.gis["dst_extension"] == 'gpkg':
+                            bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                        else:
+                            geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
+                            bb.to_file(geo_outfile)
                     else:
-                        geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
-                        bb.to_file(geo_outfile)
+                        bandit_log.info('No POIs in model subset so POI GIS layer not written.')
                 else:
                     bandit_log.warning(f'Layer, {kk}, has unknown type, {vv["type"]}; skipping.')
 
