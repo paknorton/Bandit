@@ -9,6 +9,8 @@ import threading
 import queue
 
 import subprocess
+from rich.console import Console
+from rich import pretty
 
 
 """Example of code used to generate model extractions for headwaters in the NHM
@@ -98,6 +100,10 @@ def read_file(filename):
 def main():
     import argparse
     from distutils.spawn import find_executable
+
+    # Rich library
+    pretty.install()
+    con = Console()
 
     # Command line arguments
     parser = argparse.ArgumentParser(description='Batch script for Bandit extractions')
@@ -201,7 +207,7 @@ def main():
 
         cmd_q.put(cmd)
 
-    print(f'Total number of locations: {work_count}')
+    con.print(f'Total number of locations: {work_count}', style='green4')
 
     # Output results
     while work_count > 0:
