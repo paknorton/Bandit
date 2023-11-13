@@ -347,7 +347,7 @@ def main():
     # Build Parameters for extracted model
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     new_ps = Parameters(metadata=prms_meta)
-    new_global_dims = new_ps.dimensions
+    # new_global_dims = new_ps.dimensions
 
     # Add the global dimensions
     for dd, dv in dims.items():
@@ -437,9 +437,10 @@ def main():
     header = [f'Written by Bandit version {__version__}',
               f'ParamDb revision: {git_url}']
     if args.param_netcdf:
+        # TODO: 2023-11-13 PAN - add version info and prms version as global attributes
         base_filename = os.path.splitext(param_filename)[0]
         param_filename = f'{base_filename}.nc'
-        new_ps.write_netcdf(f'{outdir}/{param_filename}')
+        new_ps.write_parameter_netcdf(f'{outdir}/{param_filename}')
     else:
         if args.verbose:
             con.print(f'\nWriting version {args.prms_version} parameter file', style='green4')
@@ -637,7 +638,7 @@ def main():
                                                   where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
                     bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
                     bb = bb.rename(columns={vv['key']: 'nhm_id'})
-                    local_ids = new_ps.parameters.get_dataframe('nhm_id').reset_index()
+                    local_ids = new_ps.get_dataframe('nhm_id').reset_index()
                     bb = bb.merge(local_ids, on='nhm_id')
 
                     if config.gis["dst_extension"] == 'gpkg':
@@ -651,7 +652,7 @@ def main():
                                                   where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
                     bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
                     bb = bb.rename(columns={vv['key']: 'nhm_seg'})
-                    local_ids = new_ps.parameters.get_dataframe('nhm_seg').reset_index()
+                    local_ids = new_ps.get_dataframe('nhm_seg').reset_index()
                     bb = bb.merge(local_ids, on='nhm_seg')
 
                     if config.gis["dst_extension"] == 'gpkg':
