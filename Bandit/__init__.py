@@ -1,5 +1,5 @@
-from __future__ import (absolute_import, division, print_function)
+from .version import __author__, __author_email__, __version__
 
-__version__ = "0.8.7"
+
 
 
