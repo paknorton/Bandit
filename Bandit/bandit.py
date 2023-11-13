@@ -354,10 +354,6 @@ def main():
         new_ps.dimensions.add(dd, dv)
 
     for pp in params:
-        if pp in ['nhm_deplcrv']:
-            # WARNING: 2023-11-09 PAN - these don't always exist in the parameter database
-            continue
-
         src_param = pdb.get(pp)
         # src_param = nhm_params.get(pp)
 
