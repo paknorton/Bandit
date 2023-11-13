@@ -153,13 +153,15 @@ def main():
 
     # Get the POI-to-segment mappings from the parameter database
     pdb = ParamDb(config.paramdb_dir, metadata=prms_meta, verbose=args.verbose)
-    nhm_params = pdb.parameters
+    # nhm_params = pdb.parameters
 
     # Get dictionary which maps poi_gage_id to poi_gage_segment
-    poi_id_to_seg = nhm_params.poi_to_seg
+    poi_id_to_seg = pdb.poi_to_seg
 
     # Read streamgage file and map IDs to NHM POI segments
     segs_by_poi = get_streamgage_segments(args.streamgages, poi_id_to_seg)
+
+    con.print(segs_by_poi)
 
     work_count = 0
 
@@ -175,7 +177,8 @@ def main():
                 exit(1)
 
         # Update the outlets and output_dir config variables
-        config.update_value('outlets', vv.item())
+        config.update_value('outlets', vv)
+        # config.update_value('outlets', vv.item())
         config.update_value('output_dir', f'{job_dir}/{cdir}')
 
         config.write(f'{cdir}/bandit.cfg')
