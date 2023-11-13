@@ -161,8 +161,6 @@ def main():
     # Read streamgage file and map IDs to NHM POI segments
     segs_by_poi = get_streamgage_segments(args.streamgages, poi_id_to_seg)
 
-    con.print(segs_by_poi)
-
     work_count = 0
 
     for kk, vv in segs_by_poi.items():
