@@ -4,7 +4,7 @@ from collections import OrderedDict
 from datetime import datetime
 from html.parser import HTMLParser
 from io import StringIO
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Tuple, Union
 # from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -496,6 +496,6 @@ class NWIS:
                                calendar=cal_type)
 
         # Write the streamgage observations
-        varo[:, :] = self.__outdata.to_numpy(dtype=np.float).T
+        varo[:, :] = self.__outdata.to_numpy(dtype=np.float32).T
 
         nco.close()
