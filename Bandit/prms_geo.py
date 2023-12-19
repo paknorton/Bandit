@@ -1,7 +1,7 @@
 import os
 from collections import OrderedDict
 from osgeo import gdal, ogr
-from typing import Optional, Union, Dict, List, OrderedDict as OrderedDictType, Tuple
+from typing import Optional, Union, Dict, List, OrderedDict as OrderedDictType
 
 
 class GdalErrorHandler(object):
