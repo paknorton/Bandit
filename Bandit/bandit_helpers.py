@@ -307,7 +307,6 @@ def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
     return dims
 
 
-
 # def build_extraction(dag_ds_subset: nx.classes.digraph.DiGraph,
 #                      nhm_params,
 #                      hru_noroute,
