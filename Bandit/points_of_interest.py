@@ -6,7 +6,6 @@ import pandas as pd  # type: ignore
 import sys
 import xarray as xr
 
-# from datetime import datetime
 from typing import List, Optional, Union
 
 from Bandit.bandit_helpers import set_date
