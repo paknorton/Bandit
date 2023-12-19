@@ -10,7 +10,7 @@ import sqlite3
 import sys
 import unicodedata
 
-from typing import Dict, List, Optional, Union
+from typing import List
 
 from Bandit.bandit_helpers import set_date
 
