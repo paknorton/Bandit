@@ -18,11 +18,11 @@ from rich import pretty
 
 import Bandit.bandit_cfg as bc
 import Bandit.dynamic_parameters as dyn_params
-# import Bandit.prms_geo as prms_geo
 import Bandit.prms_nwis as prms_nwis
 
 from Bandit import __version__
-from Bandit.bandit_helpers import parse_gages, set_date, subset_stream_network, get_hru_and_seg_subset_maps, get_output_order, get_poi_subset, resize_dims
+from Bandit.bandit_helpers import (parse_gages, set_date, subset_stream_network, get_hru_and_seg_subset_maps,
+                                   get_output_order, get_poi_subset, resize_dims)
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI
@@ -34,16 +34,14 @@ from pyPRMS import ControlFile
 from pyPRMS import ParamDb
 from pyPRMS import Parameters
 
-# os.environ['USE_PYGEOS'] = '0'
-# import geopandas as gpd
-
 import pyogrio as pyg  # type: ignore
 import warnings
 # warnings.filterwarnings('ignore', category=RuntimeWarning)
-warnings.filterwarnings('ignore', message='.*Measured \(M\) geometry types are not supported.*')
-warnings.filterwarnings('ignore', message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
+warnings.filterwarnings('ignore', message=r'.*Measured \(M\) geometry types are not supported.*')
+warnings.filterwarnings('ignore',
+                        message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
 warnings.filterwarnings('ignore', message='.*Slicing with an out-of-order index is generating 10 times more chunks.*')
-warnings.filterwarnings('ignore', message='.*organizePolygons\(\) received a polygon with more than 100 parts.*')
+warnings.filterwarnings('ignore', message=r'.*organizePolygons\(\) received a polygon with more than 100 parts.*')
 # from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
 
 # Rich library
@@ -217,7 +215,6 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Get tosegment_nhm
     # Convert to list for fastest access to array
-    # tosegment = nhm_params.get('tosegment_nhm').tolist()
     nhm_seg = pdb.get('nhm_seg').tolist()
 
     if args.verbose:
@@ -345,11 +342,6 @@ def main():
 
     for pp in params:
         src_param = pdb.get(pp)
-
-        # if args.verbose:
-        #     sys.stdout.write('\r                                       ')
-        #     sys.stdout.write(f'\rProcessing {src_param.name} ')
-        #     sys.stdout.flush()
 
         new_ps.add(name=pp)
         cnew_param = new_ps.get(pp)
