@@ -3,7 +3,7 @@
 import os
 import subprocess
 
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 # Modified version of function from numpy setup.py
 # http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
