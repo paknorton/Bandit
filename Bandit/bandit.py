@@ -16,9 +16,6 @@ from typing import List
 from rich.console import Console
 from rich import pretty
 
-import Bandit.bandit_cfg as bc
-import Bandit.dynamic_parameters as dyn_params
-import Bandit.prms_nwis as prms_nwis
 
 from Bandit import __version__
 from Bandit.bandit_helpers import (parse_gages, set_date, subset_stream_network, get_hru_and_seg_subset_maps,
@@ -26,6 +23,9 @@ from Bandit.bandit_helpers import (parse_gages, set_date, subset_stream_network,
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI
+import Bandit.bandit_cfg as bc
+import Bandit.dynamic_parameters as dyn_params
+import Bandit.prms_nwis as prms_nwis
 
 from pyPRMS.constants import HRU_DIMS
 from pyPRMS.metadata.metadata import MetaData
@@ -51,8 +51,9 @@ con = Console()
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 # Setup the logging
-bandit_log = logging.getLogger('bandit')
-bandit_log.setLevel(logging.DEBUG)
+bandit_log = logging.getLogger(__name__)
+root = logging.getLogger()
+root.setLevel(logging.INFO)
 
 log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
 
@@ -61,6 +62,12 @@ clog = logging.StreamHandler()
 clog.setLevel(logging.ERROR)
 clog.setFormatter(log_fmt)
 
+# Handler for logging to file
+flog = logging.FileHandler(f'{os.getcwd()}/bandit.log')
+flog.setLevel(logging.INFO)
+flog.setFormatter(log_fmt)
+
+root.addHandler(flog)
 bandit_log.addHandler(clog)
 
 
@@ -108,13 +115,6 @@ def main():
         else:
             print(f'ERROR: Invalid jobs directory: {args.job}')
             exit(-1)
-
-    # Handler for logging to file
-    flog = logging.FileHandler(f'{os.getcwd()}/bandit.log')
-    flog.setLevel(logging.DEBUG)
-    flog.setFormatter(log_fmt)
-
-    bandit_log.addHandler(flog)
 
     bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
 

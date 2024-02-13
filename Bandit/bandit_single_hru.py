@@ -41,8 +41,9 @@ con = Console()
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 # Setup the logging
-bandit_log = logging.getLogger('bandit')
-bandit_log.setLevel(logging.DEBUG)
+bandit_log = logging.getLogger(__name__)
+root = logging.getLogger()
+root.setLevel(logging.INFO)
 
 log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
 
@@ -56,7 +57,7 @@ clog = logging.StreamHandler()
 clog.setLevel(logging.ERROR)
 clog.setFormatter(log_fmt)
 
-bandit_log.addHandler(flog)
+root.addHandler(flog)
 bandit_log.addHandler(clog)
 
 

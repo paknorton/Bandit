@@ -21,6 +21,16 @@ import time
 
 from Bandit.bandit_helpers import set_date
 
+# from rich.console import Console
+# from rich import pretty
+# from rich.padding import Padding
+# from rich.progress import Progress
+#
+# pretty.install()
+# con = Console()
+
+logger = logging.getLogger(__name__)
+# nwis_log.setLevel(logging.DEBUG)
 
 class NWISErrorParser(HTMLParser):
     """Simple error message parser for NWIS
@@ -86,9 +96,6 @@ class NWISErrorParser(HTMLParser):
 BASE_NWIS_URL = 'https://waterservices.usgs.gov/nwis'
 RETRIES = 3
 
-nwis_logger = logging.getLogger('bandit.NWIS')
-
-
 class NWIS:
     """Class for accessing and manipulating streamflow information from the
     National Water Information System (NWIS; https://waterdata.usgs.gov/) provided by the
@@ -110,8 +117,9 @@ class NWIS:
         :param verbose: output additional debugging information
         """
 
-        self.logger = logging.getLogger('bandit.NWIS')
-        self.logger.info('NWIS instance')
+        # self.logger = logging.getLogger('bandit.NWIS')
+        # self.logger = logging.getLogger(__name__)
+        logger.info('NWIS instance')
 
         self.__stdate = None
         self.__endate = None
@@ -212,8 +220,8 @@ class NWIS:
         if pat_count > 0:
             pat_first_date = data[data[col_id].str.contains(pat)].index[0].strftime('%Y-%m-%d')
 
-            self.logger.warning(f'{col_id} has {pat_count} records marked {pat}. ' +
-                                f'First occurrence at {pat_first_date}. Suffix removed from values')
+            logger.warning(f'{col_id} has {pat_count} records marked {pat}. ' +
+                           f'First occurrence at {pat_first_date}. Suffix removed from values')
             data[col_id].replace(pat, '', regex=True, inplace=True)
 
     def initialize_dataframe(self):
@@ -259,7 +267,7 @@ class NWIS:
 
         if not self.__gageids:
             # If no streamgages are provided then create a single dummy column filled with noData
-            self.logger.warning('No streamgages provided - dummy entry created.')
+            logger.warning('No streamgages provided - dummy entry created.')
             df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
             df.index.name = 'date'
 
@@ -289,23 +297,23 @@ class NWIS:
                     if err.code == 400:
                         err_parser = NWISErrorParser()
                         err_parser.feed(str(err.read().decode("utf8", 'ignore')))
-                        self.logger.warning(f'HTTPError: {err.code}, Site: {gg}, {err_parser.error_info["message"]}')
+                        logger.warning(f'HTTPError: {err.code}, Site: {gg}, {err_parser.error_info["message"]}')
 
                         break
                     else:
                         attempts += 1
-                        self.logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
+                        logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
                         # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
                 except URLError as err:
                     attempts += 1
-                    self.logger.warning(f'URLError: {err}, reason={err.reason}; try {attempts} of {RETRIES}')
+                    logger.warning(f'URLError: {err}, reason={err.reason}; try {attempts} of {RETRIES}')
                 except ConnectionResetError as err:
                     attempts += 1
-                    self.logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
+                    logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
                     time.sleep(10)
                 except socket.timeout as err:
                     attempts += 1
-                    self.logger.warning(f'socket.timeout: {err}; try {attempts} of {RETRIES}')
+                    logger.warning(f'socket.timeout: {err}; try {attempts} of {RETRIES}')
 
             if streamgage_obs_page is None:
                 # Create a dummy dataframe
@@ -314,7 +322,7 @@ class NWIS:
             elif streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
-                self.logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
+                logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
                                     ' to ' + self.__endate.strftime('%Y-%m-%d'))
 
                 df = pd.DataFrame(index=self.__date_range, columns=[gg])
@@ -347,7 +355,7 @@ class NWIS:
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
-                    self.logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
+                    logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
                     df = pd.DataFrame(index=self.__date_range, columns=[gg])
                     df.index.name = 'date'
 
@@ -364,7 +372,7 @@ class NWIS:
                         # If no flags are present the column should already be float
                         df[gg] = pd.to_numeric(df[gg], errors='raise', downcast='float')
                     except ValueError:
-                        self.logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
+                        logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
                         df[gg] = pd.to_numeric(df[gg], errors='coerce', downcast='float')
 
                     # Check for discontinued gage records

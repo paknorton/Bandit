@@ -10,6 +10,7 @@ from typing import List, Optional, Union
 
 from Bandit.bandit_helpers import set_date
 
+logger = logging.getLogger(__name__)
 
 class POI:
     """Class for accessing point-of-interest observations."""
@@ -28,8 +29,7 @@ class POI:
         :param bool verbose: output additional debuggin information
         """
 
-        self.logger = logging.getLogger('bandit.NWIS')
-        self.logger.info('NWIS instance')
+        logger.info('POI netcdf instance')
 
         self.__src_path = src_path
         self.__stdate = None
@@ -130,7 +130,7 @@ class POI:
             #       'calendar' are lost.
             #       see https://github.com/pydata/xarray/issues/2436
         else:
-            self.logger.warning('No poi_ids were specified.')
+            logger.warning('No poi_ids were specified.')
 
     def get(self, var: str) -> pd.DataFrame:
         """Get a subset of data for a given variable.
