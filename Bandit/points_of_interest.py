@@ -12,14 +12,15 @@ from Bandit.bandit_helpers import set_date
 
 logger = logging.getLogger(__name__)
 
+
 class POI:
     """Class for accessing point-of-interest observations."""
 
-    def __init__(self, src_path: Optional[str]=None,
-                 gage_ids: Optional[List[str]]=None,
-                 st_date: Optional[datetime.datetime]=None,
-                 en_date: Optional[datetime.datetime]=None,
-                 verbose: Optional[bool]=False):
+    def __init__(self, src_path: Optional[str] = None,
+                 gage_ids: Optional[List[str]] = None,
+                 st_date: Optional[datetime.datetime] = None,
+                 en_date: Optional[datetime.datetime] = None,
+                 verbose: Optional[bool] = False):
         """Create the POI object.
 
         :param src_path: path to POI netcdf files
@@ -38,7 +39,7 @@ class POI:
 
         self.start_date = st_date
         self.end_date = en_date
-        self.gage_ids = gage_ids
+        self.gage_ids: Optional[List[str]] = gage_ids
         self.__outdata = None
         self.__date_range = None
         self.__final_outorder = None
@@ -47,7 +48,7 @@ class POI:
         self.read()
 
     @property
-    def data(self) -> xr.Dataset:
+    def data(self) -> Optional[xr.Dataset]:
         """Returns the source netcdf dataset.
 
         :returns: source netCDF xarray Dataset
@@ -93,7 +94,7 @@ class POI:
         self.__outdata = None
 
     @property
-    def gage_ids(self) -> List[str]:
+    def gage_ids(self) -> Optional[List[str]]:
         """Get list of streamgage IDs for retrieval.
 
         :returns: list of streamgage IDs
