@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 from collections import OrderedDict
-from datetime import datetime
+# from datetime import datetime
 from html.parser import HTMLParser
 from io import StringIO
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 # from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -35,15 +35,15 @@ logger = logging.getLogger(__name__)
 class NWISErrorParser(HTMLParser):
     """Simple error message parser for NWIS
     """
-    inBody = False
-    inPara = False
-    inBold = False
-    lsStartTags = list()
-    lsEndTags = list()
-    lsStartEndTags = list()
-    lsComments = list()
+    inBody: bool = False
+    inPara: bool = False
+    inBold: bool = False
+    lsStartTags: List = list()
+    lsEndTags: List = list()
+    lsStartEndTags: List = list()
+    lsComments: List = list()
     curr_key = None
-    error_info = {}
+    error_info: Dict = {}
 
     # HTML Parser Methods
     def handle_starttag(self, start_tag: str, attrs: str):
@@ -95,6 +95,7 @@ class NWISErrorParser(HTMLParser):
 # URLs can be generated/tested at: http://waterservices.usgs.gov/rest/Site-Test-Tool.html
 BASE_NWIS_URL = 'https://waterservices.usgs.gov/nwis'
 RETRIES = 3
+
 
 class NWIS:
     """Class for accessing and manipulating streamflow information from the
@@ -228,9 +229,9 @@ class NWIS:
         """Clears downloaded data and initializes the output dataframe.
         """
         if not self.__endate:
-            self.__endate = datetime.today()
+            self.__endate = datetime.datetime.today()
         if not self.__stdate:
-            self.__stdate = datetime(1890, 1, 1)
+            self.__stdate = datetime.datetime(1890, 1, 1)
 
         # Create an initial dataframe that contains all dates in the date range.
         # Any streamgage missing date(s) will have a NaN value for each missing date.
