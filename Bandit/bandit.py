@@ -16,7 +16,6 @@ from typing import List
 from rich.console import Console
 from rich import pretty
 
-
 from Bandit import __version__
 from Bandit.bandit_helpers import (parse_gages, set_date, subset_stream_network, get_hru_and_seg_subset_maps,
                                    get_output_order, get_poi_subset, resize_dims)
@@ -194,7 +193,7 @@ def main():
     pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=args.verbose)
     pdb.control = ctl
 
-    # Add defaults for parameters that are missing but required for the select modules
+    # Add defaults for parameters that are missing but required for the selected modules
     pdb.add_missing_parameters()
 
     if not args.no_filter_params:
@@ -274,8 +273,10 @@ def main():
 
     if set(hru_to_seg.values()) == set(hru_noroute):
         # This occurs when there are no ROUTED HRUs for any of the stream segments
+        # An exit code of 200 prevents bandit_by_streamgage and bandit_multi_locations
+        # from ending all remaining extractions
         bandit_log.error('No HRUs associated with any of the segments; exiting.')
-        exit(2)
+        exit(200)
 
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
