@@ -11,6 +11,7 @@ import sys
 import time
 
 from collections import OrderedDict
+from dask.distributed import Client
 from typing import List
 
 from rich.console import Console
@@ -185,6 +186,11 @@ def main():
     bandit_log.info(f'Using parameter database from: {git_repo(paramdb_dir)}')
     bandit_log.info(f'Repo branch: {git_branch(paramdb_dir)}')
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
+
+    # client = Client(threads_per_worker=1)
+    client = Client()
+    dash_link = client.dashboard_link
+    print(f'Dask dashboard: {dash_link}')
 
     # Load the NHMparamdb
     if args.verbose:
@@ -432,6 +438,9 @@ def main():
 
         # Read the CBH source file
         if os.path.splitext(config.cbh_dir)[1] == '.nc':
+            cbh_hdl = CbhNetcdf(src_path=config.cbh_dir, st_date=st_date, en_date=en_date,
+                                nhm_hrus=hru_order_subset)
+        elif os.path.splitext(config.cbh_dir)[1] == '.json':
             cbh_hdl = CbhNetcdf(src_path=config.cbh_dir, st_date=st_date, en_date=en_date,
                                 nhm_hrus=hru_order_subset)
         else:
