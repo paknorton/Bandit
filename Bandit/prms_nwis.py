@@ -343,8 +343,12 @@ class NWIS:
 
                 # Read the rdb file into a dataframe
                 # TODO: Handle empty datasets from NWIS by creating dummy data and providing a warning
-                df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
-                                 parse_dates={'date': ['datetime']}, index_col='date')
+                df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols)
+                df['date'] = pd.to_datetime(df['datetime'])
+                df.set_index('date', inplace=True)
+                df.drop(['datetime'], axis=1, inplace=True)
+                # df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
+                #                  parse_dates={'date': ['datetime']}, index_col='date')
 
                 # Conveniently the columns we want to drop contain '_cd' in their names
                 drop_cols = [col for col in df.columns if '_cd' in col]
