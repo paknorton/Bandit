@@ -443,6 +443,9 @@ def main():
         elif os.path.splitext(config.cbh_dir)[1] == '.json':
             cbh_hdl = CbhNetcdf(src_path=config.cbh_dir, st_date=st_date, en_date=en_date,
                                 nhm_hrus=hru_order_subset)
+        elif os.path.splitext(config.cbh_dir)[1] == '.zarr':
+            cbh_hdl = CbhNetcdf(src_path=config.cbh_dir, st_date=st_date, en_date=en_date,
+                                nhm_hrus=hru_order_subset)
         else:
             raise ValueError('Missing netcdf CBH files')
 
