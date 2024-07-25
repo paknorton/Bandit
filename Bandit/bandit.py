@@ -188,7 +188,7 @@ def main():
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
 
     # client = Client(threads_per_worker=1)
-    client = Client()
+    client = Client(threads_per_worker=1)
     dash_link = client.dashboard_link
     print(f'Dask dashboard: {dash_link}')
 
