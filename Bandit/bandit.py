@@ -200,6 +200,8 @@ def main():
     pdb.control = ctl
 
     # Add defaults for parameters that are missing but required for the selected modules
+    # WARNING: 20240726 PAN - if hru_segment_nhm is missing from the paramdb no warning is issued,
+    #                         and the wrong number of HRUs will likely be output for the extraction.
     pdb.add_missing_parameters()
 
     if not args.no_filter_params:
@@ -621,11 +623,18 @@ def main():
                     local_ids = new_ps.get_dataframe('nhm_id').reset_index()
                     bb = bb.merge(local_ids, on='nhm_id')
 
+                    domain_layer = bb.dissolve(aggfunc={'nhm_id': 'count'})
+                    domain_layer.rename(columns={'nhm_id': 'num_hrus'}, inplace=True)
+
                     if config.gis["dst_extension"] == 'gpkg':
                         bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                        domain_layer.to_file(geo_outfile, layer='domain', driver='GPKG')
                     else:
                         geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
                         bb.to_file(geo_outfile)
+
+                        domain_outfile = f'{gis_dir}/model_domain.{config.gis["dst_extension"]}'
+                        domain_layer.to_file(domain_outfile)
                 elif vv['type'] == 'nsegment':
                     geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
                                                   columns=vv['include_fields'], force_2d=True,
