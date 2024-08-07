@@ -199,6 +199,12 @@ def main():
     pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=args.verbose)
     pdb.control = ctl
 
+    if pdb.dimensions.exists('npoigages') and not pdb.dimensions.exists('nobs'):
+        # If we have poi gages and nobs is missing then add it
+        if args.verbose:
+            con.print('[gold3]Added missing nobs dimension[/]')
+        pdb.dimensions.add('nobs', size=pdb.dimensions.get('npoigages').size)
+
     # Add defaults for parameters that are missing but required for the selected modules
     # WARNING: 20240726 PAN - if hru_segment_nhm is missing from the paramdb no warning is issued,
     #                         and the wrong number of HRUs will likely be output for the extraction.
