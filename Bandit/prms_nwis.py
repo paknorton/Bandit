@@ -19,6 +19,14 @@ import socket
 import sys
 import time
 
+from rich.console import Console
+from rich import pretty
+from rich.progress import track
+from rich.table import Table
+
+pretty.install()
+con = Console()
+
 from Bandit.bandit_helpers import set_date
 
 # from rich.console import Console
@@ -251,6 +259,11 @@ class NWIS:
         if not self.__outdata:
             self.initialize_dataframe()
 
+        table = Table(title="NWIS Streamgage Observations")
+
+        table.add_column("Site", style="cyan")
+        table.add_column("Message", style="magenta")
+
         # Set timeout in seconds - if not set defaults to infinite time for response
         timeout = 30
         socket.setdefaulttimeout(timeout)
@@ -268,6 +281,7 @@ class NWIS:
 
         if not self.__gageids:
             # If no streamgages are provided then create a single dummy column filled with noData
+            table.add_row('', 'No streamgages provided - dummy entry created.')
             logger.warning('No streamgages provided - dummy entry created.')
             df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
             df.index.name = 'date'
@@ -276,10 +290,11 @@ class NWIS:
             self.__final_outorder.append('00000000')
 
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
-        for gidx, gg in enumerate(self.__gageids):
-            if self.__verbose:
-                sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
-                sys.stdout.flush()
+        for gg in track(self.__gageids, description='Downloading streamflow data'):
+        # for gidx, gg in enumerate(self.__gageids):
+        #     if self.__verbose:
+        #         sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
+        #         sys.stdout.flush()
 
             url_pieces['sites'] = gg
             url_final = '&'.join([f'{kk}={vv}' for kk, vv in url_pieces.items()])
@@ -323,8 +338,9 @@ class NWIS:
             elif streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
+                table.add_row(gg, f'No data available for {self.__stdate.strftime("%Y-%m-%d")} to {self.__endate.strftime("%Y-%m-%d")}')
                 logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
-                                    ' to ' + self.__endate.strftime('%Y-%m-%d'))
+                               ' to ' + self.__endate.strftime('%Y-%m-%d'))
 
                 df = pd.DataFrame(index=self.__date_range, columns=[gg])
                 df.index.name = 'date'
@@ -360,6 +376,7 @@ class NWIS:
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
+                    table.add_row(gg, 'More than one Q-col returned; empty dataset used.')
                     logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
                     df = pd.DataFrame(index=self.__date_range, columns=[gg])
                     df.index.name = 'date'
@@ -377,6 +394,7 @@ class NWIS:
                         # If no flags are present the column should already be float
                         df[gg] = pd.to_numeric(df[gg], errors='raise', downcast='float')
                     except ValueError:
+                        table.add_row(gg, 'One or more flagged values; flagged values converted to NaN.')
                         logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
                         df[gg] = pd.to_numeric(df[gg], errors='coerce', downcast='float')
 
@@ -413,7 +431,9 @@ class NWIS:
 
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append(gg)
-            sys.stdout.write('\r                                       \r')
+            # sys.stdout.write('\r                                       \r')
+        if table.rows:
+            con.print(table)
 
     def write_ascii(self, filename: str):
         """Write streamgage observations to a file in PRMS format.
