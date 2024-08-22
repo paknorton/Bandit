@@ -629,7 +629,11 @@ def main():
                     local_ids = new_ps.get_dataframe('nhm_id').reset_index()
                     bb = bb.merge(local_ids, on='nhm_id')
 
-                    domain_layer = bb.dissolve(aggfunc={'nhm_id': 'count'})
+                    # Buffer the HRUs to make them visible to reduce/remove artifacts
+                    # in the dissolved layer caused by tiny gaps between HRUs
+                    bb2 = bb.copy()
+                    # bb2['geometry'] = bb2['geometry'].buffer(0.0002)
+                    domain_layer = bb2.dissolve(aggfunc={'nhm_id': 'count'})
                     domain_layer.rename(columns={'nhm_id': 'num_hrus'}, inplace=True)
 
                     if config.gis["dst_extension"] == 'gpkg':
