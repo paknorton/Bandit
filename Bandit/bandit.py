@@ -12,6 +12,7 @@ import time
 
 from collections import OrderedDict
 from dask.distributed import Client
+from packaging.version import Version
 from typing import List
 
 from rich.console import Console
@@ -22,17 +23,17 @@ from Bandit.bandit_helpers import (parse_gages, set_date, subset_stream_network,
                                    get_output_order, get_poi_subset, resize_dims)
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
-from Bandit.points_of_interest import POI
-import Bandit.bandit_cfg as bc
+from Bandit.points_of_interest import POI   # type: ignore
+import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
-import Bandit.prms_nwis as prms_nwis
+import Bandit.prms_nwis as prms_nwis   # type: ignore
 
-from pyPRMS.constants import HRU_DIMS
-from pyPRMS.metadata.metadata import MetaData
-from pyPRMS import CbhNetcdf
-from pyPRMS import ControlFile
-from pyPRMS import ParamDb
-from pyPRMS import Parameters
+from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
+from pyPRMS.metadata.metadata import MetaData   # type: ignore
+from pyPRMS import CbhNetcdf   # type: ignore
+from pyPRMS import ControlFile   # type: ignore
+from pyPRMS import ParamDb   # type: ignore
+from pyPRMS import Parameters   # type: ignore
 
 import pyogrio as pyg  # type: ignore
 import warnings
@@ -51,7 +52,7 @@ con = Console()
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
 # Setup the logging
-bandit_log = logging.getLogger(__name__)
+bandit_log = logging.getLogger('bandit')
 root = logging.getLogger()
 root.setLevel(logging.INFO)
 
@@ -102,8 +103,10 @@ def main():
     parser.add_argument('--hru_gis_layer', help='Name of geodatabase layer containing HRUs', nargs='?', type=str)
     parser.add_argument('--seg_gis_layer', help='Name of geodatabase layer containing Segments', nargs='?', type=str)
     parser.add_argument('--prms_version', help='Write PRMS version 5 or 6 parameter file', nargs='?',
-                        default=5, type=int)
+                        default=str(PRMS_VERSION), type=str)
     args = parser.parse_args()
+
+    prms_version = Version(args.prms_version)
 
     stdir = os.getcwd()
 
@@ -150,16 +153,16 @@ def main():
     # List of additional HRUs (have no route to segment within subset)
     hru_noroute = config.hru_noroute
 
-    if args.prms_version == 6:
-        args.cbh_netcdf = True
-        args.param_netcdf = True
-        args.streamflow_netcdf = True
+    # if args.prms_version == 6:
+    #     args.cbh_netcdf = True
+    #     args.param_netcdf = True
+    #     args.streamflow_netcdf = True
 
     # Load PRMS metadata
-    prms_meta = MetaData(verbose=False).metadata
+    prms_meta = MetaData(version=prms_version, verbose=False).metadata
 
     # Load the control file
-    ctl = ControlFile(config.control_filename, metadata=prms_meta, version=args.prms_version)
+    ctl = ControlFile(config.control_filename, metadata=prms_meta)
 
     if ctl.has_dynamic_parameters:
         if config.dyn_params_dir:
@@ -188,7 +191,7 @@ def main():
     bandit_log.info(f'Repo commit: {nhmparamdb_revision}')
 
     # client = Client(threads_per_worker=1)
-    client = Client(threads_per_worker=1)
+    client = Client()
     dash_link = client.dashboard_link
     print(f'Dask dashboard: {dash_link}')
 
@@ -415,7 +418,10 @@ def main():
         cnew_param.data = outdata
 
     # Write the new parameter file
-    header = [f'Written by Bandit version {__version__}',
+    if args.verbose:
+        con.print(f'[green4]INFO[/]: Writing parameter file for PRMS {prms_version}')
+
+    header = [f'Written by Bandit version {__version__} for PRMS {prms_version}',
               f'ParamDb revision: {git_url}']
     if args.param_netcdf:
         # TODO: 2023-11-13 PAN - add version info and prms version as global attributes
@@ -423,9 +429,7 @@ def main():
         param_filename = f'{base_filename}.nc'
         new_ps.write_parameter_netcdf(f'{outdir}/{param_filename}')
     else:
-        if args.verbose:
-            con.print(f'\nWriting version {args.prms_version} parameter file', style='green4')
-        new_ps.write_parameter_file(f'{outdir}/{param_filename}', header=header, prms_version=args.prms_version)
+        new_ps.write_parameter_file(f'{outdir}/{param_filename}', header=header)
 
     ctl.get('param_file').values = param_filename
 
