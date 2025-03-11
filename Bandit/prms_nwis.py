@@ -290,12 +290,11 @@ class NWIS:
             self.__final_outorder.append('00000000')
 
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
-        for gg in track(self.__gageids, description='Downloading streamflow data'):
         # for gidx, gg in enumerate(self.__gageids):
         #     if self.__verbose:
         #         sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
         #         sys.stdout.flush()
-
+        for gg in track(self.__gageids, description='Downloading streamflow data'):
             url_pieces['sites'] = gg
             url_final = '&'.join([f'{kk}={vv}' for kk, vv in url_pieces.items()])
 
@@ -457,7 +456,7 @@ class NWIS:
             print(self.__outdata.head())
             print(self.__outdata.info())
 
-        outhdl = open(filename, 'w')
+        outhdl = open(filename, 'w', newline='')
         outhdl.write('Created by Bandit\n')
         outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
         outhdl.write('// Station IDs for runoff:\n')
