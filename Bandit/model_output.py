@@ -1,37 +1,35 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
-import datetime
+import numpy as np
 import pandas as pd   # type: ignore
 import xarray as xr
 
+from pathlib import Path
+
 
 class ModelOutput(object):
-    def __init__(self, filename: str,
-                 varname: str,
-                 startdate: Optional[datetime.datetime]=None,
-                 enddate: Optional[datetime.datetime]=None,
-                 nhm_hrus: Optional[List[int]]=None,
-                 nhm_segs: Optional[List[int]]=None):
+    def __init__(self, filename: Union[str, Path, List[Union[str, Path]]]):
         """Initialize the model output object.
 
-        :param filename: Name of model output netCDF file
-        :param varname: Name of variable to extract
-        :param startdate: Start date for extraction
-        :param enddate: End date for extraction
-        :param nhm_hrus: List of NHM HRUs to extract
-        :param nhm_segs: List of NHM segments to extract"""
+        :param filename: Name of model output kerchunk JSON or netCDF file
+        """
+
+        if isinstance(filename, str):
+            filename = Path(filename)
+
         self.__filename = filename
-        self.__varname = varname
-        self.__stdate = startdate
-        self.__endate = enddate
-        self.__nhm_hrus = nhm_hrus
-        self.__nhm_segs = nhm_segs
+
+        # map local coordinate dimensions to global dimension variables
+        self.__coord_dims = dict(nhru='nhm_id', nsegment='nhm_seg')
         self.__data = None
 
-        self.read_netcdf()
+        self.__data = xr.open_mfdataset(self.__filename, chunks={}, coords="none", data_vars="minimal",
+                                        compat='override', parallel=True)
+        self.__data = self.__data.assign_coords(nhru=self.__data.nhm_id)
+        self.__data = self.__data.assign_coords(nsegment=self.__data.nhm_seg)
 
     @property
-    def data(self) -> pd.DataFrame:
+    def data(self) -> xr.Dataset:
         """Returns the source model output.
 
         :returns: Model output dataframe
@@ -42,74 +40,131 @@ class ModelOutput(object):
     def nearest(items, pivot):
         return min(items, key=lambda x: abs(x - pivot))
 
-    def get_var(self, varname: str) -> pd.DataFrame:
-        """Get the data subset for a given variable.
-
-        :param varname: Name of model output variable
-        :returns: Model output dataframe
-        """
-        data = None
-
-        if self.__stdate is not None and self.__endate is not None:
-            if self.__nhm_hrus:
-                data = self.__data[varname].loc[self.__stdate:self.__endate, self.__nhm_hrus].to_pandas()
-            elif self.__nhm_segs:
-                data = self.__data[varname].loc[self.__stdate:self.__endate, self.__nhm_segs].to_pandas()
-        else:
-            if self.__nhm_hrus:
-                data = self.__data[varname].loc[:, self.__nhm_hrus].to_pandas()
-            elif self.__nhm_segs:
-                data = self.__data[varname].loc[:, self.__nhm_segs].to_pandas()
-
-        return data
-
-    def read_netcdf(self):
-        """Read model output file stored in netCDF format."""
-        if self.__nhm_hrus:
-            self.__data = xr.open_dataset(self.__filename, chunks={})
-            self.__data = self.__data.assign_coords(nhru=self.__data.nhm_id)
-            # try:
-            #     self.__data = xr.open_dataset(self.__filename, chunks={'hru': 1000})
-            # except ValueError:
-            #     self.__data = xr.open_dataset(self.__filename, chunks={'nhru': 1000})
-            #     self.__data = self.__data.assign_coords(nhru=(self.__data.nhm_id))
-        elif self.__nhm_segs:
-            self.__data = xr.open_dataset(self.__filename, decode_coords=True, chunks={})
-            self.__data = self.__data.assign_coords(nsegment=self.__data.nhm_seg)
-            # try:
-            #     print('first')
-            #     self.__data = xr.open_dataset(self.__filename, decode_coords=True, chunks={'segment': 1000})
-            # except ValueError:
-            #     print('second')
-            # self.__data = xr.open_dataset(self.__filename, decode_coords=True, chunks={'nsegment': 1000})
-            # self.__data = self.__data.assign_coords(nsegment=(self.__data.nhm_seg))
-
-    def write_csv(self, pathname: str):
-        """Write model output subset to PRMS CSV file.
+    def write_csv(self, pathname: Union[str, Path],
+                  variables: Optional[Union[str, List[str]]] = None,
+                  time_slice: Optional[Union[list, slice]] = None,
+                  hru_ids: Optional[Union[list, np.ndarray]] = None,
+                  seg_ids: Optional[Union[list, np.ndarray]] = None):
+        """Write model output subset to PRMS CSV file. If more than one variable
+        is selected, a separate CSV file will be created for each variable.
 
         :param pathname: location to write file to (filename is based on variable)
+        :param variables: list of variables to write (list of variables will write one variable per file)
+        :param time_slice: time slice to write (default is all time steps)
+        :param hru_ids: list of NHM HRU IDs to write (default is all HRUs)
+        :param seg_ids: list of NHM segment IDs to write (default is all segments)
         """
-        data = self.get_var(self.__varname)
 
-        if self.__nhm_hrus:
-            data.to_csv(f'{pathname}/{self.__varname}.csv', columns=self.__nhm_hrus,
-                        sep=',', index=True, header=True, chunksize=50)
-        elif self.__nhm_segs:
-            data.to_csv(f'{pathname}/{self.__varname}.csv', columns=self.__nhm_segs,
-                        sep=',', index=True, header=True, chunksize=50)
+        ds = self._select_data(variables=variables,
+                               time_slice=time_slice,
+                               hru_ids=hru_ids,
+                               seg_ids=seg_ids)
 
-    def write_netcdf(self, pathname: str):
+        for cvar in ds.data_vars:
+            if cvar not in self.__coord_dims.values():
+                ds[cvar].to_pandas().to_csv(f'{pathname}/{cvar}.csv',
+                                            sep=',',
+                                            index=True,
+                                            header=True,
+                                            chunksize=50)
+
+    def write_netcdf(self, filename: Union[str, Path],
+                     variables: Optional[Union[str, List[str]]] = None,
+                     time_slice: Optional[Union[list, slice]] = None,
+                     hru_ids: Optional[Union[list, np.ndarray]] = None,
+                     seg_ids: Optional[Union[list, np.ndarray]] = None):
         """Write model output subset to netCDF file.
 
-        :param pathname: location to write file to (filename is based on variable)
+        :param filename: name of netCDF output file
+        :param variables: list of variables to write
+        :param time_slice: time slice to write (default is all time steps)
+        :param hru_ids: list of NHM HRU IDs to write (default is all HRUs)
+        :param seg_ids: list of NHM segment IDs to write (default is all segments)
         """
-        if self.__nhm_hrus:
-            ss = self.__data[self.__varname].loc[self.__stdate:self.__endate, self.__nhm_hrus]
-            ss.to_netcdf(f'{pathname}/{self.__varname}.nc', mode='w', format='NETCDF4',
-                         encoding={'time': {'dtype': 'float32', 'calendar': 'standard', '_FillValue': None},
-                                   'hru': {'_FillValue': None}})
-        elif self.__nhm_segs:
-            ss = self.__data[self.__varname].loc[self.__stdate:self.__endate, self.__nhm_segs]
-            ss.to_netcdf(f'{pathname}/{self.__varname}.nc', mode='w', format='NETCDF4',
-                         encoding={'time': {'dtype': 'float32', 'calendar': 'standard', '_FillValue': None},
-                                   'segment': {'_FillValue': None}})
+
+        ds = self._select_data(variables=variables,
+                               time_slice=time_slice,
+                               hru_ids=hru_ids,
+                               seg_ids=seg_ids)
+
+        # Add local model IDs
+        if 'nhru' in ds.dims:
+            # Change the nhru coordinate variable values to reflect the local model HRU IDs
+            ds = ds.assign_coords(nhru=np.arange(1, ds.nhru.values.size+1, dtype=ds.nhru.dtype))
+            ds['nhru'].attrs['long_name'] = 'Local model Hydrologic Response Unit ID (HRU)'
+            ds['nhru'].attrs['cf_role'] = 'timeseries_id'
+
+        if 'nsegment' in ds.dims:
+            # Change the nsegment coordinate variable values to reflect the local model HRU IDs
+            ds = ds.assign_coords(nsegment=np.arange(1, ds.nsegment.values.size+1, dtype=ds.nsegment.dtype))
+            ds['nsegment'].attrs['long_name'] = 'Local model segment ID'
+            ds['nsegment'].attrs['cf_role'] = 'timeseries_id'
+
+        # Set the encoding required for the output netcdf file
+        encoding = {}
+
+        for cvar in ds.coords:
+            encoding[cvar] = dict(_FillValue=None, contiguous=True)
+
+        for cvar in ds.data_vars:
+            if cvar in self.__coord_dims.values():
+                encoding[cvar] = dict(_FillValue=None, contiguous=True)
+            else:
+                encoding[cvar] = dict(_FillValue=ds[cvar].encoding['_FillValue'],
+                                      compression='zlib',
+                                      complevel=2,
+                                      fletcher32=True)
+
+        ds.to_netcdf(filename, engine='netcdf4', format='NETCDF4', encoding=encoding)
+
+    def _select_data(self,
+                     variables: Optional[Union[str, List[str]]] = None,
+                     time_slice: Optional[Union[list, slice]] = None,
+                     hru_ids: Optional[Union[list, np.ndarray]] = None,
+                     seg_ids: Optional[Union[list, np.ndarray]] = None):
+        """Select a subset of the model output data.
+
+        :param variables: list of variables to select (default is all variables)
+        :param time_slice: time slice to select (default is all time steps)
+        :param hru_ids: list of NHM HRU IDs to select (default is all HRUs)
+        :param seg_ids: list of NHM segment IDs to select (default is all segments)
+        """
+
+        if isinstance(variables, str):
+            variables = [variables]
+        if variables is None:
+            # Select all variables
+            variables = list(self.__data.data_vars)
+
+        if time_slice is None:
+            # Return all time steps if time_slice is not provided
+            time_slice = slice(self.__data['time'][0].values,
+                               self.__data['time'][-1].values)
+
+        if isinstance(time_slice, list):
+            time_slice = slice(time_slice[0], time_slice[-1])
+
+        addl_vars = set([self.__coord_dims[self.__data[cvar].dims[-1]] for cvar in variables])
+        # print(f'addl_vars: {addl_vars}')
+
+        for cvar in addl_vars:
+            # Add the national IDs
+            variables.append(cvar)
+
+        # What dimensions are we using?
+        used_dims = [kk for kk, vv in self.__coord_dims.items() if vv in addl_vars]
+
+        # Remove dimensions not needed for the selected variables
+        rem_dims = [kk for kk, vv in self.__coord_dims.items() if vv not in addl_vars]
+        # print(f'rem_dims: {rem_dims}')
+
+        ds = self.__data.drop_dims(rem_dims)
+
+        sel_criteria = dict(time=time_slice)
+        if 'nhru' in used_dims and hru_ids is not None:
+            sel_criteria['nhru'] = hru_ids
+        if 'nsegment' in used_dims and seg_ids is not None:
+            sel_criteria['nsegment'] = seg_ids
+        # print(f'sel_criteria: {sel_criteria}')
+
+        return ds[variables].sel(sel_criteria)
