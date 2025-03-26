@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 import sys
 import xarray as xr
 
+from pathlib import Path
 from typing import List, Optional, Union
 
 from Bandit.bandit_helpers import set_date
@@ -153,7 +154,7 @@ class POI:
             data = self.__outdata[var].loc[self.__gageids].to_pandas()
         return data
 
-    def write_ascii(self, filename: str):
+    def write_ascii(self, filename: Union[str, Path]):
         """Writes POI observations to a file in PRMS format.
 
         :param filename: name of the file to create
@@ -206,7 +207,7 @@ class POI:
             sys.stdout.write(f'\r\tStreamflow data written to: {filename}\n')
             sys.stdout.flush()
 
-    def write_netcdf(self, filename: str):
+    def write_netcdf(self, filename: Union[str, Path]):
         """Write POI streamflow to netcdf format file.
 
         :param filename: name of the netCDF file to create
