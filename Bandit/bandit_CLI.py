@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import datetime
-import errno
+# import errno
 import logging
 import networkx as nx   # type: ignore
 import numpy as np
@@ -9,7 +9,6 @@ import os
 import sys
 import time
 
-# from collections import OrderedDict
 from cyclopts import App, Parameter, validators
 from dask.distributed import Client
 from packaging.version import Version
@@ -32,7 +31,6 @@ import Bandit.prms_nwis as prms_nwis   # type: ignore
 from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
 from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS import Cbh   # type: ignore
-# from pyPRMS import CbhNetcdf   # type: ignore
 from pyPRMS import ControlFile   # type: ignore
 from pyPRMS import ParamDb   # type: ignore
 from pyPRMS import Parameters   # type: ignore
@@ -78,9 +76,10 @@ app = App(default_parameter=Parameter(negative=()))
 
 @app.default
 def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exists=True))] = Path('bandit.cfg'),
-            job_dir: Optional[str] = None,
+            job_dir: Union[str, Path] = None,
             verbose: bool = False,
             cbh_netcdf: bool = False,
+            model_output_netcdf: bool = False,
             param_netcdf: bool = False,
             streamflow_netcdf: bool = False,
             no_filter_params: bool = False,
@@ -93,6 +92,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     :param job_dir: Name of job directory to work in
     :param verbose: Output additional debugging information
     :param cbh_netcdf: Output CBH forcings in netCDF format
+    :param model_output_netcdf: Output model output variables in netCDF format
     :param param_netcdf: Output parameter file in netCDF format
     :param streamflow_netcdf: Output streamflow observations in netCDF format
     :param no_filter_params: Output all parameters regardless of the control file options
@@ -109,13 +109,15 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     stdir = os.getcwd()
 
-    if job_dir:
-        if os.path.exists(job_dir):
+    if job_dir is not None:
+        if isinstance(job_dir, str):
+            job_dir = Path(job_dir)
+
+        if job_dir.is_dir():
             # Change into job directory before running extraction
             os.chdir(job_dir)
-            # print('Working in directory: {}'.format(args.job))
         else:
-            print(f'ERROR: Invalid jobs directory: {job_dir}')
+            print(f'ERROR: Invalid jobs directory: {str(job_dir)}')
             exit(-1)
 
     bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
@@ -129,9 +131,10 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     config = bc.Cfg(config_file)
 
-    outdir = config.output_dir   # Where to output the subset
-    param_filename = config.param_filename   # Name of the output parameter file
-    paramdb_dir = config.paramdb_dir   # Location of the NHM parameter database
+    outdir = Path(config.output_dir)   # Where to output the subset
+    param_filename = Path(config.param_filename)   # Name of the output parameter file
+    paramdb_dir = Path(config.paramdb_dir)   # Location of the NHM parameter database
+    cbh_dir = Path(config.cbh_dir)
     dsmost_seg = config.outlets   # List of outlets
     uscutoff_seg = config.cutoffs   # List of upstream cutoffs
     hru_noroute = config.hru_noroute   # List of additional HRUs (have no route to segment within subset)
@@ -142,20 +145,11 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     #     streamflow_netcdf = True
 
     # Load PRMS metadata
-    prms_meta = MetaData(version=prms_version, verbose=False).metadata
+    con.print(f'[green4]INFO[/]: Loading PRMS metadata for version {prms_version}')
+    prms_meta = MetaData(version=prms_version, verbose=verbose).metadata
 
     # Load the control file
-    ctl = ControlFile(config.control_filename, metadata=prms_meta)
-
-    if ctl.has_dynamic_parameters:
-        if config.dyn_params_dir:
-            if not os.path.exists(config.dyn_params_dir):
-                bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
-                exit(2)
-        else:
-            bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified ' +
-                             'in the config file')
-            exit(2)
+    ctl = ControlFile(config.control_filename, metadata=prms_meta, verbose=verbose)
 
     # Date range for pulling NWIS streamgage observations and CBH data
     st_date = set_date(config.start_date)
@@ -185,7 +179,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         con.print(f'[green4]INFO[/]: Branch: {git_branch(paramdb_dir)}')
         con.print(f'[green4]INFO[/]: Commit: {nhmparamdb_revision}')
 
-    pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=False)
+    pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=verbose)
     pdb.control = ctl
 
     if pdb.dimensions.exists('npoigages') and not pdb.dimensions.exists('nobs'):
@@ -203,11 +197,14 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         # Reduce the parameters to those required by the selected modules
         pdb.remove(pdb.unneeded_parameters)
 
+    if not pdb.exists('poi_gage_segment'):
+        con.print('[gold3]WARNING[/]: Missing POI-related parameters. To include POIs, set csvON_OFF > 0 in the control file')
+
     # Default the various *ON_OFF variables to 0 (off)
     # The original values are needed to reduce parameters by module,
     # but it's best to disable them in the final control file since
     # no output variables are defined for them.
-    disable_vars = ['basinOutON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
+    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
                     'nsegmentOutON_OFF', 'nsubOutON_OFF']
     for vv in disable_vars:
         ctl.get(vv).values = 0
@@ -257,6 +254,8 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     new_nhm_seg = [ee[0] for ee in dag_ds_subset.edges]
     con.print(f'[green4]INFO[/]: Number of stream segments in model subset: {len(new_nhm_seg)}')
     bandit_log.info(f'Number of segments in model subset: {len(new_nhm_seg)}')
+    if verbose:
+        con.print(f'segments: {new_nhm_seg}')
 
     # Using a dictionary mapping nhm_seg to 1-based index for speed
     new_nhm_seg_to_idx1 = dict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
@@ -295,6 +294,8 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {len(hru_order_subset)}')
     bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
     bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
+    if verbose:
+        con.print(f'HRUs: {hru_order_subset}')
 
     # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
     # hru_order_subset contains the in-order indices for the subset of hru_segments
@@ -317,6 +318,8 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                                                                          new_nhm_seg_to_idx1,
                                                                          seg_to_hru,
                                                                          addl_gages=addl_gages)
+
+    con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {len(new_poi_gage_id)}')
 
     # ==================================================================
     # ==================================================================
@@ -417,13 +420,12 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
               f'ParamDb revision: {git_url}']
     if param_netcdf:
         # TODO: 2023-11-13 PAN - add version info and prms version as global attributes
-        base_filename = os.path.splitext(param_filename)[0]
-        param_filename = f'{base_filename}.nc'
-        new_ps.write_parameter_netcdf(f'{outdir}/{param_filename}')
+        param_filename = Path(f'{param_filename.stem}.nc')
+        new_ps.write_parameter_netcdf(outdir / param_filename)
     else:
-        new_ps.write_parameter_file(f'{outdir}/{param_filename}', header=header)
+        new_ps.write_parameter_file(outdir / param_filename, header=header)
 
-    ctl.get('param_file').values = param_filename
+    ctl.get('param_file').values = str(param_filename)
 
     if verbose:
         sys.stdout.write('\n')
@@ -441,10 +443,10 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             con.print('Processing CBH files', style='green4')
 
         # Read the CBH source file
-        if os.path.splitext(config.cbh_dir)[1] == '.nc':
-            cbh_hdl = Cbh(config.cbh_dir, metadata=prms_meta, engine='netcdf')
-        elif os.path.splitext(config.cbh_dir)[1] == '.zarr':
-            cbh_hdl = Cbh(config.cbh_dir, metadata=prms_meta, engine='zarr')
+        if cbh_dir.suffix == '.nc':
+            cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='netcdf')
+        elif cbh_dir.suffix == '.zarr':
+            cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='zarr')
         else:
             raise ValueError('Missing CBH files')
 
@@ -452,7 +454,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         cbh_hdl.set_nhm_id(pdb.get('nhm_id').data)
 
         if cbh_netcdf:
-            cbh_outfile = f'{outdir}/cbh.nc'
+            cbh_outfile = outdir / 'cbh.nc'
 
             global_attrs = dict(bandit_version=__version__, paramdb_url=git_url)
             cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()),
@@ -461,7 +463,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
             # Set the control file variables for the CBH files
             for cfv in config.cbh_var_map.values():
-                ctl.get(cfv).values = os.path.basename(cbh_outfile)
+                ctl.get(cfv).values = cbh_outfile.name
 
         else:
             for cvar, cfv in config.cbh_var_map.items():
@@ -474,84 +476,82 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write output variables
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # 2019-08-07 PAN: first prototype for extractions of output variables
     if config.include_model_output:
-        # TODO: 2020-03-12 PAN - this is brittle, fix it.
-        # TODO: 2022-06-30 PAN - add option to write netCDF format
-        seg_vars = ['seginc_gwflow', 'seginc_potet', 'seginc_sroff', 'seginc_ssflow',
-                    'seginc_swrad', 'segment_delta_flow', 'seg_gwflow', 'seg_inflow',
-                    'seg_lateral_inflow', 'seg_outflow', 'seg_sroff', 'seg_ssflow',
-                    'seg_upstream_inflow', 'seg_cum_gwflow', 'seg_cum_potet',
-                    'seg_cum_sroff', 'seg_cum_ssflow']
+        src_model_output = Path(config.output_vars_dir)
+        model_output_dir = outdir / 'model_output'
+        model_output_dir.mkdir(exist_ok=True)
 
-        try:
-            os.makedirs(f'{outdir}/model_output')
-            bandit_log.info('Creating directory model_output, for model output variables')
-        except OSError:
-            bandit_log.info('Using existing model_output directory for output variables')
+        model_output_ds = ModelOutput(filename=src_model_output)
 
-        for vv in config.output_vars:
-            if verbose:
-                sys.stdout.write('\r                                                  ')
-                sys.stdout.write(f'\rProcessing output variable: {vv} ')
-                sys.stdout.flush()
-
-            filename = f'{config.output_vars_dir}/{vv}.nc'
-
-            try:
-                if vv in seg_vars:
-                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                          nhm_segs=new_nhm_seg)
-                    mod_out.write_csv(f'{outdir}/model_output')
-                else:
-                    mod_out = ModelOutput(filename=filename, varname=vv, startdate=st_date, enddate=en_date,
-                                          nhm_hrus=hru_order_subset)
-                    mod_out.write_csv(f'{outdir}/model_output')
-            except FileNotFoundError:
-                bandit_log.warning(f'Model output variable, {vv}, does not exist; skipping.')
+        for cvar in config.output_vars:
+            if model_output_netcdf:
+                model_output_ds.write_netcdf(filename=model_output_dir / f'{cvar}.nc',
+                                             variables=cvar,
+                                             time_slice=slice(st_date, en_date),
+                                             hru_ids=hru_order_subset,
+                                             seg_ids=new_nhm_seg)
+            else:
+                model_output_ds.write_csv(pathname=model_output_dir,
+                                          variables=cvar,
+                                          time_slice=slice(st_date, en_date),
+                                          hru_ids=hru_order_subset,
+                                          seg_ids=new_nhm_seg)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write dynamic parameters
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if ctl.has_dynamic_parameters:
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Add dynamic parameters
-        for cparam in ctl.dynamic_parameters:
-            param_name = f'dyn_{cparam}'
-            input_file = f'{config.dyn_params_dir}/{param_name}.nc'
-            output_file = f'{outdir}/{param_name}.param'
+        if config.dyn_params_dir is None:
+            bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified ' +
+                             'in the config file')
+            exit(2)
+        else:
+            dyn_params_dir = Path(config.dyn_params_dir)
 
-            if not os.path.exists(input_file):
-                warn_txt = f'WARNING: CONUS dynamic parameter file: {input_file}, does not exist... skipping'
-                bandit_log.warning(warn_txt)
-            else:
-                if verbose:
-                    print(f'Writing dynamic parameter {cparam}')
+            if not dyn_params_dir.is_dir():
+                bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
+                exit(2)
 
-                mydyn = dyn_params.DynamicParameters(input_file, cparam, st_date, en_date, hru_order_subset)
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Add dynamic parameters
+            for cparam in ctl.dynamic_parameters:
+                param_name = f'dyn_{cparam}'
+                input_file = dyn_params_dir / f'{param_name}.nc'
+                output_file = outdir / f'{param_name}.param'
+                # input_file = f'{config.dyn_params_dir}/{param_name}.nc'
+                # output_file = f'{outdir}/{param_name}.param'
 
-                mydyn.read_netcdf()
-                out_order = [kk for kk in hru_order_subset]
+                if not input_file.is_file():
+                    warn_txt = f'WARNING: CONUS dynamic parameter file: {input_file}, does not exist... skipping'
+                    bandit_log.warning(warn_txt)
+                else:
+                    if verbose:
+                        print(f'Writing dynamic parameter {cparam}')
 
-                for cc in ['day', 'month', 'year']:
-                    out_order.insert(0, cc)
+                    mydyn = dyn_params.DynamicParameters(str(input_file), cparam, st_date, en_date, hru_order_subset)
 
-                header = ' '.join(map(str, out_order))   # type: ignore
+                    mydyn.read_netcdf()
+                    out_order = [kk for kk in hru_order_subset]
 
-                # Output ASCII files
-                out_ascii = open(output_file, 'w')
-                out_ascii.write(f'{cparam}\n')
-                out_ascii.write(f'{header}\n')
-                out_ascii.write('####\n')
-                mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
-                                  sep=' ', index=False, header=False, encoding=None, chunksize=50)
-                out_ascii.close()
+                    for cc in ['day', 'month', 'year']:
+                        out_order.insert(0, cc)
+
+                    header = ' '.join(map(str, out_order))   # type: ignore
+
+                    # Output ASCII files
+                    out_ascii = open(output_file, 'w')
+                    out_ascii.write(f'{cparam}\n')
+                    out_ascii.write(f'{header}\n')
+                    out_ascii.write('####\n')
+                    mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
+                                      sep=' ', index=False, header=False, encoding=None, chunksize=50)
+                    out_ascii.close()
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write control file
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    ctl.write(f'{os.path.basename(config.get_value("control_filename"))}.bandit')
+    ctl.write(str(Path(config.control_filename).with_suffix('.bandit')))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write streamflow
@@ -576,15 +576,17 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                 streamflow.get_daily_streamgage_observations()
 
             if streamflow_netcdf:
-                streamflow.write_netcdf(filename=f'{outdir}/{config.streamflow_filename}.nc')
+                streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
             else:
-                streamflow.write_ascii(filename=f'{outdir}/{config.streamflow_filename}')
+                streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
         else:
+            # TODO: 2025-03-25 PAN - this should write a netcdf file if that option was selected
             if verbose:
                 con.print('[green4]WARNING[/]: No POIs exist in model subset; writing dummy data', style='gold3')
             streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
             streamflow.get_daily_streamgage_observations()
-            streamflow.write_ascii(filename=f'{config.streamflow_filename}')
+            streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
+            # streamflow.write_ascii(filename=f'{config.streamflow_filename}')
             bandit_log.info(f'No POIs exist in model subset; dummy data written.')
 
     # *******************************************
@@ -592,31 +594,28 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     if config.output_shapefiles:
         stime = time.time()
 
+        src_gis = Path(config.gis['src_filename'])
+
         if verbose:
             print('-'*40)
             con.print('Writing shapefiles for model subset', style='green4')
 
-        if len(config.gis) == 0 or not os.path.exists(config.gis['src_filename']):
+        if len(config.gis) == 0 or not src_gis.exists():
             bandit_log.error(f'Source GIS file'
                              f'does not exist. Shapefiles will not be created')
         else:
             # Create GIS subdirectory if it doesn't already exist
-            gis_dir = f'{outdir}/GIS'
-            try:
-                os.makedirs(gis_dir)
-            except OSError as exception:
-                if exception.errno != errno.EEXIST:
-                    raise
-                else:
-                    pass
+            gis_dir = outdir / 'GIS'
+            gis_dir.mkdir(exist_ok=True)
 
-            geo_outfile = f'{gis_dir}/model_layers.{config.gis["dst_extension"]}'
+            dst_gis_type = config.gis["dst_extension"]
+            geo_outfile = gis_dir / f'model_layers.{dst_gis_type}'
 
             for kk, vv in config.gis['layers'].items():
                 vv['include_fields'].extend([vv['key']])
 
                 if vv['type'] == 'nhru':
-                    geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
+                    geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
                                                   columns=vv['include_fields'], force_2d=True,
                                                   where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
                     bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
@@ -631,17 +630,17 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     domain_layer = bb2.dissolve(aggfunc={'nhm_id': 'count'})
                     domain_layer.rename(columns={'nhm_id': 'num_hrus'}, inplace=True)
 
-                    if config.gis["dst_extension"] == 'gpkg':
+                    if dst_gis_type == 'gpkg':
                         bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
                         domain_layer.to_file(geo_outfile, layer='domain', driver='GPKG')
                     else:
-                        geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
+                        geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
                         bb.to_file(geo_outfile)
 
-                        domain_outfile = f'{gis_dir}/model_domain.{config.gis["dst_extension"]}'
+                        domain_outfile = gis_dir / f'model_domain.{dst_gis_type}'
                         domain_layer.to_file(domain_outfile)
                 elif vv['type'] == 'nsegment':
-                    geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
+                    geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
                                                   columns=vv['include_fields'], force_2d=True,
                                                   where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
                     bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
@@ -649,23 +648,23 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     local_ids = new_ps.get_dataframe('nhm_seg').reset_index()
                     bb = bb.merge(local_ids, on='nhm_seg')
 
-                    if config.gis["dst_extension"] == 'gpkg':
+                    if dst_gis_type == 'gpkg':
                         bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
                     else:
-                        geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
+                        geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
                         bb.to_file(geo_outfile)
                 elif vv['type'] == 'npoigages':
                     if len(new_poi_gage_id) > 0:
-                        geo_file = pyg.read_dataframe(config.gis['src_filename'], layer=vv['layer'],
+                        geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
                                                       columns=vv['include_fields'], force_2d=True)
 
                         bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
                         bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
 
-                        if config.gis["dst_extension"] == 'gpkg':
+                        if dst_gis_type == 'gpkg':
                             bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
                         else:
-                            geo_outfile = f'{gis_dir}/model_{vv["type"]}.{config.gis["dst_extension"]}'
+                            geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
                             bb.to_file(geo_outfile)
                     else:
                         bandit_log.info('No POIs in model subset so POI GIS layer not written.')
