@@ -4,6 +4,7 @@ from collections import OrderedDict
 # from datetime import datetime
 from html.parser import HTMLParser
 from io import StringIO
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 # from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
 from urllib.error import HTTPError, URLError
@@ -434,7 +435,7 @@ class NWIS:
         if table.rows:
             con.print(table)
 
-    def write_ascii(self, filename: str):
+    def write_ascii(self, filename: Union[str, Path]):
         """Write streamgage observations to a file in PRMS format.
 
         :param filename: name of the file to create
