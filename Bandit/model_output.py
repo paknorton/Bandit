@@ -110,6 +110,12 @@ class ModelOutput(object):
             if cvar in self.__coord_dims.values():
                 encoding[cvar] = dict(_FillValue=None, contiguous=True)
             else:
+                # Add coordinates attribute to the data variable
+                # For single variable files this allows the data variable to be
+                # opened as an xarray dataarray.
+                ds[cvar].attrs['coordinates'] = f'time {self.__coord_dims[ds[cvar].dims[-1]]}'
+
+                # Set the encoding for the data variable
                 encoding[cvar] = dict(_FillValue=ds[cvar].encoding['_FillValue'],
                                       compression='zlib',
                                       complevel=2,
