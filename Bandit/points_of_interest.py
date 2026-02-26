@@ -6,20 +6,22 @@ import pandas as pd  # type: ignore
 import sys
 import xarray as xr
 
-# from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Union
 
 from Bandit.bandit_helpers import set_date
+
+logger = logging.getLogger(__name__)
 
 
 class POI:
     """Class for accessing point-of-interest observations."""
 
-    def __init__(self, src_path: Optional[str]=None,
-                 gage_ids: Optional[List[str]]=None,
-                 st_date: Optional[datetime.datetime]=None,
-                 en_date: Optional[datetime.datetime]=None,
-                 verbose: Optional[bool]=False):
+    def __init__(self, src_path: Optional[str] = None,
+                 gage_ids: Optional[List[str]] = None,
+                 st_date: Optional[datetime.datetime] = None,
+                 en_date: Optional[datetime.datetime] = None,
+                 verbose: Optional[bool] = False):
         """Create the POI object.
 
         :param src_path: path to POI netcdf files
@@ -29,8 +31,7 @@ class POI:
         :param bool verbose: output additional debuggin information
         """
 
-        self.logger = logging.getLogger('bandit.NWIS')
-        self.logger.info('NWIS instance')
+        logger.info('POI netcdf instance')
 
         self.__src_path = src_path
         self.__stdate = None
@@ -39,7 +40,7 @@ class POI:
 
         self.start_date = st_date
         self.end_date = en_date
-        self.gage_ids = gage_ids
+        self.gage_ids: Optional[List[str]] = gage_ids
         self.__outdata = None
         self.__date_range = None
         self.__final_outorder = None
@@ -48,7 +49,7 @@ class POI:
         self.read()
 
     @property
-    def data(self) -> xr.Dataset:
+    def data(self) -> Optional[xr.Dataset]:
         """Returns the source netcdf dataset.
 
         :returns: source netCDF xarray Dataset
@@ -94,7 +95,7 @@ class POI:
         self.__outdata = None
 
     @property
-    def gage_ids(self) -> List[str]:
+    def gage_ids(self) -> Optional[List[str]]:
         """Get list of streamgage IDs for retrieval.
 
         :returns: list of streamgage IDs
@@ -123,14 +124,15 @@ class POI:
         if self.__gageids:
             # print('\t\tOpen dataset')
             self.__outdata = xr.open_mfdataset(self.__src_path,
-                                               chunks={'poi_id': 1040}, combine='nested',
+                                               chunks={}, combine='nested',
+                                               # chunks={'poi_id': 1040}, combine='nested',
                                                concat_dim='poi_id', decode_cf=True,
                                                engine='netcdf4')
             # NOTE: With a multi-file dataset the time attributes 'units' and
             #       'calendar' are lost.
             #       see https://github.com/pydata/xarray/issues/2436
         else:
-            self.logger.warning('No poi_ids were specified.')
+            logger.warning('No poi_ids were specified.')
 
     def get(self, var: str) -> pd.DataFrame:
         """Get a subset of data for a given variable.
@@ -152,7 +154,7 @@ class POI:
             data = self.__outdata[var].loc[self.__gageids].to_pandas()
         return data
 
-    def write_ascii(self, filename: str):
+    def write_ascii(self, filename: Union[str, Path]):
         """Writes POI observations to a file in PRMS format.
 
         :param filename: name of the file to create
@@ -205,7 +207,7 @@ class POI:
             sys.stdout.write(f'\r\tStreamflow data written to: {filename}\n')
             sys.stdout.flush()
 
-    def write_netcdf(self, filename: str):
+    def write_netcdf(self, filename: Union[str, Path]):
         """Write POI streamflow to netcdf format file.
 
         :param filename: name of the netCDF file to create

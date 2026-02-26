@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from Bandit import bandit_cfg as bc
+from pyPRMS.metadata.metadata import MetaData
 from pyPRMS import ParamDb
 
 from collections import OrderedDict
@@ -10,11 +11,9 @@ import subprocess
 import sys
 import threading
 
-from rich.console import Console
-from rich import pretty
-pretty.install()
+from pyPRMS.base.console import get_console_instance
+con = None
 
-con = Console()
 
 class WorkerThread(threading.Thread):
     """ A worker thread that takes directory names from a queue, finds all
@@ -69,6 +68,9 @@ class WorkerThread(threading.Thread):
 def get_streamgage_segments(filename, poi_id_to_seg):
     """Returns dictionary mapping streamgages to NHM POI segments"""
 
+    global con
+    con = get_console_instance()
+
     with open(filename, 'r') as fhdl:
         streamgages = fhdl.read().splitlines()
 
@@ -84,8 +86,8 @@ def get_streamgage_segments(filename, poi_id_to_seg):
             con.print(f'Streamgage {kk} has poi_gage_segment = 0; skipping', style='dark_orange3')
         elif kk in segs_by_poi:
             con.print(f'Streamgage {kk} has multiple assigned segments in the parameter database; skipping', style='red')
-            print(f'    {kk} -> {segs_by_poi[kk]}')
-            print(f'    {kk} -> {poiseg}')
+            # print(f'    {kk} -> {segs_by_poi[kk]}')
+            # print(f'    {kk} -> {poiseg}')
         else:
             segs_by_poi[kk] = poiseg
 
@@ -96,11 +98,15 @@ def main():
     import argparse
     from distutils.spawn import find_executable
 
+    global con
+    con = get_console_instance()
+
     # Command line arguments
     parser = argparse.ArgumentParser(description='Batch script for Bandit extractions')
 
     parser.add_argument('-s', '--streamgages', help='File containing streamgage POI IDs', default='', type=str)
     parser.add_argument('-p', '--prefix', help='Directory prefix to add')
+    parser.add_argument('-v', '--verbose', help='Output additional information', action='store_true')
 
     args = parser.parse_args()
 
@@ -146,12 +152,15 @@ def main():
             thread.join()
             sys.exit(1)
 
+    # Load PRMS metadata
+    prms_meta = MetaData(verbose=False).metadata
+
     # Get the POI-to-segment mappings from the parameter database
-    pdb = ParamDb(config.paramdb_dir, verify=True)
-    nhm_params = pdb.parameters
+    pdb = ParamDb(config.paramdb_dir, metadata=prms_meta, verbose=args.verbose)
+    # nhm_params = pdb.parameters
 
     # Get dictionary which maps poi_gage_id to poi_gage_segment
-    poi_id_to_seg = nhm_params.poi_to_seg
+    poi_id_to_seg = pdb.poi_to_seg
 
     # Read streamgage file and map IDs to NHM POI segments
     segs_by_poi = get_streamgage_segments(args.streamgages, poi_id_to_seg)
@@ -170,7 +179,8 @@ def main():
                 exit(1)
 
         # Update the outlets and output_dir config variables
-        config.update_value('outlets', vv.item())
+        config.update_value('outlets', vv)
+        # config.update_value('outlets', vv.item())
         config.update_value('output_dir', f'{job_dir}/{cdir}')
 
         config.write(f'{cdir}/bandit.cfg')

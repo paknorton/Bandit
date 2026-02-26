@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 from collections import OrderedDict
-from datetime import datetime
+# from datetime import datetime
 from html.parser import HTMLParser
 from io import StringIO
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 # from typing import Union, Dict, List, OrderedDict as OrderedDictType, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -19,21 +20,39 @@ import socket
 import sys
 import time
 
+from rich.console import Console
+from rich import pretty
+from rich.progress import track
+from rich.table import Table
+
+pretty.install()
+con = Console()
+
 from Bandit.bandit_helpers import set_date
 
+# from rich.console import Console
+# from rich import pretty
+# from rich.padding import Padding
+# from rich.progress import Progress
+#
+# pretty.install()
+# con = Console()
+
+logger = logging.getLogger(__name__)
+# nwis_log.setLevel(logging.DEBUG)
 
 class NWISErrorParser(HTMLParser):
     """Simple error message parser for NWIS
     """
-    inBody = False
-    inPara = False
-    inBold = False
-    lsStartTags = list()
-    lsEndTags = list()
-    lsStartEndTags = list()
-    lsComments = list()
+    inBody: bool = False
+    inPara: bool = False
+    inBold: bool = False
+    lsStartTags: List = list()
+    lsEndTags: List = list()
+    lsStartEndTags: List = list()
+    lsComments: List = list()
     curr_key = None
-    error_info = {}
+    error_info: Dict = {}
 
     # HTML Parser Methods
     def handle_starttag(self, start_tag: str, attrs: str):
@@ -86,8 +105,6 @@ class NWISErrorParser(HTMLParser):
 BASE_NWIS_URL = 'https://waterservices.usgs.gov/nwis'
 RETRIES = 3
 
-nwis_logger = logging.getLogger('bandit.NWIS')
-
 
 class NWIS:
     """Class for accessing and manipulating streamflow information from the
@@ -110,8 +127,9 @@ class NWIS:
         :param verbose: output additional debugging information
         """
 
-        self.logger = logging.getLogger('bandit.NWIS')
-        self.logger.info('NWIS instance')
+        # self.logger = logging.getLogger('bandit.NWIS')
+        # self.logger = logging.getLogger(__name__)
+        logger.info('NWIS instance')
 
         self.__stdate = None
         self.__endate = None
@@ -212,17 +230,17 @@ class NWIS:
         if pat_count > 0:
             pat_first_date = data[data[col_id].str.contains(pat)].index[0].strftime('%Y-%m-%d')
 
-            self.logger.warning(f'{col_id} has {pat_count} records marked {pat}. ' +
-                                f'First occurrence at {pat_first_date}. Suffix removed from values')
+            logger.warning(f'{col_id} has {pat_count} records marked {pat}. ' +
+                           f'First occurrence at {pat_first_date}. Suffix removed from values')
             data[col_id].replace(pat, '', regex=True, inplace=True)
 
     def initialize_dataframe(self):
         """Clears downloaded data and initializes the output dataframe.
         """
         if not self.__endate:
-            self.__endate = datetime.today()
+            self.__endate = datetime.datetime.today()
         if not self.__stdate:
-            self.__stdate = datetime(1890, 1, 1)
+            self.__stdate = datetime.datetime(1890, 1, 1)
 
         # Create an initial dataframe that contains all dates in the date range.
         # Any streamgage missing date(s) will have a NaN value for each missing date.
@@ -242,6 +260,11 @@ class NWIS:
         if not self.__outdata:
             self.initialize_dataframe()
 
+        table = Table(title="NWIS Streamgage Observations")
+
+        table.add_column("Site", style="cyan")
+        table.add_column("Message", style="magenta")
+
         # Set timeout in seconds - if not set defaults to infinite time for response
         timeout = 30
         socket.setdefaulttimeout(timeout)
@@ -259,7 +282,8 @@ class NWIS:
 
         if not self.__gageids:
             # If no streamgages are provided then create a single dummy column filled with noData
-            self.logger.warning('No streamgages provided - dummy entry created.')
+            table.add_row('', 'No streamgages provided - dummy entry created.')
+            logger.warning('No streamgages provided - dummy entry created.')
             df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
             df.index.name = 'date'
 
@@ -267,11 +291,11 @@ class NWIS:
             self.__final_outorder.append('00000000')
 
         # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
-        for gidx, gg in enumerate(self.__gageids):
-            if self.__verbose:
-                sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
-                sys.stdout.flush()
-
+        # for gidx, gg in enumerate(self.__gageids):
+        #     if self.__verbose:
+        #         sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
+        #         sys.stdout.flush()
+        for gg in track(self.__gageids, description='Downloading streamflow data'):
             url_pieces['sites'] = gg
             url_final = '&'.join([f'{kk}={vv}' for kk, vv in url_pieces.items()])
 
@@ -289,23 +313,23 @@ class NWIS:
                     if err.code == 400:
                         err_parser = NWISErrorParser()
                         err_parser.feed(str(err.read().decode("utf8", 'ignore')))
-                        self.logger.warning(f'HTTPError: {err.code}, Site: {gg}, {err_parser.error_info["message"]}')
+                        logger.warning(f'HTTPError: {err.code}, Site: {gg}, {err_parser.error_info["message"]}')
 
                         break
                     else:
                         attempts += 1
-                        self.logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
+                        logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
                         # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
                 except URLError as err:
                     attempts += 1
-                    self.logger.warning(f'URLError: {err}, reason={err.reason}; try {attempts} of {RETRIES}')
+                    logger.warning(f'URLError: {err}, reason={err.reason}; try {attempts} of {RETRIES}')
                 except ConnectionResetError as err:
                     attempts += 1
-                    self.logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
+                    logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
                     time.sleep(10)
                 except socket.timeout as err:
                     attempts += 1
-                    self.logger.warning(f'socket.timeout: {err}; try {attempts} of {RETRIES}')
+                    logger.warning(f'socket.timeout: {err}; try {attempts} of {RETRIES}')
 
             if streamgage_obs_page is None:
                 # Create a dummy dataframe
@@ -314,8 +338,9 @@ class NWIS:
             elif streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
                 # No observations are available for the streamgage
                 # Create a dummy dataset to output
-                self.logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
-                                    ' to ' + self.__endate.strftime('%Y-%m-%d'))
+                table.add_row(gg, f'No data available for {self.__stdate.strftime("%Y-%m-%d")} to {self.__endate.strftime("%Y-%m-%d")}')
+                logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
+                               ' to ' + self.__endate.strftime('%Y-%m-%d'))
 
                 df = pd.DataFrame(index=self.__date_range, columns=[gg])
                 df.index.name = 'date'
@@ -334,8 +359,12 @@ class NWIS:
 
                 # Read the rdb file into a dataframe
                 # TODO: Handle empty datasets from NWIS by creating dummy data and providing a warning
-                df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
-                                 parse_dates={'date': ['datetime']}, index_col='date')
+                df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols)
+                df['date'] = pd.to_datetime(df['datetime'])
+                df.set_index('date', inplace=True)
+                df.drop(['datetime'], axis=1, inplace=True)
+                # df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
+                #                  parse_dates={'date': ['datetime']}, index_col='date')
 
                 # Conveniently the columns we want to drop contain '_cd' in their names
                 drop_cols = [col for col in df.columns if '_cd' in col]
@@ -347,7 +376,8 @@ class NWIS:
                 rename_col = [col for col in df.columns if '_00060_00003' in col]
 
                 if len(rename_col) > 1:
-                    self.logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
+                    table.add_row(gg, 'More than one Q-col returned; empty dataset used.')
+                    logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
                     df = pd.DataFrame(index=self.__date_range, columns=[gg])
                     df.index.name = 'date'
 
@@ -364,7 +394,8 @@ class NWIS:
                         # If no flags are present the column should already be float
                         df[gg] = pd.to_numeric(df[gg], errors='raise', downcast='float')
                     except ValueError:
-                        self.logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
+                        table.add_row(gg, 'One or more flagged values; flagged values converted to NaN.')
+                        logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
                         df[gg] = pd.to_numeric(df[gg], errors='coerce', downcast='float')
 
                     # Check for discontinued gage records
@@ -400,9 +431,11 @@ class NWIS:
 
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append(gg)
-            sys.stdout.write('\r                                       \r')
+            # sys.stdout.write('\r                                       \r')
+        if table.rows:
+            con.print(table)
 
-    def write_ascii(self, filename: str):
+    def write_ascii(self, filename: Union[str, Path]):
         """Write streamgage observations to a file in PRMS format.
 
         :param filename: name of the file to create
@@ -424,7 +457,7 @@ class NWIS:
             print(self.__outdata.head())
             print(self.__outdata.info())
 
-        outhdl = open(filename, 'w')
+        outhdl = open(filename, 'w', newline='')
         outhdl.write('Created by Bandit\n')
         outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
         outhdl.write('// Station IDs for runoff:\n')
@@ -496,6 +529,6 @@ class NWIS:
                                calendar=cal_type)
 
         # Write the streamgage observations
-        varo[:, :] = self.__outdata.to_numpy(dtype=np.float).T
+        varo[:, :] = self.__outdata.to_numpy(dtype=np.float32).T
 
         nco.close()

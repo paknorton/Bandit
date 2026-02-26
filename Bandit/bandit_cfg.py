@@ -6,45 +6,42 @@
 #              YAML is used for the backend
 
 import ruamel.yaml
+from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 
-ConfigElem = Union[int, float, str, List[Any], Dict[Any, Any]]
+# ConfigElem = Union[int, float, str, List[Any], Dict[Any, Any]]
 
-default_values: Dict[str, ConfigElem] = dict(start_date='1980-01-01',
-                                             end_date='2010-12-31',
-                                             check_DAG='False',
-                                             poi_dir='',
-                                             output_dir='',
-                                             control_filename='control.default',
-                                             param_filename='myparam.param',
-                                             paramdb_dir='',
-                                             dyn_params_dir='',
-                                             outlets=[],
-                                             cutoffs=[],
-                                             hru_noroute=[],
-                                             include_model_output=False,
-                                             output_vars=[],
-                                             output_vars_dir='',
-                                             output_cbh=False,
-                                             cbh_dir='',
-                                             cbh_var_map={},
-                                             output_streamflow=False,
-                                             streamflow_filename='sf_data',
-                                             streamgage_file='',
-                                             output_shapefiles=False,
-                                             gis={})
-                                             # geodatabase_filename='',
-                                             # hru_gis_layer='',
-                                             # hru_gis_id='',
-                                             # seg_gis_layer='',
-                                             # seg_gis_id='')
+# default_values: Dict[str, ConfigElem] = dict(start_date='1980-01-01',
+default_values = dict(start_date='1980-01-01',
+                      end_date='2010-12-31',
+                      check_DAG='False',
+                      poi_dir='',
+                      output_dir='',
+                      control_filename='control.default',
+                      param_filename='myparam.param',
+                      paramdb_dir='',
+                      dyn_params_dir='',
+                      outlets=[],
+                      cutoffs=[],
+                      hru_noroute=[],
+                      include_model_output=False,
+                      output_vars=[],
+                      output_vars_dir='',
+                      output_cbh=False,
+                      cbh_dir='',
+                      cbh_var_map={},
+                      output_streamflow=False,
+                      streamflow_filename='sf_data',
+                      streamgage_file='',
+                      output_shapefiles=False,
+                      gis={})
 
 
 class Cfg(object):
     """Configuration class for the Bandit NHM extraction program."""
 
-    def __init__(self, filename: str,
-                 cmdline: Optional[str]=None):
+    def __init__(self, filename: Union[str, Path],
+                 cmdline: Optional[str] = None):
         """Init method for Cfg class.
 
         :param filename: Configuration filename
@@ -55,7 +52,8 @@ class Cfg(object):
         # yaml.add_constructor(_mapping_tag, dict_constructor)
         self.yaml = ruamel.yaml.YAML()
 
-        self.__cfgdict: Dict[str, ConfigElem] = {}
+        # self.__cfgdict: Dict[str, ConfigElem] = {}
+        self.__cfgdict = {}   # type: ignore
         self.__cmdline = cmdline
         self.load(filename)
 
@@ -78,7 +76,8 @@ class Cfg(object):
                 outstr += f'{vv}\n'
         return outstr
 
-    def __getattr__(self, item: str) -> ConfigElem:
+    # def __getattr__(self, item: str) -> ConfigElem:
+    def __getattr__(self, item: str):
         """Get value for a configuration item.
 
         :returns: Configuration parameter value
@@ -110,7 +109,8 @@ class Cfg(object):
             return False
         return True
 
-    def get_value(self, name: str) -> ConfigElem:
+    # def get_value(self, name: str) -> ConfigElem:
+    def get_value(self, name: str):
         """Return the value for a given config variable.
 
         :param name: Name of configuration parameter
@@ -123,7 +123,7 @@ class Cfg(object):
             raise KeyError(f'Configuration variable, {name}, does not exist') from None
             # return None
 
-    def load(self, filename: str):
+    def load(self, filename: Union[str, Path]):
         """Load the YAML-format configuration file.
 
         :param filename: Name of YAML configuration filele.

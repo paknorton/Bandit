@@ -3,7 +3,8 @@
 import os
 import subprocess
 
-from typing import Dict, List, Optional, Union
+from pathlib import Path
+from typing import List, Optional, Union
 
 # Modified version of function from numpy setup.py
 # http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
@@ -32,7 +33,7 @@ def _minimal_ext_cmd(cmd: Union[List[str], str]) -> Union[str, bytes]:
     return result
 
 
-def git_commit_url(repo_dir: str) -> str:
+def git_commit_url(repo_dir: Union[str, Path]) -> str:
     """Get remote repository URL for a local repository.
 
     :param repo_dir: path to local repository
@@ -47,7 +48,7 @@ def git_commit_url(repo_dir: str) -> str:
     return dst_url
 
 
-def git_commit(repo_dir: str, length: Optional[int]=None) -> str:
+def git_commit(repo_dir: Union[str, Path], length: Optional[int]=None) -> str:
     """Retrieve current commit number from local directory.
 
     :param repo_dir: local Git repository directory
@@ -67,7 +68,7 @@ def git_commit(repo_dir: str, length: Optional[int]=None) -> str:
     return git_revision
 
 
-def git_repo(repo_dir: str) -> str:
+def git_repo(repo_dir: Union[str, Path]) -> str:
     """Get the remote Git URL for a local repository.
 
     :param repo_dir: local Git repository directory
@@ -83,7 +84,7 @@ def git_repo(repo_dir: str) -> str:
     return git_repo_url
 
 
-def git_branch(repo_dir: str) -> str:
+def git_branch(repo_dir: Union[str, Path]) -> str:
     """Get the current branch for a local repository
 
     :param repo_dir: local Git repository directory
