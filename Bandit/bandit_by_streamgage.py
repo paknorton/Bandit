@@ -11,11 +11,9 @@ import subprocess
 import sys
 import threading
 
-from rich.console import Console
-from rich import pretty
-pretty.install()
+from pyPRMS.base.console import get_console_instance
+con = None
 
-con = Console()
 
 class WorkerThread(threading.Thread):
     """ A worker thread that takes directory names from a queue, finds all
@@ -70,6 +68,9 @@ class WorkerThread(threading.Thread):
 def get_streamgage_segments(filename, poi_id_to_seg):
     """Returns dictionary mapping streamgages to NHM POI segments"""
 
+    global con
+    con = get_console_instance()
+
     with open(filename, 'r') as fhdl:
         streamgages = fhdl.read().splitlines()
 
@@ -85,8 +86,8 @@ def get_streamgage_segments(filename, poi_id_to_seg):
             con.print(f'Streamgage {kk} has poi_gage_segment = 0; skipping', style='dark_orange3')
         elif kk in segs_by_poi:
             con.print(f'Streamgage {kk} has multiple assigned segments in the parameter database; skipping', style='red')
-            print(f'    {kk} -> {segs_by_poi[kk]}')
-            print(f'    {kk} -> {poiseg}')
+            # print(f'    {kk} -> {segs_by_poi[kk]}')
+            # print(f'    {kk} -> {poiseg}')
         else:
             segs_by_poi[kk] = poiseg
 
@@ -96,6 +97,9 @@ def get_streamgage_segments(filename, poi_id_to_seg):
 def main():
     import argparse
     from distutils.spawn import find_executable
+
+    global con
+    con = get_console_instance()
 
     # Command line arguments
     parser = argparse.ArgumentParser(description='Batch script for Bandit extractions')

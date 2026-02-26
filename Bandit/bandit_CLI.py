@@ -15,8 +15,7 @@ from packaging.version import Version
 from pathlib import Path
 from typing import Annotated, List, Optional, Union
 
-from rich.console import Console
-from rich import pretty
+from pyPRMS.base.console import get_console_instance
 
 from Bandit import __version__
 from Bandit.bandit_helpers import (parse_gages, set_date, subset_stream_network, get_hru_and_seg_subset_maps,
@@ -46,8 +45,7 @@ warnings.filterwarnings('ignore', message=r'.*organizePolygons\(\) received a po
 # from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
 
 # Rich library
-pretty.install()
-con = Console(record=True)
+con = get_console_instance(record=True)
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
