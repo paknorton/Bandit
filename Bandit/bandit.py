@@ -147,7 +147,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     prms_meta = MetaData(version=prms_version, verbose=verbose).metadata
 
     # Load the control file
-    ctl = ControlFile(config.control_filename, metadata=prms_meta, verbose=verbose)
+    ctl = ControlFile(config.control_filename, metadata=prms_meta, verbose=verbose, include_missing=True)
 
     # Date range for pulling NWIS streamgage observations and CBH data
     st_date = set_date(config.start_date)
