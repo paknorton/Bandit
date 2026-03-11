@@ -7,7 +7,7 @@ name = "Bandit"
 description = "A set of command-line tools for extracting model subsets from the National Hydrologic Model parameter database"
 readme = "README.rst"
 dynamic = ["version"]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.9,<3.15"
 license = {file = "LICENSE"}
 authors = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
 maintainers = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
@@ -15,9 +15,10 @@ keywords = ["PRMS", "NHM", "streamflow", "hydrology", "surface"]
 classifiers = ["Development Status :: 3 - Alpha",
                "Programming Language :: Python :: 3", ]
 
-dependencies = ["dask",
+dependencies = ["cyclopts",
+    "dask",
     "gdal>=3",
-    "netcdf4",
+    "netcdf4!=1.7.4",
     "networkx>=2",
     "numpy",
     "pandas",
