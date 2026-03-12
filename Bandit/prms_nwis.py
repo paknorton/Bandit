@@ -208,12 +208,13 @@ class NWIS:
         :param gage_ids: streamgage ID(s)
         """
 
-        # Set the gage ids for retrieval; this will clear any downloaded observations
-        if isinstance(gage_ids, (list, tuple)):
-            self.__gageids = gage_ids
-        else:
-            # Assuming a single value, so convert to a list
-            self.__gageids = [gage_ids]
+        if gage_ids is not None:
+            # Set the gage ids for retrieval; this will clear any downloaded observations
+            if isinstance(gage_ids, (list, tuple)):
+                self.__gageids = gage_ids
+            else:
+                # Assuming a single value, so convert to a list
+                self.__gageids = [gage_ids]
         self.__outdata = None
 
     def check_for_flag(self, pat: str, data: pd.DataFrame, col_id: str):
@@ -287,153 +288,154 @@ class NWIS:
             df = pd.DataFrame(index=self.__date_range, columns=['00000000'])
             df.index.name = 'date'
 
+            self.__gageids = ['00000000']
             self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
             self.__final_outorder.append('00000000')
+        else:
+            # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
+            # for gidx, gg in enumerate(self.__gageids):
+            #     if self.__verbose:
+            #         sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
+            #         sys.stdout.flush()
+            for gg in track(self.__gageids, description='Downloading streamflow data'):
+                url_pieces['sites'] = gg
+                url_final = '&'.join([f'{kk}={vv}' for kk, vv in url_pieces.items()])
 
-        # Iterate over new_poi_gage_id and retrieve daily streamflow data from NWIS
-        # for gidx, gg in enumerate(self.__gageids):
-        #     if self.__verbose:
-        #         sys.stdout.write(f'\rStreamgage: {gg} ({gidx + 1}/{len(self.__gageids)}) ')
-        #         sys.stdout.flush()
-        for gg in track(self.__gageids, description='Downloading streamflow data'):
-            url_pieces['sites'] = gg
-            url_final = '&'.join([f'{kk}={vv}' for kk, vv in url_pieces.items()])
-
-            # Read site data from NWIS
-            streamgage_obs_page = None
-            attempts = 0
-            while attempts < RETRIES:
-                try:
-                    response = urlopen(f'{BASE_NWIS_URL}/dv/{url_final}')
-                    encoding = response.info().get_param('charset', failobj='utf8')
-                    streamgage_obs_page = response.read().decode(encoding)
-
-                    break
-                except HTTPError as err:
-                    if err.code == 400:
-                        err_parser = NWISErrorParser()
-                        err_parser.feed(str(err.read().decode("utf8", 'ignore')))
-                        logger.warning(f'HTTPError: {err.code}, Site: {gg}, {err_parser.error_info["message"]}')
+                # Read site data from NWIS
+                streamgage_obs_page = None
+                attempts = 0
+                while attempts < RETRIES:
+                    try:
+                        response = urlopen(f'{BASE_NWIS_URL}/dv/{url_final}')
+                        encoding = response.info().get_param('charset', failobj='utf8')
+                        streamgage_obs_page = response.read().decode(encoding)
 
                         break
-                    else:
+                    except HTTPError as err:
+                        if err.code == 400:
+                            err_parser = NWISErrorParser()
+                            err_parser.feed(str(err.read().decode("utf8", 'ignore')))
+                            logger.warning(f'HTTPError: {err.code}, Site: {gg}, {err_parser.error_info["message"]}')
+
+                            break
+                        else:
+                            attempts += 1
+                            logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
+                            # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
+                    except URLError as err:
                         attempts += 1
-                        logger.warning(f'HTTPError: {err}, Try {attempts} of {RETRIES}')
-                        # print('HTTPError: {}, Try {} of {}'.format(err, attempts, RETRIES))
-                except URLError as err:
-                    attempts += 1
-                    logger.warning(f'URLError: {err}, reason={err.reason}; try {attempts} of {RETRIES}')
-                except ConnectionResetError as err:
-                    attempts += 1
-                    logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
-                    time.sleep(10)
-                except socket.timeout as err:
-                    attempts += 1
-                    logger.warning(f'socket.timeout: {err}; try {attempts} of {RETRIES}')
+                        logger.warning(f'URLError: {err}, reason={err.reason}; try {attempts} of {RETRIES}')
+                    except ConnectionResetError as err:
+                        attempts += 1
+                        logger.warning(f'ConnectionResetError: {err}, Try {attempts} of {RETRIES}')
+                        time.sleep(10)
+                    except socket.timeout as err:
+                        attempts += 1
+                        logger.warning(f'socket.timeout: {err}; try {attempts} of {RETRIES}')
 
-            if streamgage_obs_page is None:
-                # Create a dummy dataframe
-                df = pd.DataFrame(index=self.__date_range, columns=[gg])
-                df.index.name = 'date'
-            elif streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
-                # No observations are available for the streamgage
-                # Create a dummy dataset to output
-                table.add_row(gg, f'No data available for {self.__stdate.strftime("%Y-%m-%d")} to {self.__endate.strftime("%Y-%m-%d")}')
-                logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
-                               ' to ' + self.__endate.strftime('%Y-%m-%d'))
-
-                df = pd.DataFrame(index=self.__date_range, columns=[gg])
-                df.index.name = 'date'
-            else:
-                streamgage_observations = streamgage_obs_page
-                # streamgage_observations = streamgage_obs_page.read()
-
-                # Strip the comment lines and field length lines from the result using regex
-                streamgage_observations = self.__t1.sub('', streamgage_observations, count=0)
-                streamgage_observations = self.__t2.sub('', streamgage_observations, count=0)
-
-                # Have to enforce site_no as string/text
-                col_names = ['site_no']
-                col_types = [np.str_]
-                cols = dict(zip(col_names, col_types))
-
-                # Read the rdb file into a dataframe
-                # TODO: Handle empty datasets from NWIS by creating dummy data and providing a warning
-                df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols)
-                df['date'] = pd.to_datetime(df['datetime'])
-                df.set_index('date', inplace=True)
-                df.drop(['datetime'], axis=1, inplace=True)
-                # df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
-                #                  parse_dates={'date': ['datetime']}, index_col='date')
-
-                # Conveniently the columns we want to drop contain '_cd' in their names
-                drop_cols = [col for col in df.columns if '_cd' in col]
-                drop_cols.append('site_no')
-                df.drop(drop_cols, axis=1, inplace=True)
-
-                # There should now only be date, site_no, and a Q column named *_00060_00003
-                # We will rename the *_00060_00003 to the site_no value
-                rename_col = [col for col in df.columns if '_00060_00003' in col]
-
-                if len(rename_col) > 1:
-                    table.add_row(gg, 'More than one Q-col returned; empty dataset used.')
-                    logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
+                if streamgage_obs_page is None:
+                    # Create a dummy dataframe
                     df = pd.DataFrame(index=self.__date_range, columns=[gg])
                     df.index.name = 'date'
+                elif streamgage_obs_page.splitlines()[0] == '#  No sites found matching all criteria':
+                    # No observations are available for the streamgage
+                    # Create a dummy dataset to output
+                    table.add_row(gg, f'No data available for {self.__stdate.strftime("%Y-%m-%d")} to {self.__endate.strftime("%Y-%m-%d")}')
+                    logger.warning(f'{gg} has no data for ' + self.__stdate.strftime('%Y-%m-%d') +
+                                   ' to ' + self.__endate.strftime('%Y-%m-%d'))
 
-                    # self.logger.warning('{} had more than one Q-col returned; using {}'.format(gg, rename_col[0]))
-                    #
-                    # # Keep the first TS column and drop the others
-                    # while len(rename_col) > 1:
-                    #     curr_col = rename_col.pop()
-                    #     df.drop([curr_col], axis=1, inplace=True)
+                    df = pd.DataFrame(index=self.__date_range, columns=[gg])
+                    df.index.name = 'date'
                 else:
-                    df.rename(columns={rename_col[0]: gg}, inplace=True)
+                    streamgage_observations = streamgage_obs_page
+                    # streamgage_observations = streamgage_obs_page.read()
 
-                    try:
-                        # If no flags are present the column should already be float
-                        df[gg] = pd.to_numeric(df[gg], errors='raise', downcast='float')
-                    except ValueError:
-                        table.add_row(gg, 'One or more flagged values; flagged values converted to NaN.')
-                        logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
-                        df[gg] = pd.to_numeric(df[gg], errors='coerce', downcast='float')
+                    # Strip the comment lines and field length lines from the result using regex
+                    streamgage_observations = self.__t1.sub('', streamgage_observations, count=0)
+                    streamgage_observations = self.__t2.sub('', streamgage_observations, count=0)
 
-                    # Check for discontinued gage records
-                    # if df[gg].dtype == np.object_:
-                    #     # If the datatype of the streamgage values is np.object_ that
-                    #     # means some string is appended to one or more of the values.
-                    #
-                    #     # Common bad data: set(['Eqp', 'Ice', 'Ssn', 'Rat', 'Bkw', '***', 'Dis'])
-                    #
-                    #     # Check for discontinued flagged records
-                    #     self.check_for_flag('_?Dis', df, gg)
-                    #
-                    #     # Check for ice-flagged records
-                    #     self.check_for_flag('_?Ice', df, gg)
-                    #
-                    #     # Check for eqp-flagged records (Equipment malfunction)
-                    #     self.check_for_flag('_?Eqp', df, gg)
-                    #
-                    #     # Check for _Ssn (parameter monitored seasonally)
-                    #     self.check_for_flag('_?Ssn', df, gg)
-                    #
-                    #     # Check for _Rat (rating being developed)
-                    #     self.check_for_flag('_?Rat', df, gg)
-                    #
-                    #     # Check for _Bkw (Value is affected by backwater at the measurement site)
-                    #     self.check_for_flag('_?Bkw', df, gg)
-                    #
-                    #     # Check for 1 or more astericks
-                    #     self.check_for_flag('_?\*+', df, gg)
+                    # Have to enforce site_no as string/text
+                    col_names = ['site_no']
+                    col_types = [np.str_]
+                    cols = dict(zip(col_names, col_types))
 
-                    # Resample to daily to fill in the missing days with NaN
-                    # df = df.resample('D').mean()
+                    # Read the rdb file into a dataframe
+                    # TODO: Handle empty datasets from NWIS by creating dummy data and providing a warning
+                    df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols)
+                    df['date'] = pd.to_datetime(df['datetime'])
+                    df.set_index('date', inplace=True)
+                    df.drop(['datetime'], axis=1, inplace=True)
+                    # df = pd.read_csv(StringIO(streamgage_observations), sep='\t', dtype=cols,
+                    #                  parse_dates={'date': ['datetime']}, index_col='date')
 
-            self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
-            self.__final_outorder.append(gg)
-            # sys.stdout.write('\r                                       \r')
-        if table.rows:
-            con.print(table)
+                    # Conveniently the columns we want to drop contain '_cd' in their names
+                    drop_cols = [col for col in df.columns if '_cd' in col]
+                    drop_cols.append('site_no')
+                    df.drop(drop_cols, axis=1, inplace=True)
+
+                    # There should now only be date, site_no, and a Q column named *_00060_00003
+                    # We will rename the *_00060_00003 to the site_no value
+                    rename_col = [col for col in df.columns if '_00060_00003' in col]
+
+                    if len(rename_col) > 1:
+                        table.add_row(gg, 'More than one Q-col returned; empty dataset used.')
+                        logger.warning(f'{gg} had more than one Q-col returned; empty dataset used.')
+                        df = pd.DataFrame(index=self.__date_range, columns=[gg])
+                        df.index.name = 'date'
+
+                        # self.logger.warning('{} had more than one Q-col returned; using {}'.format(gg, rename_col[0]))
+                        #
+                        # # Keep the first TS column and drop the others
+                        # while len(rename_col) > 1:
+                        #     curr_col = rename_col.pop()
+                        #     df.drop([curr_col], axis=1, inplace=True)
+                    else:
+                        df.rename(columns={rename_col[0]: gg}, inplace=True)
+
+                        try:
+                            # If no flags are present the column should already be float
+                            df[gg] = pd.to_numeric(df[gg], errors='raise', downcast='float')
+                        except ValueError:
+                            table.add_row(gg, 'One or more flagged values; flagged values converted to NaN.')
+                            logger.warning(f'{gg} had one or more flagged values; flagged values converted to NaN.')
+                            df[gg] = pd.to_numeric(df[gg], errors='coerce', downcast='float')
+
+                        # Check for discontinued gage records
+                        # if df[gg].dtype == np.object_:
+                        #     # If the datatype of the streamgage values is np.object_ that
+                        #     # means some string is appended to one or more of the values.
+                        #
+                        #     # Common bad data: set(['Eqp', 'Ice', 'Ssn', 'Rat', 'Bkw', '***', 'Dis'])
+                        #
+                        #     # Check for discontinued flagged records
+                        #     self.check_for_flag('_?Dis', df, gg)
+                        #
+                        #     # Check for ice-flagged records
+                        #     self.check_for_flag('_?Ice', df, gg)
+                        #
+                        #     # Check for eqp-flagged records (Equipment malfunction)
+                        #     self.check_for_flag('_?Eqp', df, gg)
+                        #
+                        #     # Check for _Ssn (parameter monitored seasonally)
+                        #     self.check_for_flag('_?Ssn', df, gg)
+                        #
+                        #     # Check for _Rat (rating being developed)
+                        #     self.check_for_flag('_?Rat', df, gg)
+                        #
+                        #     # Check for _Bkw (Value is affected by backwater at the measurement site)
+                        #     self.check_for_flag('_?Bkw', df, gg)
+                        #
+                        #     # Check for 1 or more astericks
+                        #     self.check_for_flag('_?\*+', df, gg)
+
+                        # Resample to daily to fill in the missing days with NaN
+                        # df = df.resample('D').mean()
+
+                self.__outdata = pd.merge(self.__outdata, df, how='left', left_index=True, right_index=True)
+                self.__final_outorder.append(gg)
+                # sys.stdout.write('\r                                       \r')
+            if table.rows:
+                con.print(table)
 
     def write_ascii(self, filename: Union[str, Path]):
         """Write streamgage observations to a file in PRMS format.
