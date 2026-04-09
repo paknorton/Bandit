@@ -153,8 +153,8 @@ def subset_stream_network(dag_ds: nx.classes.digraph.DiGraph,
 def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, hru_noroute):
     # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
     # new_nhm_seg and hru_noroute.
-    seg_to_hru = OrderedDict()
-    hru_to_seg = OrderedDict()
+    seg_to_hru = dict()
+    hru_to_seg = dict()
 
     for ii, vv in enumerate(orig_hru_segment):
         # Contains both new_nhm_seg values and non-routed HRU values

@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
 import datetime
-# import errno
 import logging
-import networkx as nx   # type: ignore
-import numpy as np
 import os
 import sys
 import time
 
-from cyclopts import App, Parameter, validators
-from dask.distributed import Client
 from packaging.version import Version
 from pathlib import Path
 from typing import Annotated, List, Optional, Union
+
+import networkx as nx   # type: ignore
+import numpy as np
+import pyogrio as pyg  # type: ignore
+
+from cyclopts import App, Parameter, validators
+from dask.distributed import Client
 
 from pyPRMS.base.console import get_console_instance
 
@@ -34,15 +36,12 @@ from pyPRMS import ControlFile   # type: ignore
 from pyPRMS import ParamDb   # type: ignore
 from pyPRMS import Parameters   # type: ignore
 
-import pyogrio as pyg  # type: ignore
 import warnings
-# warnings.filterwarnings('ignore', category=RuntimeWarning)
 warnings.filterwarnings('ignore', message=r'.*Measured \(M\) geometry types are not supported.*')
 warnings.filterwarnings('ignore',
                         message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
 warnings.filterwarnings('ignore', message='.*Slicing with an out-of-order index is generating 10 times more chunks.*')
 warnings.filterwarnings('ignore', message=r'.*organizePolygons\(\) received a polygon with more than 100 parts.*')
-# from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
 
 # Rich library
 con = get_console_instance(record=True)
@@ -70,7 +69,6 @@ root.addHandler(flog)
 bandit_log.addHandler(clog)
 
 app = App(default_parameter=Parameter(negative=()))
-
 
 @app.default
 def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exists=True))] = Path('bandit.cfg'),
@@ -172,7 +170,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     # Load the NHMparamdb
     if verbose:
-        # con.print('[green4]INFO[/]: Loading NHM ParamDb')
         con.print(f'[green4]INFO[/]: Parameter database: {git_repo(paramdb_dir)}')
         con.print(f'[green4]INFO[/]: Branch: {git_branch(paramdb_dir)}')
         con.print(f'[green4]INFO[/]: Commit: {nhmparamdb_revision}')
@@ -214,9 +211,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # Convert to list for fastest access to array
     nhm_seg = pdb.get('nhm_seg').tolist()
 
-    # if verbose:
-    #     con.print('Generating stream network', style='green4')
-
     # First check if any of the requested stream segments exist in the NHM.
     # An intersection of 0 elements can occur when all stream segments are
     # not included in the NHM (e.g. segments in Alaska).
@@ -243,9 +237,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                 con.print(f'[red]ERROR[/]: Cycle found for segment {xx}')
                 bandit_log.error(f'Cycle found for segment {xx}')
 
-    # if verbose:
-    #     con.print('    Extracting model subset', style='blue')
-
     dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
     # Segments in model subset
@@ -257,7 +248,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     # Using a dictionary mapping nhm_seg to 1-based index for speed
     new_nhm_seg_to_idx1 = dict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
-    # new_nhm_seg_to_idx1 = OrderedDict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
 
     # Generate the renumbered local tosegments (1-based with zero being an outlet)
     new_tosegment = [new_nhm_seg_to_idx1[ee[1]] if ee[1] in new_nhm_seg_to_idx1
@@ -428,7 +418,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     if verbose:
         sys.stdout.write('\n')
     sys.stdout.flush()
-
+    
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write CBH files
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -517,8 +507,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                 param_name = f'dyn_{cparam}'
                 input_file = dyn_params_dir / f'{param_name}.nc'
                 output_file = outdir / f'{param_name}.param'
-                # input_file = f'{config.dyn_params_dir}/{param_name}.nc'
-                # output_file = f'{outdir}/{param_name}.param'
 
                 if not input_file.is_file():
                     warn_txt = f'WARNING: CONUS dynamic parameter file: {input_file}, does not exist... skipping'
@@ -538,13 +526,12 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     header = ' '.join(map(str, out_order))   # type: ignore
 
                     # Output ASCII files
-                    out_ascii = open(output_file, 'w')
-                    out_ascii.write(f'{cparam}\n')
-                    out_ascii.write(f'{header}\n')
-                    out_ascii.write('####\n')
-                    mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
-                                      sep=' ', index=False, header=False, encoding=None, chunksize=50)
-                    out_ascii.close()
+                    with open(output_file, 'w') as out_ascii:
+                        out_ascii.write(f'{cparam}\n')
+                        out_ascii.write(f'{header}\n')
+                        out_ascii.write('####\n')
+                        mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
+                                          sep=' ', index=False, header=False, encoding=None, chunksize=50)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write control file
@@ -584,7 +571,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
             streamflow.get_daily_streamgage_observations()
             streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
-            # streamflow.write_ascii(filename=f'{config.streamflow_filename}')
             bandit_log.info(f'No POIs exist in model subset; dummy data written.')
 
     # *******************************************
@@ -674,6 +660,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     bandit_log.info(f'========== END {datetime.datetime.now().isoformat()} ==========')
 
+    client.close()
     os.chdir(stdir)
 
 
