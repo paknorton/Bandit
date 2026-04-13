@@ -5,11 +5,13 @@ import networkx as nx   # type: ignore
 import numpy as np
 import re
 
-from typing import Union, Dict, List, Set, Tuple
+from numpy.typing import NDArray
+from typing import Union, Dict, List, Optional, Set, Tuple
 
 from pyPRMS.base.console import get_console_instance
-# from pyPRMS.metadata.metadata import MetaData
+from pyPRMS.constants import MetaDataType
 from pyPRMS import Parameters   # type: ignore
+from pyPRMS.parameters.Parameter import ParamDataType
 from pyPRMS.constants import HRU_DIMS
 
 logger = logging.getLogger(__name__)
@@ -151,20 +153,34 @@ def subset_stream_network(dag_ds: nx.classes.digraph.DiGraph,
 
     return dag_ds_subset
 
-def create_parameter_subset(prms_meta,
-                            pdb,
-                            hru_order_subset,
-                            new_hru_segment,
-                            new_nhm_seg,
-                            new_poi_gage_id,
-                            new_poi_gage_segment,
-                            new_poi_type,
-                            new_tosegment):
+
+def create_parameter_subset(prms_meta: MetaDataType,
+                            pdb: Parameters,
+                            hru_order_subset: List[int],
+                            new_hru_segment: List[int],
+                            new_nhm_seg: List[int],
+                            new_poi_gage_id: List[str],
+                            new_poi_gage_segment: List[int],
+                            new_poi_type: List[int],
+                            new_tosegment: List[int]):
+    """Create a new Parameters object that is a subset of the original parameter database.
+
+    :param prms_meta: PRMS metadata object
+    :param pdb: Original parameter database
+    :param hru_order_subset: List of HRUs to include in the subset
+    :param new_hru_segment: List of HRUs segments for HRUs subset
+    :param new_nhm_seg: List of NHM segments for subset
+    :param new_poi_gage_id: List of POI gage ids for subset
+    :param new_poi_gage_segment: List of POI gage segments for subset
+    :param new_poi_type: List of POI types for subset
+    :param new_tosegment: List of tosegment values for subset
+    :return: New Parameters object with subset of parameters
+    """
 
     # Rich library
     con = get_console_instance(record=True)
 
-    nhm_global_dimensions = pdb.dimensions
+    # nhm_global_dimensions = pdb.dimensions
 
     # ==========================================================================
     # ==========================================================================
@@ -192,7 +208,8 @@ def create_parameter_subset(prms_meta,
     params.sort()
 
     # Build dictionary of resized dimensions for the model subset
-    dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
+    # dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
+    dims = resize_dims(pdb=pdb,
                        num_hru=len(hru_order_subset),
                        num_seg=len(new_nhm_seg),
                        num_deplcrv=len(uniq_deplcrv),
@@ -272,7 +289,20 @@ def create_parameter_subset(prms_meta,
     return new_ps
 
 
-def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, hru_noroute):
+def get_hru_and_seg_subset_maps(orig_hru_segment: ParamDataType,
+                                orig_nhm_id: ParamDataType,
+                                nhm_seg_subset: NDArray,
+                                hru_noroute: NDArray) -> Tuple[Dict[int, List[int]], Dict[int, int]]:
+    """Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
+    new_nhm_seg and hru_noroute.
+
+    :param orig_hru_segment: NHM HRU segments from source parameter database
+    :param orig_nhm_id: NHM HRU IDs from source parameter database
+    :param nhm_seg_subset: Array of segment IDs for parameter subset
+    :param hru_noroute: Array of non-routed HRUs to include in parameter subset
+    :return: Dictionaries mapping segments-to-HRUs and HRUs-to-segments
+    """
+
     # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
     # new_nhm_seg and hru_noroute.
     # Assumes all inputs are numpy arrays
@@ -302,33 +332,27 @@ def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, h
     return seg_to_hru, hru_to_seg
 
 
-# def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, hru_noroute):
-#     # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
-#     # new_nhm_seg and hru_noroute.
-#     seg_to_hru = dict()
-#     hru_to_seg = dict()
-#
-#     for ii, vv in enumerate(orig_hru_segment):
-#         # Contains both new_nhm_seg values and non-routed HRU values
-#         # keys are 1-based, values in arrays are 1-based
-#         hid = orig_nhm_id[ii]
-#
-#         if vv in nhm_seg_subset:
-#             seg_to_hru.setdefault(vv, []).append(hid)
-#             hru_to_seg[hid] = vv
-#         elif hid in hru_noroute:
-#             if vv != 0:
-#                 err_txt = f'User-supplied non-routed HRU {hid} that routes to stream segment {vv}; skipping.'
-#                 logger.error(err_txt)
-#             else:
-#                 seg_to_hru.setdefault(vv, []).append(hid)
-#                 hru_to_seg[hid] = vv
-#
-#     return seg_to_hru, hru_to_seg
+def get_output_order(hru_to_seg: Dict[int, int],
+                     seg_to_hru: Dict[int, List[int]],
+                     orig_hru_segment: ParamDataType,
+                     orig_nhm_id_to_idx: Dict[int, int],
+                     new_nhm_seg: NDArray,
+                     new_nhm_seg_to_idx1: Dict[int, int],
+                     hru_noroute: NDArray,
+                     keep_hru_order: bool = False) -> Tuple[List[int], List[int]]:
+    """Create lists of HRU ids and HRU segments for a model subset.
 
+    :param hru_to_seg: Dictionary mapping HRUs to segments
+    :param seg_to_hru: Dictionary mapping segments to HRUs
+    :param orig_hru_segment: NHM HRU segments from source parameter database
+    :param orig_nhm_id_to_idx: Dictionary mapping NHM HRU IDs to indices in the source parameter database
+    :param new_nhm_seg: Array of segment IDs for parameter subset
+    :param new_nhm_seg_to_idx1: Dictionary mapping segment IDs to 1-based indices in the subset
+    :param hru_noroute: Array of non-routed HRUs to include in parameter subset
+    :param keep_hru_order: If True, keep the original HRU-relative order in the model subset
+    :return: Lists of HRU ids and HRU segments for the model subset
+    """
 
-def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_idx,
-                     new_nhm_seg, new_nhm_seg_to_idx1, hru_noroute, keep_hru_order=False):
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
     if keep_hru_order:
@@ -376,7 +400,21 @@ def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_id
     return hru_order_subset, new_hru_segment
 
 
-def get_poi_subset(nhm_params, new_nhm_seg, new_nhm_seg_to_idx1, seg_to_hru, addl_gages=None):
+def get_poi_subset(nhm_params: Parameters,
+                   new_nhm_seg: NDArray,
+                   new_nhm_seg_to_idx1: Dict[int, int],
+                   seg_to_hru: Dict[int, List[int]],
+                   addl_gages: Optional[Dict]  = None) -> Tuple[List[int], List[str], List[int]]:
+    """Create lists of POI IDs, segments, and types for a model subset.
+
+    :param nhm_params: Source NHM parameter database
+    :param new_nhm_seg: Array of segment IDs for parameter subset
+    :param new_nhm_seg_to_idx1: Dictionary mapping segment IDs to 1-based indices in the subset
+    :param seg_to_hru: Dictionary mapping segments to HRUs
+    :param addl_gages: Dictionary additional streamgages to include in the subset
+    :return: Lists of POI IDs, segments, and types for the model subset
+    """
+
     # Subset poi_gage_segment
     new_poi_gage_segment = []
     new_poi_gage_id = []
@@ -439,8 +477,22 @@ def get_poi_subset(nhm_params, new_nhm_seg, new_nhm_seg_to_idx1, seg_to_hru, add
     return new_poi_gage_segment, new_poi_gage_id, new_poi_type
 
 
-def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
-    dims = {kk.name: kk.size for kk in src_global_dims}
+def resize_dims(pdb: Parameters,
+                num_hru: int,
+                num_seg: int,
+                num_deplcrv: int,
+                num_poi: int) -> Dict[str, int]:
+    """Returns a dictionary of dimensions from the source parameter database resized to the model subset.
+
+    :param pdb: Original parameter database
+    :param num_hru: Number of HRUs in the model subset
+    :param num_seg: Number of segments in the model subset
+    :param num_deplcrv: Number of snow depletion curves in the model subset
+    :param num_poi: Number of Points-of-Interest (POIs) in the model subset
+    :return: Dictionary of the resized dimensions
+    """
+
+    dims = {kk.name: kk.size for kk in pdb.dimensions.values()}
 
     # Resize dimensions to the model subset
     crap_dims = dims.copy()   # need a copy since we modify dims
