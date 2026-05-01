@@ -5,6 +5,7 @@
 # Description: Configuration class for Model Bandit
 #              YAML is used for the backend
 
+import datetime
 import ruamel.yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
@@ -106,6 +107,8 @@ class Cfg(object):
         if isinstance(cval, str):
             return len(cval) == 0
         if isinstance(cval, bool):
+            return False
+        if isinstance(cval, datetime.date):
             return False
         return True
 
