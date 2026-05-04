@@ -3,6 +3,7 @@
 import datetime
 import logging
 import os
+import sys
 import time
 
 from packaging.version import Version
@@ -22,6 +23,7 @@ from rich.rule import Rule
 from pyPRMS.base.console import get_console_instance
 
 from Bandit import __version__
+from Bandit.exceptions import BanditError
 from Bandit.bandit_helpers import (create_parameter_subset, parse_gages, set_date, subset_stream_network,
                                    get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
@@ -107,6 +109,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         prms_version: Version = Version(prms_version)
 
     stdir = os.getcwd()
+    chdir_needed = False
 
     if job_dir is not None:
         if isinstance(job_dir, str):
@@ -115,471 +118,481 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         if job_dir.is_dir():
             # Change into job directory before running extraction
             os.chdir(job_dir)
+            chdir_needed = True
         else:
             con.print(f'[red]ERROR[/]: Invalid jobs directory: {str(job_dir)}')
             bandit_log.error(f'Invalid jobs directory: {str(job_dir)}')
-            exit(-1)
+            raise BanditError(f'Invalid jobs directory: {str(job_dir)}', exit_code=-1)
 
-    bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
+    try:
+        bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
 
-    addl_gages = None
-    if add_gages:
-        addl_gages = parse_gages(add_gages)
-        if verbose:
-            con.print(f'Additional streamgages: {addl_gages}')
-        bandit_log.info('Additionals streamgages specified on command line')
+        addl_gages = None
+        if add_gages:
+            addl_gages = parse_gages(add_gages)
+            if verbose:
+                con.print(f'Additional streamgages: {addl_gages}')
+            bandit_log.info('Additionals streamgages specified on command line')
 
-    config = bc.Cfg(config_file)
+        config = bc.Cfg(config_file)
 
-    validator = ConfigValidator(config)
-    errors = validator.validate()
-    if errors:
-        for err in errors:
-            bandit_log.error(err)
-            con.print(f'[red]ERROR[/]: {err}')
-        con.print(f'[red]Configuration has {len(errors)} error(s). Fix the above issues and retry.[/]')
-        exit(2)
+        validator = ConfigValidator(config)
+        errors = validator.validate()
+        if errors:
+            for err in errors:
+                bandit_log.error(err)
+                con.print(f'[red]ERROR[/]: {err}')
+            con.print(f'[red]Configuration has {len(errors)} error(s). Fix the above issues and retry.[/]')
+            raise BanditError(f'Configuration has {len(errors)} error(s). Fix the above issues and retry.', exit_code=2)
 
-    outdir = Path(config.output_dir)   # Where to output the subset
-    param_filename = Path(config.param_filename)   # Name of the output parameter file
-    paramdb_dir = Path(config.paramdb_dir)   # Location of the NHM parameter database
-    cbh_dir = Path(config.cbh_dir)
-    dsmost_seg = config.outlets   # List of outlets
-    uscutoff_seg = config.cutoffs   # List of upstream cutoffs
-    hru_noroute = np.array(config.hru_noroute)   # Array of additional HRUs (have no route to segment within subset)
+        outdir = Path(config.output_dir)   # Where to output the subset
+        param_filename = Path(config.param_filename)   # Name of the output parameter file
+        paramdb_dir = Path(config.paramdb_dir)   # Location of the NHM parameter database
+        cbh_dir = Path(config.cbh_dir)
+        dsmost_seg = config.outlets   # List of outlets
+        uscutoff_seg = config.cutoffs   # List of upstream cutoffs
+        hru_noroute = np.array(config.hru_noroute)   # Array of additional HRUs (have no route to segment within subset)
 
-    # if prms_version == 6:
-    #     cbh_netcdf = True
-    #     param_netcdf = True
-    #     streamflow_netcdf = True
+        # if prms_version == 6:
+        #     cbh_netcdf = True
+        #     param_netcdf = True
+        #     streamflow_netcdf = True
 
-    # Load PRMS metadata
-    con.print(f'[green4]INFO[/]: Loading PRMS metadata for version {prms_version}')
-    prms_meta = MetaData(version=prms_version, verbose=verbose).metadata
+        # Load PRMS metadata
+        con.print(f'[green4]INFO[/]: Loading PRMS metadata for version {prms_version}')
+        prms_meta = MetaData(version=prms_version, verbose=verbose).metadata
 
-    # Load the control file
-    ctl = ControlFile(config.control_filename, metadata=prms_meta, verbose=verbose, include_missing=True)
+        # Load the control file
+        ctl = ControlFile(config.control_filename, metadata=prms_meta, verbose=verbose, include_missing=True)
 
-    # Date range for pulling NWIS streamgage observations and CBH data
-    st_date = set_date(config.start_date)
-    en_date = set_date(config.end_date)
+        # Date range for pulling NWIS streamgage observations and CBH data
+        st_date = set_date(config.start_date)
+        en_date = set_date(config.end_date)
 
-    # Adjust the start and end dates in the control file to reflect
-    # date range from bandit config file
-    ctl.get('start_time').values = st_date
-    ctl.get('end_time').values = en_date
+        # Adjust the start and end dates in the control file to reflect
+        # date range from bandit config file
+        ctl.get('start_time').values = st_date
+        ctl.get('end_time').values = en_date
 
-    # Output revision of NhmParamDb
-    git_url = git_commit_url(paramdb_dir)
-    nhmparamdb_revision = git_commit(paramdb_dir, length=7)
-    bandit_log.info(f'Parameter database: {git_repo(paramdb_dir)}')
-    bandit_log.info(f'Branch: {git_branch(paramdb_dir)}')
-    bandit_log.info(f'Commit: {nhmparamdb_revision}')
+        # Output revision of NhmParamDb
+        git_url = git_commit_url(paramdb_dir)
+        nhmparamdb_revision = git_commit(paramdb_dir, length=7)
+        bandit_log.info(f'Parameter database: {git_repo(paramdb_dir)}')
+        bandit_log.info(f'Branch: {git_branch(paramdb_dir)}')
+        bandit_log.info(f'Commit: {nhmparamdb_revision}')
 
-    # client = Client(threads_per_worker=1)
-    client = Client()
-    dash_link = client.dashboard_link
-    con.print(f'Dask dashboard: {dash_link}')
+        # client = Client(threads_per_worker=1)
+        with Client() as client:
+            dash_link = client.dashboard_link
+            con.print(f'Dask dashboard: {dash_link}')
 
-    # Load the NHMparamdb
-    if verbose:
-        con.print(f'[green4]INFO[/]: Parameter database: {git_repo(paramdb_dir)}')
-        con.print(f'[green4]INFO[/]: Branch: {git_branch(paramdb_dir)}')
-        con.print(f'[green4]INFO[/]: Commit: {nhmparamdb_revision}')
+            # Load the NHMparamdb
+            if verbose:
+                con.print(f'[green4]INFO[/]: Parameter database: {git_repo(paramdb_dir)}')
+                con.print(f'[green4]INFO[/]: Branch: {git_branch(paramdb_dir)}')
+                con.print(f'[green4]INFO[/]: Commit: {nhmparamdb_revision}')
 
-    pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=verbose)
-    pdb.control = ctl
+            pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=verbose)
+            pdb.control = ctl
 
-    if pdb.dimensions.exists('npoigages') and not pdb.dimensions.exists('nobs'):
-        # If we have poi gages and nobs is missing then add it
-        if verbose:
-            con.print('[gold3]WARNING[/]: Added missing nobs dimension')
-        pdb.dimensions.add('nobs', size=pdb.dimensions.get('npoigages').size)
-
-    # Add defaults for parameters that are missing but required for the selected modules
-    # WARNING: 20240726 PAN - if hru_segment_nhm is missing from the paramdb no warning is issued,
-    #                         and the wrong number of HRUs will likely be output for the extraction.
-    pdb.add_missing_parameters()
-
-    if not no_filter_params:
-        # Reduce the parameters to those required by the selected modules
-        pdb.remove(pdb.unneeded_parameters)
-
-    if not pdb.exists('poi_gage_segment'):
-        con.print('[gold3]WARNING[/]: Missing POI-related parameters. To include POIs, set csvON_OFF > 0 in the control file')
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Get tosegment_nhm
-    # Convert to list for fastest access to array
-    nhm_seg = pdb.get('nhm_seg').data
-
-    # First check if any of the requested stream segments exist in the NHM.
-    # An intersection of 0 elements can occur when all stream segments are
-    # not included in the NHM (e.g. segments in Alaska).
-    # NOTE: It's possible to have a stream segment that does not exist in
-    #       tosegment but does exist in nhm_seg (e.g. standalone segment). So
-    #       we use nhm_seg to verify at least one of the given segment(s) exist.
-    if dsmost_seg and len(set(dsmost_seg).intersection(set(nhm_seg))) == 0:
-        con.print(f'[red]ERROR[/]: None of the requested stream segments exist in the NHM')
-        bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
-        exit(200)
-
-    # Build the stream network
-    dag_ds = pdb.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
-
-    bandit_log.debug(f'Number of NHM downstream nodes: {dag_ds.number_of_nodes()}')
-    bandit_log.debug(f'Number of NHM downstream edges: {dag_ds.number_of_edges()}')
-
-    if config.check_DAG:
-        if not nx.is_directed_acyclic_graph(dag_ds):
-            con.print('[red]ERROR[/]: Cycles and/or loops found in stream network')
-            bandit_log.error('Cycles and/or loops found in stream network')
-
-            for xx in nx.simple_cycles(dag_ds):
-                con.print(f'[red]ERROR[/]: Cycle found for segment {xx}')
-                bandit_log.error(f'Cycle found for segment {xx}')
-
-    dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
-
-    # Segments in model subset
-    new_nhm_seg = np.array([ee[0] for ee in dag_ds_subset.edges])
-    con.print(f'[green4]INFO[/]: Number of stream segments in model subset: {len(new_nhm_seg)}')
-    bandit_log.info(f'Number of segments in model subset: {len(new_nhm_seg)}')
-    if verbose:
-        con.print(f'segments: {new_nhm_seg}')
-
-    # Using a dictionary mapping nhm_seg to 1-based index for speed
-    new_nhm_seg_to_idx1 = dict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
-
-    # Generate the renumbered local tosegments (1-based with zero being an outlet)
-    new_tosegment = [new_nhm_seg_to_idx1[ee[1]] if ee[1] in new_nhm_seg_to_idx1
-                     else 0 for ee in dag_ds_subset.edges]
-
-    # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
-    #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
-    #                 needs to be loaded and used to map the nhm HRU ids to their
-    #                 respective indices.
-    hru_segment = pdb.get('hru_segment_nhm').data
-    nhm_id = pdb.get('nhm_id').data
-    nhm_id_to_idx = pdb.get('nhm_id').index_map
-    bandit_log.info(f'Number of NHM hru_segment entries: {hru_segment.size}')
-
-    # Create a dictionaries mapping hru_segment segments to hru_segment 1-based indices filtered by
-    # new_nhm_seg and hru_noroute.
-    seg_to_hru, hru_to_seg = get_hru_and_seg_subset_maps(hru_segment, nhm_id, new_nhm_seg, hru_noroute)
-
-    if set(hru_to_seg.values()) == set(hru_noroute):
-        # This occurs when there are no ROUTED HRUs for any of the stream segments
-        con.print('[red]ERROR[/]: No HRUs associated with any of the segments')
-        bandit_log.error('No HRUs associated with any of the segments; exiting.')
-        exit(2)
-
-    # HRU-related parameters can either be output with the legacy, segment-oriented order
-    # or can be output maintaining their original HRU-relative order from the parameter database.
-    hru_order_subset, new_hru_segment = get_output_order(hru_to_seg, seg_to_hru, hru_segment,
-                                                         nhm_id_to_idx, new_nhm_seg_to_idx1, hru_noroute,
-                                                         keep_hru_order=keep_hru_order)
-
-    con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {len(hru_order_subset)}')
-    bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
-    bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
-    if verbose:
-        con.print(f'HRUs: {hru_order_subset}')
-
-    # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
-    # hru_order_subset contains the in-order indices for the subset of hru_segments
-    # new_hru_segment contains the in-order indices for the subset of tosegments
-    # --------------------------------------------------------------------------
-
-    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Subset poi_gage_segment
-    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg_to_idx1,
-                                                                         seg_to_hru,
-                                                                         addl_gages=addl_gages)
-
-    con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {len(new_poi_gage_id)}')
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Process the parameters and create a parameter file for the subset
-    new_ps = create_parameter_subset(prms_meta, pdb, hru_order_subset,
-                                     new_hru_segment, new_nhm_seg, new_poi_gage_id,
-                                     new_poi_gage_segment, new_poi_type, new_tosegment)
-
-    # Write the new parameter file
-    if verbose:
-        con.print(f'[green4]INFO[/]: Writing parameter file for PRMS {prms_version}')
-
-    header = [f'Written by Bandit version {__version__} for PRMS {prms_version}',
-              f'ParamDb revision: {git_url}']
-    if param_netcdf:
-        # TODO: 2023-11-13 PAN - add version info and prms version as global attributes
-        param_filename = Path(f'{param_filename.stem}.nc')
-        new_ps.write_parameter_netcdf(outdir / param_filename)
-    else:
-        new_ps.write_parameter_file(outdir / param_filename, header=header)
-
-    ctl.get('param_file').values = str(param_filename)
-
-    if verbose:
-        con.print('')
-    
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Write CBH files
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if config.output_cbh:
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Subset the cbh files for the selected HRUs
-        if verbose:
-            con.print('Processing CBH files', style='green4')
-
-        # Read the CBH source file
-        if cbh_dir.suffix == '.nc':
-            cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='netcdf')
-        elif cbh_dir.suffix == '.zarr':
-            cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='zarr')
-        else:
-            raise ValueError('Missing CBH files')
-
-        # Add the global NHM IDs from source parameter database
-        cbh_hdl.set_nhm_id(pdb.get('nhm_id').data)
-
-        if cbh_netcdf:
-            cbh_outfile = outdir / 'cbh.nc'
-
-            global_attrs = dict(bandit_version=__version__, paramdb_url=git_url)
-            cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()),
-                                 global_attrs=global_attrs, time_slice=slice(st_date, en_date),
-                                 hru_ids=hru_order_subset)
-
-            # Set the control file variables for the CBH files
-            for cfv in config.cbh_var_map.values():
-                ctl.get(cfv).values = cbh_outfile.name
-        else:
-            for cvar, cfv in config.cbh_var_map.items():
+            if pdb.dimensions.exists('npoigages') and not pdb.dimensions.exists('nobs'):
+                # If we have poi gages and nobs is missing then add it
                 if verbose:
-                    con.print(f'--- {cvar}')
+                    con.print('[gold3]WARNING[/]: Added missing nobs dimension')
+                pdb.dimensions.add('nobs', size=pdb.dimensions.get('npoigages').size)
 
-                cfile = ctl.get(cfv).values
-                cbh_hdl.write_ascii(cfile, variable=cvar, time_slice=slice(st_date, en_date), hru_ids=hru_order_subset)
+            # Add defaults for parameters that are missing but required for the selected modules
+            # WARNING: 20240726 PAN - if hru_segment_nhm is missing from the paramdb no warning is issued,
+            #                         and the wrong number of HRUs will likely be output for the extraction.
+            pdb.add_missing_parameters()
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Write output variables
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if config.include_model_output:
-        src_model_output = Path(config.output_vars_dir)
-        model_output_dir = outdir / 'model_output'
-        model_output_dir.mkdir(exist_ok=True)
+            if not no_filter_params:
+                # Reduce the parameters to those required by the selected modules
+                pdb.remove(pdb.unneeded_parameters)
 
-        model_output_ds = ModelOutput(filename=src_model_output)
+            if not pdb.exists('poi_gage_segment'):
+                con.print('[gold3]WARNING[/]: Missing POI-related parameters. To include POIs, set csvON_OFF > 0 in the control file')
 
-        for cvar in config.output_vars:
-            if model_output_netcdf:
-                model_output_ds.write_netcdf(filename=model_output_dir / f'{cvar}.nc',
-                                             variables=cvar,
-                                             time_slice=slice(st_date, en_date),
-                                             hru_ids=hru_order_subset,
-                                             seg_ids=new_nhm_seg)
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Get tosegment_nhm
+            # Convert to list for fastest access to array
+            nhm_seg = pdb.get('nhm_seg').data
+
+            # First check if any of the requested stream segments exist in the NHM.
+            # An intersection of 0 elements can occur when all stream segments are
+            # not included in the NHM (e.g. segments in Alaska).
+            # NOTE: It's possible to have a stream segment that does not exist in
+            #       tosegment but does exist in nhm_seg (e.g. standalone segment). So
+            #       we use nhm_seg to verify at least one of the given segment(s) exist.
+            if dsmost_seg and len(set(dsmost_seg).intersection(set(nhm_seg))) == 0:
+                con.print(f'[red]ERROR[/]: None of the requested stream segments exist in the NHM')
+                bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
+                raise BanditError('None of the requested stream segments exist in the NHM', exit_code=200)
+
+            # Build the stream network
+            dag_ds = pdb.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
+
+            bandit_log.debug(f'Number of NHM downstream nodes: {dag_ds.number_of_nodes()}')
+            bandit_log.debug(f'Number of NHM downstream edges: {dag_ds.number_of_edges()}')
+
+            if config.check_DAG:
+                if not nx.is_directed_acyclic_graph(dag_ds):
+                    con.print('[red]ERROR[/]: Cycles and/or loops found in stream network')
+                    bandit_log.error('Cycles and/or loops found in stream network')
+
+                    for xx in nx.simple_cycles(dag_ds):
+                        con.print(f'[red]ERROR[/]: Cycle found for segment {xx}')
+                        bandit_log.error(f'Cycle found for segment {xx}')
+
+            dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
+
+            # Segments in model subset
+            new_nhm_seg = np.array([ee[0] for ee in dag_ds_subset.edges])
+            con.print(f'[green4]INFO[/]: Number of stream segments in model subset: {len(new_nhm_seg)}')
+            bandit_log.info(f'Number of segments in model subset: {len(new_nhm_seg)}')
+            if verbose:
+                con.print(f'segments: {new_nhm_seg}')
+
+            # Using a dictionary mapping nhm_seg to 1-based index for speed
+            new_nhm_seg_to_idx1 = dict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
+
+            # Generate the renumbered local tosegments (1-based with zero being an outlet)
+            new_tosegment = [new_nhm_seg_to_idx1[ee[1]] if ee[1] in new_nhm_seg_to_idx1
+                             else 0 for ee in dag_ds_subset.edges]
+
+            # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
+            #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
+            #                 needs to be loaded and used to map the nhm HRU ids to their
+            #                 respective indices.
+            hru_segment = pdb.get('hru_segment_nhm').data
+            nhm_id = pdb.get('nhm_id').data
+            nhm_id_to_idx = pdb.get('nhm_id').index_map
+            bandit_log.info(f'Number of NHM hru_segment entries: {hru_segment.size}')
+
+            # Create a dictionaries mapping hru_segment segments to hru_segment 1-based indices filtered by
+            # new_nhm_seg and hru_noroute.
+            seg_to_hru, hru_to_seg = get_hru_and_seg_subset_maps(hru_segment, nhm_id, new_nhm_seg, hru_noroute)
+
+            if set(hru_to_seg.values()) == set(hru_noroute):
+                # This occurs when there are no ROUTED HRUs for any of the stream segments
+                con.print('[red]ERROR[/]: No HRUs associated with any of the segments')
+                bandit_log.error('No HRUs associated with any of the segments; exiting.')
+                raise BanditError('No HRUs associated with any of the segments', exit_code=2)
+
+            # HRU-related parameters can either be output with the legacy, segment-oriented order
+            # or can be output maintaining their original HRU-relative order from the parameter database.
+            hru_order_subset, new_hru_segment = get_output_order(hru_to_seg, seg_to_hru, hru_segment,
+                                                                 nhm_id_to_idx, new_nhm_seg_to_idx1, hru_noroute,
+                                                                 keep_hru_order=keep_hru_order)
+
+            con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {len(hru_order_subset)}')
+            bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
+            bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
+            if verbose:
+                con.print(f'HRUs: {hru_order_subset}')
+
+            # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
+            # hru_order_subset contains the in-order indices for the subset of hru_segments
+            # new_hru_segment contains the in-order indices for the subset of tosegments
+            # --------------------------------------------------------------------------
+
+            # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Subset poi_gage_segment
+            new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg_to_idx1,
+                                                                                 seg_to_hru,
+                                                                                 addl_gages=addl_gages)
+
+            con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {len(new_poi_gage_id)}')
+
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Process the parameters and create a parameter file for the subset
+            new_ps = create_parameter_subset(prms_meta, pdb, hru_order_subset,
+                                             new_hru_segment, new_nhm_seg, new_poi_gage_id,
+                                             new_poi_gage_segment, new_poi_type, new_tosegment)
+
+            # Write the new parameter file
+            if verbose:
+                con.print(f'[green4]INFO[/]: Writing parameter file for PRMS {prms_version}')
+
+            header = [f'Written by Bandit version {__version__} for PRMS {prms_version}',
+                      f'ParamDb revision: {git_url}']
+            if param_netcdf:
+                # TODO: 2023-11-13 PAN - add version info and prms version as global attributes
+                param_filename = Path(f'{param_filename.stem}.nc')
+                new_ps.write_parameter_netcdf(outdir / param_filename)
             else:
-                model_output_ds.write_csv(pathname=model_output_dir,
-                                          variables=cvar,
-                                          time_slice=slice(st_date, en_date),
-                                          hru_ids=hru_order_subset,
-                                          seg_ids=new_nhm_seg)
+                new_ps.write_parameter_file(outdir / param_filename, header=header)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Write dynamic parameters
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if ctl.has_dynamic_parameters:
-        if config.dyn_params_dir is None:
-            bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified ' +
-                             'in the config file')
-            exit(2)
-        else:
-            dyn_params_dir = Path(config.dyn_params_dir)
+            ctl.get('param_file').values = str(param_filename)
 
-            if not dyn_params_dir.is_dir():
-                bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
-                exit(2)
+            if verbose:
+                con.print('')
+    
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Write CBH files
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            if config.output_cbh:
+                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                # Subset the cbh files for the selected HRUs
+                if verbose:
+                    con.print('Processing CBH files', style='green4')
 
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Add dynamic parameters
-            for cparam in ctl.dynamic_parameters:
-                param_name = f'dyn_{cparam}'
-                input_file = dyn_params_dir / f'{param_name}.nc'
-                output_file = outdir / f'{param_name}.param'
-
-                if not input_file.is_file():
-                    warn_txt = f'WARNING: CONUS dynamic parameter file: {input_file}, does not exist... skipping'
-                    bandit_log.warning(warn_txt)
+                # Read the CBH source file
+                if cbh_dir.suffix == '.nc':
+                    cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='netcdf')
+                elif cbh_dir.suffix == '.zarr':
+                    cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='zarr')
                 else:
-                    if verbose:
-                        con.print(f'[green4]INFO[/]: Writing dynamic parameter {cparam}')
+                    raise ValueError('Missing CBH files')
 
-                    mydyn = dyn_params.DynamicParameters(str(input_file), cparam, st_date, en_date, hru_order_subset)
+                # Add the global NHM IDs from source parameter database
+                cbh_hdl.set_nhm_id(pdb.get('nhm_id').data)
 
-                    mydyn.read_netcdf()
-                    out_order = [kk for kk in hru_order_subset]
+                if cbh_netcdf:
+                    cbh_outfile = outdir / 'cbh.nc'
 
-                    out_order = ['year', 'month', 'day'] + out_order
-                    # for cc in ['day', 'month', 'year']:
-                    #     out_order.insert(0, cc)
+                    global_attrs = dict(bandit_version=__version__, paramdb_url=git_url)
+                    cbh_hdl.write_netcdf(cbh_outfile, variables=list(config.cbh_var_map.keys()),
+                                         global_attrs=global_attrs, time_slice=slice(st_date, en_date),
+                                         hru_ids=hru_order_subset)
 
-                    header = ' '.join(map(str, out_order))   # type: ignore
+                    # Set the control file variables for the CBH files
+                    for cfv in config.cbh_var_map.values():
+                        ctl.get(cfv).values = cbh_outfile.name
+                else:
+                    for cvar, cfv in config.cbh_var_map.items():
+                        if verbose:
+                            con.print(f'--- {cvar}')
 
-                    # Output ASCII files
-                    with open(output_file, 'w') as out_ascii:
-                        out_ascii.write(f'{cparam}\n')
-                        out_ascii.write(f'{header}\n')
-                        out_ascii.write('####\n')
-                        mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
-                                          sep=' ', index=False, header=False, encoding=None, chunksize=50)
+                        cfile = ctl.get(cfv).values
+                        cbh_hdl.write_ascii(cfile, variable=cvar, time_slice=slice(st_date, en_date), hru_ids=hru_order_subset)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Write control file
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Default the various *ON_OFF variables to 0 (off)
-    # The original values are needed to reduce parameters by module,
-    # but it's best to disable them in the final control file since
-    # no output variables are defined for them.
-    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
-                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
-    for vv in disable_vars:
-        ctl.get(vv).values = 0
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Write output variables
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            if config.include_model_output:
+                src_model_output = Path(config.output_vars_dir)
+                model_output_dir = outdir / 'model_output'
+                model_output_dir.mkdir(exist_ok=True)
 
-    ctl.write(str(Path(config.control_filename).with_suffix('.bandit')))
+                model_output_ds = ModelOutput(filename=src_model_output)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Write streamflow
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if config.output_streamflow:
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Download the streamgage information from NWIS
-        if len(new_poi_gage_id) > 0:
-            if verbose:
-                con.print(f'[green4]INFO[/]: Retrieving streamgage observations for {len(new_poi_gage_id)} stations', style='green4')
-
-            if config.exists('poi_dir') and config.poi_dir != '':
-                bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
-                streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
-                                 gage_ids=new_poi_gage_id, verbose=verbose)
-            else:
-                # Default to retrieving only NWIS stations from waterservices.usgs.gov
-                bandit_log.info('No poi_dir: retrieving only NWIS POIs from online NWIS service.')
-                streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
-                                            verbose=verbose)
-                streamflow.get_daily_streamgage_observations()
-
-            if streamflow_netcdf:
-                streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
-            else:
-                streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
-        else:
-            # TODO: 2025-03-25 PAN - this should write a netcdf file if that option was selected
-            if verbose:
-                con.print('[green4]WARNING[/]: No POIs exist in model subset; writing dummy data', style='gold3')
-            streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
-            streamflow.get_daily_streamgage_observations()
-            streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
-            bandit_log.info(f'No POIs exist in model subset; dummy data written.')
-
-    # *******************************************
-    # Create a shapefile of the selected HRUs
-    if config.output_shapefiles:
-        stime = time.time()
-
-        src_gis = Path(config.gis['src_filename'])
-
-        if verbose:
-            con.print(Rule())
-            con.print('Writing shapefiles for model subset', style='green4')
-
-        if len(config.gis) == 0 or not src_gis.exists():
-            bandit_log.error(f'Source GIS file'
-                             f'does not exist. Shapefiles will not be created')
-        else:
-            # Create GIS subdirectory if it doesn't already exist
-            gis_dir = outdir / 'GIS'
-            gis_dir.mkdir(exist_ok=True)
-
-            dst_gis_type = config.gis["dst_extension"]
-            geo_outfile = gis_dir / f'model_layers.{dst_gis_type}'
-
-            for kk, vv in config.gis['layers'].items():
-                vv['include_fields'].extend([vv['key']])
-
-                if vv['type'] == 'nhru':
-                    geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
-                                                  columns=vv['include_fields'], force_2d=True,
-                                                  where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
-                    bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
-                    bb = bb.rename(columns={vv['key']: 'nhm_id'})
-                    local_ids = new_ps.get_dataframe('nhm_id').reset_index()
-                    bb = bb.merge(local_ids, on='nhm_id')
-
-                    # Buffer the HRUs to make them visible to reduce/remove artifacts
-                    # in the dissolved layer caused by tiny gaps between HRUs
-                    bb2 = bb.copy()
-                    # bb2['geometry'] = bb2['geometry'].buffer(0.0002)
-                    domain_layer = bb2.dissolve(aggfunc={'nhm_id': 'count'})
-                    domain_layer.rename(columns={'nhm_id': 'num_hrus'}, inplace=True)
-
-                    if dst_gis_type == 'gpkg':
-                        bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
-                        domain_layer.to_file(geo_outfile, layer='domain', driver='GPKG')
+                for cvar in config.output_vars:
+                    if model_output_netcdf:
+                        model_output_ds.write_netcdf(filename=model_output_dir / f'{cvar}.nc',
+                                                     variables=cvar,
+                                                     time_slice=slice(st_date, en_date),
+                                                     hru_ids=hru_order_subset,
+                                                     seg_ids=new_nhm_seg)
                     else:
-                        geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
-                        bb.to_file(geo_outfile)
+                        model_output_ds.write_csv(pathname=model_output_dir,
+                                                  variables=cvar,
+                                                  time_slice=slice(st_date, en_date),
+                                                  hru_ids=hru_order_subset,
+                                                  seg_ids=new_nhm_seg)
 
-                        domain_outfile = gis_dir / f'model_domain.{dst_gis_type}'
-                        domain_layer.to_file(domain_outfile)
-                elif vv['type'] == 'nsegment':
-                    geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
-                                                  columns=vv['include_fields'], force_2d=True,
-                                                  where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
-                    bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
-                    bb = bb.rename(columns={vv['key']: 'nhm_seg'})
-                    local_ids = new_ps.get_dataframe('nhm_seg').reset_index()
-                    bb = bb.merge(local_ids, on='nhm_seg')
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Write dynamic parameters
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            if ctl.has_dynamic_parameters:
+                if config.dyn_params_dir is None:
+                    con.print('[red]ERROR[/]: Control file has dynamic parameters but dyn_params_dir is not specified in the config file')
+                    bandit_log.error('Control file has dynamic parameters but dyn_params_dir is not specified ' +
+                                     'in the config file')
+                    raise BanditError('Control file has dynamic parameters but dyn_params_dir is not specified in the config file', exit_code=2)
+                else:
+                    dyn_params_dir = Path(config.dyn_params_dir)
 
-                    if dst_gis_type == 'gpkg':
-                        bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
-                    else:
-                        geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
-                        bb.to_file(geo_outfile)
-                elif vv['type'] == 'npoigages':
-                    if len(new_poi_gage_id) > 0:
-                        geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
-                                                      columns=vv['include_fields'], force_2d=True)
+                    if not dyn_params_dir.is_dir():
+                        con.print(f'[red]ERROR[/]: dyn_params_dir: {config.dyn_params_dir}, does not exist.')
+                        bandit_log.error(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.')
+                        raise BanditError(f'dyn_params_dir: {config.dyn_params_dir}, does not exist.', exit_code=2)
 
-                        bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
-                        bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
+                    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                    # Add dynamic parameters
+                    for cparam in ctl.dynamic_parameters:
+                        param_name = f'dyn_{cparam}'
+                        input_file = dyn_params_dir / f'{param_name}.nc'
+                        output_file = outdir / f'{param_name}.param'
 
-                        if dst_gis_type == 'gpkg':
-                            bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                        if not input_file.is_file():
+                            warn_txt = f'WARNING: CONUS dynamic parameter file: {input_file}, does not exist... skipping'
+                            bandit_log.warning(warn_txt)
                         else:
-                            geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
-                            bb.to_file(geo_outfile)
+                            if verbose:
+                                con.print(f'[green4]INFO[/]: Writing dynamic parameter {cparam}')
+
+                            mydyn = dyn_params.DynamicParameters(str(input_file), cparam, st_date, en_date, hru_order_subset)
+
+                            mydyn.read_netcdf()
+                            out_order = [kk for kk in hru_order_subset]
+
+                            out_order = ['year', 'month', 'day'] + out_order
+                            # for cc in ['day', 'month', 'year']:
+                            #     out_order.insert(0, cc)
+
+                            header = ' '.join(map(str, out_order))   # type: ignore
+
+                            # Output ASCII files
+                            with open(output_file, 'w') as out_ascii:
+                                out_ascii.write(f'{cparam}\n')
+                                out_ascii.write(f'{header}\n')
+                                out_ascii.write('####\n')
+                                mydyn.data.to_csv(out_ascii, columns=out_order, na_rep='-999',
+                                                  sep=' ', index=False, header=False, encoding=None, chunksize=50)
+
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Write control file
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Default the various *ON_OFF variables to 0 (off)
+            # The original values are needed to reduce parameters by module,
+            # but it's best to disable them in the final control file since
+            # no output variables are defined for them.
+            disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
+                            'nsegmentOutON_OFF', 'nsubOutON_OFF']
+            for vv in disable_vars:
+                ctl.get(vv).values = 0
+
+            ctl.write(str(Path(config.control_filename).with_suffix('.bandit')))
+
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Write streamflow
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            if config.output_streamflow:
+                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                # Download the streamgage information from NWIS
+                if len(new_poi_gage_id) > 0:
+                    if verbose:
+                        con.print(f'[green4]INFO[/]: Retrieving streamgage observations for {len(new_poi_gage_id)} stations', style='green4')
+
+                    if config.exists('poi_dir') and config.poi_dir != '':
+                        bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
+                        streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
+                                         gage_ids=new_poi_gage_id, verbose=verbose)
                     else:
-                        bandit_log.info('No POIs in model subset so POI GIS layer not written.')
+                        # Default to retrieving only NWIS stations from waterservices.usgs.gov
+                        bandit_log.info('No poi_dir: retrieving only NWIS POIs from online NWIS service.')
+                        streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
+                                                    verbose=verbose)
+                        streamflow.get_daily_streamgage_observations()
+
+                    if streamflow_netcdf:
+                        streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
+                    else:
+                        streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
                 else:
-                    bandit_log.warning(f'Layer, {kk}, has unknown type, {vv["type"]}; skipping.')
+                    # TODO: 2025-03-25 PAN - this should write a netcdf file if that option was selected
+                    if verbose:
+                        con.print('[green4]WARNING[/]: No POIs exist in model subset; writing dummy data', style='gold3')
+                    streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
+                    streamflow.get_daily_streamgage_observations()
+                    streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
+                    bandit_log.info(f'No POIs exist in model subset; dummy data written.')
 
-        if verbose:
-            con.print(f'[green4]INFO[/]: Geo write time: {time.time() - stime:0.3f} s')
+            # *******************************************
+            # Create a shapefile of the selected HRUs
+            if config.output_shapefiles:
+                stime = time.time()
 
-    bandit_log.info(f'========== END {datetime.datetime.now().isoformat()} ==========')
+                src_gis = Path(config.gis['src_filename'])
 
-    client.close()
-    os.chdir(stdir)
+                if verbose:
+                    con.print(Rule())
+                    con.print('Writing shapefiles for model subset', style='green4')
+
+                if len(config.gis) == 0 or not src_gis.exists():
+                    bandit_log.error(f'Source GIS file'
+                                     f'does not exist. Shapefiles will not be created')
+                else:
+                    # Create GIS subdirectory if it doesn't already exist
+                    gis_dir = outdir / 'GIS'
+                    gis_dir.mkdir(exist_ok=True)
+
+                    dst_gis_type = config.gis["dst_extension"]
+                    geo_outfile = gis_dir / f'model_layers.{dst_gis_type}'
+
+                    for kk, vv in config.gis['layers'].items():
+                        vv['include_fields'].extend([vv['key']])
+
+                        if vv['type'] == 'nhru':
+                            geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
+                                                          columns=vv['include_fields'], force_2d=True,
+                                                          where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
+                            bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
+                            bb = bb.rename(columns={vv['key']: 'nhm_id'})
+                            local_ids = new_ps.get_dataframe('nhm_id').reset_index()
+                            bb = bb.merge(local_ids, on='nhm_id')
+
+                            # Buffer the HRUs to make them visible to reduce/remove artifacts
+                            # in the dissolved layer caused by tiny gaps between HRUs
+                            bb2 = bb.copy()
+                            # bb2['geometry'] = bb2['geometry'].buffer(0.0002)
+                            domain_layer = bb2.dissolve(aggfunc={'nhm_id': 'count'})
+                            domain_layer.rename(columns={'nhm_id': 'num_hrus'}, inplace=True)
+
+                            if dst_gis_type == 'gpkg':
+                                bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                                domain_layer.to_file(geo_outfile, layer='domain', driver='GPKG')
+                            else:
+                                geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
+                                bb.to_file(geo_outfile)
+
+                                domain_outfile = gis_dir / f'model_domain.{dst_gis_type}'
+                                domain_layer.to_file(domain_outfile)
+                        elif vv['type'] == 'nsegment':
+                            geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
+                                                          columns=vv['include_fields'], force_2d=True,
+                                                          where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
+                            bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
+                            bb = bb.rename(columns={vv['key']: 'nhm_seg'})
+                            local_ids = new_ps.get_dataframe('nhm_seg').reset_index()
+                            bb = bb.merge(local_ids, on='nhm_seg')
+
+                            if dst_gis_type == 'gpkg':
+                                bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                            else:
+                                geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
+                                bb.to_file(geo_outfile)
+                        elif vv['type'] == 'npoigages':
+                            if len(new_poi_gage_id) > 0:
+                                geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
+                                                              columns=vv['include_fields'], force_2d=True)
+
+                                bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
+                                bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
+
+                                if dst_gis_type == 'gpkg':
+                                    bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
+                                else:
+                                    geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
+                                    bb.to_file(geo_outfile)
+                            else:
+                                bandit_log.info('No POIs in model subset so POI GIS layer not written.')
+                        else:
+                            bandit_log.warning(f'Layer, {kk}, has unknown type, {vv["type"]}; skipping.')
+
+                if verbose:
+                    con.print(f'[green4]INFO[/]: Geo write time: {time.time() - stime:0.3f} s')
+
+            bandit_log.info(f'========== END {datetime.datetime.now().isoformat()} ==========')
+
+    finally:
+        if chdir_needed:
+            os.chdir(stdir)
 
 
 def main():
-    app()
+    try:
+        app()
+    except BanditError as err:
+        bandit_log.error(str(err))
+        con.print(f'[red]ERROR[/]: {err}')
+        sys.exit(err.exit_code)
 
 
 if __name__ == '__main__':
