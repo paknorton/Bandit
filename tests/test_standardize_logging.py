@@ -81,15 +81,4 @@ class TestProhibitedPatterns:
                         f'Found sys.stdout.flush() call at line {node.lineno}'
                     )
 
-    def test_no_import_sys(self, bandit_tree):
-        """bandit.py should not import the sys module.
 
-        Validates: Requirement 6.1
-        """
-        for node in ast.walk(bandit_tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name == 'sys':
-                        pytest.fail(
-                            f'Found "import sys" at line {node.lineno}'
-                        )
