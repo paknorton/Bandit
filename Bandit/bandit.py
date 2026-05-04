@@ -16,13 +16,15 @@ import pyogrio as pyg  # type: ignore
 
 from cyclopts import App, Parameter, validators
 from dask.distributed import Client
+from numpy.typing import NDArray
 
 from pyPRMS.base.console import get_console_instance
 
 from Bandit import __version__
-from Bandit.bandit_helpers import (parse_gages, set_date, subset_stream_network, get_hru_and_seg_subset_maps,
-                                   get_output_order, get_poi_subset, resize_dims)
+from Bandit.bandit_helpers import (create_parameter_subset, parse_gages, set_date, subset_stream_network,
+                                   get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
+from Bandit.config_validator import ConfigValidator
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI   # type: ignore
 import Bandit.bandit_cfg as bc   # type: ignore
@@ -127,13 +129,22 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     config = bc.Cfg(config_file)
 
+    validator = ConfigValidator(config)
+    errors = validator.validate()
+    if errors:
+        for err in errors:
+            bandit_log.error(err)
+            con.print(f'[red]ERROR[/]: {err}')
+        con.print(f'[red]Configuration has {len(errors)} error(s). Fix the above issues and retry.[/]')
+        exit(2)
+
     outdir = Path(config.output_dir)   # Where to output the subset
     param_filename = Path(config.param_filename)   # Name of the output parameter file
     paramdb_dir = Path(config.paramdb_dir)   # Location of the NHM parameter database
     cbh_dir = Path(config.cbh_dir)
     dsmost_seg = config.outlets   # List of outlets
     uscutoff_seg = config.cutoffs   # List of upstream cutoffs
-    hru_noroute = config.hru_noroute   # List of additional HRUs (have no route to segment within subset)
+    hru_noroute = np.array(config.hru_noroute)   # Array of additional HRUs (have no route to segment within subset)
 
     # if prms_version == 6:
     #     cbh_netcdf = True
@@ -195,21 +206,10 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     if not pdb.exists('poi_gage_segment'):
         con.print('[gold3]WARNING[/]: Missing POI-related parameters. To include POIs, set csvON_OFF > 0 in the control file')
 
-    # Default the various *ON_OFF variables to 0 (off)
-    # The original values are needed to reduce parameters by module,
-    # but it's best to disable them in the final control file since
-    # no output variables are defined for them.
-    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
-                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
-    for vv in disable_vars:
-        ctl.get(vv).values = 0
-
-    nhm_global_dimensions = pdb.dimensions
-
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Get tosegment_nhm
     # Convert to list for fastest access to array
-    nhm_seg = pdb.get('nhm_seg').tolist()
+    nhm_seg = pdb.get('nhm_seg').data
 
     # First check if any of the requested stream segments exist in the NHM.
     # An intersection of 0 elements can occur when all stream segments are
@@ -217,7 +217,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # NOTE: It's possible to have a stream segment that does not exist in
     #       tosegment but does exist in nhm_seg (e.g. standalone segment). So
     #       we use nhm_seg to verify at least one of the given segment(s) exist.
-    if dsmost_seg and len(set(dsmost_seg).intersection(nhm_seg)) == 0:
+    if dsmost_seg and len(set(dsmost_seg).intersection(set(nhm_seg))) == 0:
         con.print(f'[red]ERROR[/]: None of the requested stream segments exist in the NHM')
         bandit_log.error('None of the requested stream segments exist in the NHM paramDb')
         exit(200)
@@ -240,7 +240,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
 
     # Segments in model subset
-    new_nhm_seg = [ee[0] for ee in dag_ds_subset.edges]
+    new_nhm_seg = np.array([ee[0] for ee in dag_ds_subset.edges])
     con.print(f'[green4]INFO[/]: Number of stream segments in model subset: {len(new_nhm_seg)}')
     bandit_log.info(f'Number of segments in model subset: {len(new_nhm_seg)}')
     if verbose:
@@ -257,10 +257,10 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
     #                 needs to be loaded and used to map the nhm HRU ids to their
     #                 respective indices.
-    hru_segment = pdb.get('hru_segment_nhm').tolist()
-    nhm_id = pdb.get('nhm_id').tolist()
+    hru_segment = pdb.get('hru_segment_nhm').data
+    nhm_id = pdb.get('nhm_id').data
     nhm_id_to_idx = pdb.get('nhm_id').index_map
-    bandit_log.info(f'Number of NHM hru_segment entries: {len(hru_segment)}')
+    bandit_log.info(f'Number of NHM hru_segment entries: {hru_segment.size}')
 
     # Create a dictionaries mapping hru_segment segments to hru_segment 1-based indices filtered by
     # new_nhm_seg and hru_noroute.
@@ -275,8 +275,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
     hru_order_subset, new_hru_segment = get_output_order(hru_to_seg, seg_to_hru, hru_segment,
-                                                         nhm_id_to_idx, new_nhm_seg,
-                                                         new_nhm_seg_to_idx1, hru_noroute,
+                                                         nhm_id_to_idx, new_nhm_seg_to_idx1, hru_noroute,
                                                          keep_hru_order=keep_hru_order)
 
     con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {len(hru_order_subset)}')
@@ -290,115 +289,20 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # new_hru_segment contains the in-order indices for the subset of tosegments
     # --------------------------------------------------------------------------
 
-    # ==========================================================================
-    # ==========================================================================
-    # Get subset of hru_deplcrv using hru_order_subset
-    # A single snarea_curve can be referenced by multiple HRUs
-    hru_deplcrv_subset = pdb.get_subset('hru_deplcrv', hru_order_subset)
-
-    # noinspection PyTypeChecker
-    uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()  # type: ignore
-
     # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
-    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg,
-                                                                         new_nhm_seg_to_idx1,
+    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg_to_idx1,
                                                                          seg_to_hru,
                                                                          addl_gages=addl_gages)
 
     con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {len(new_poi_gage_id)}')
 
-    # ==================================================================
-    # ==================================================================
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Process the parameters and create a parameter file for the subset
-    params = list(pdb.keys())
-
-    # Remove the POI-related parameters if we have no POIs
-    if len(new_poi_gage_segment) == 0:
-        con.print('[gold3]WARNING[/]: No POIs found for model subset')
-        bandit_log.warning('No POI gages found for subset; removing POI-related parameters.')
-
-        for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
-            if rp in params:
-                params.remove(rp)
-
-    params.sort()
-
-    # Build dictionary of resized dimensions for the model subset
-    dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
-                       num_hru=len(hru_order_subset),
-                       num_seg=len(new_nhm_seg),
-                       num_deplcrv=len(uniq_deplcrv),
-                       num_poi=len(new_poi_gage_segment))
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Build Parameters for extracted model
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    new_ps = Parameters(metadata=prms_meta)
-
-    # Add the global dimensions
-    for dd, dv in dims.items():
-        new_ps.dimensions.add(dd, dv)
-
-    for pp in params:
-        src_param = pdb.get(pp)
-
-        new_ps.add(name=pp)
-        cnew_param = new_ps.get(pp)
-
-        ndims = src_param.ndim
-        dim_order = list(src_param.dimensions.keys())
-
-        first_dimension = dim_order[0]
-        outdata = None
-
-        # Write out the data for the parameter
-        if ndims == 0:
-            # Scalar parameters
-            outdata = src_param.data
-        elif ndims == 1:
-            # 1D Parameters
-            # if first_dimension == 'one':
-            #     outdata = src_param.data
-            if first_dimension == 'nsegment':
-                if pp in ['tosegment']:
-                    outdata = np.array(new_tosegment)
-                else:
-                    outdata = pdb.get_subset(pp, new_nhm_seg)
-            elif first_dimension == 'ndeplval':
-                # snarea_thresh - this is really a 2D in disguise, however,
-                # it is stored in C-order unlike other 2D arrays
-                outdata = pdb.get_subset(pp, hru_order_subset)
-            elif first_dimension == 'npoigages':
-                if pp == 'poi_gage_segment':
-                    outdata = np.array(new_poi_gage_segment)
-                elif pp == 'poi_gage_id':
-                    outdata = np.array(new_poi_gage_id)
-                elif pp == 'poi_type':
-                    outdata = np.array(new_poi_type)
-                else:
-                    bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
-            elif first_dimension in HRU_DIMS:
-                if pp == 'hru_deplcrv':
-                    outdata = pdb.get_subset(pp, hru_order_subset)
-                elif pp == 'hru_segment':
-                    outdata = np.array(new_hru_segment)
-                else:
-                    outdata = pdb.get_subset(pp, hru_order_subset)
-            else:
-                bandit_log.error(f'No rules to handle dimension {first_dimension}')
-        elif ndims == 2:
-            # 2D Parameters
-            if first_dimension == 'nsegment':
-                outdata = pdb.get_subset(pp, new_nhm_seg)
-            elif first_dimension in HRU_DIMS:
-                outdata = pdb.get_subset(pp, hru_order_subset)
-            else:
-                err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
-                bandit_log.error(err_txt)
-
-        cnew_param.data = outdata
+    new_ps = create_parameter_subset(prms_meta, pdb, hru_order_subset,
+                                     new_hru_segment, new_nhm_seg, new_poi_gage_id,
+                                     new_poi_gage_segment, new_poi_type, new_tosegment)
 
     # Write the new parameter file
     if verbose:
@@ -438,7 +342,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         else:
             raise ValueError('Missing CBH files')
 
-        # Add the global NHM IDs
+        # Add the global NHM IDs from source parameter database
         cbh_hdl.set_nhm_id(pdb.get('nhm_id').data)
 
         if cbh_netcdf:
@@ -452,7 +356,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             # Set the control file variables for the CBH files
             for cfv in config.cbh_var_map.values():
                 ctl.get(cfv).values = cbh_outfile.name
-
         else:
             for cvar, cfv in config.cbh_var_map.items():
                 if verbose:
@@ -520,8 +423,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     mydyn.read_netcdf()
                     out_order = [kk for kk in hru_order_subset]
 
-                    for cc in ['day', 'month', 'year']:
-                        out_order.insert(0, cc)
+                    out_order = ['year', 'month', 'day'] + out_order
+                    # for cc in ['day', 'month', 'year']:
+                    #     out_order.insert(0, cc)
 
                     header = ' '.join(map(str, out_order))   # type: ignore
 
@@ -536,6 +440,15 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write control file
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Default the various *ON_OFF variables to 0 (off)
+    # The original values are needed to reduce parameters by module,
+    # but it's best to disable them in the final control file since
+    # no output variables are defined for them.
+    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
+                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
+    for vv in disable_vars:
+        ctl.get(vv).values = 0
+
     ctl.write(str(Path(config.control_filename).with_suffix('.bandit')))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

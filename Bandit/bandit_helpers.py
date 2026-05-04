@@ -5,9 +5,13 @@ import networkx as nx   # type: ignore
 import numpy as np
 import re
 
-from collections import OrderedDict
-from typing import Union, Dict, List, Set, Tuple
+from numpy.typing import NDArray
+from typing import Union, Dict, List, Optional, Set, Tuple
 
+from pyPRMS.base.console import get_console_instance
+from pyPRMS.constants import MetaDataType
+from pyPRMS import Parameters   # type: ignore
+from pyPRMS.parameters.Parameter import ParamDataType
 from pyPRMS.constants import HRU_DIMS
 
 logger = logging.getLogger(__name__)
@@ -150,80 +154,276 @@ def subset_stream_network(dag_ds: nx.classes.digraph.DiGraph,
     return dag_ds_subset
 
 
-def get_hru_and_seg_subset_maps(orig_hru_segment, orig_nhm_id, nhm_seg_subset, hru_noroute):
+def create_parameter_subset(prms_meta: MetaDataType,
+                            pdb: Parameters,
+                            hru_order_subset: List[int],
+                            new_hru_segment: List[int],
+                            new_nhm_seg: List[int],
+                            new_poi_gage_id: List[str],
+                            new_poi_gage_segment: List[int],
+                            new_poi_type: List[int],
+                            new_tosegment: List[int]):
+    """Create a new Parameters object that is a subset of the original parameter database.
+
+    :param prms_meta: PRMS metadata object
+    :param pdb: Original parameter database
+    :param hru_order_subset: List of HRUs to include in the subset
+    :param new_hru_segment: List of HRUs segments for HRUs subset
+    :param new_nhm_seg: List of NHM segments for subset
+    :param new_poi_gage_id: List of POI gage ids for subset
+    :param new_poi_gage_segment: List of POI gage segments for subset
+    :param new_poi_type: List of POI types for subset
+    :param new_tosegment: List of tosegment values for subset
+    :return: New Parameters object with subset of parameters
+    """
+
+    # Rich library
+    con = get_console_instance(record=True)
+
+    # nhm_global_dimensions = pdb.dimensions
+
+    # ==========================================================================
+    # ==========================================================================
+    # Get subset of hru_deplcrv using hru_order_subset
+    # A single snarea_curve can be referenced by multiple HRUs
+    hru_deplcrv_subset = pdb.get_subset('hru_deplcrv', hru_order_subset)
+
+    # noinspection PyTypeChecker
+    uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()  # type: ignore
+
+    # ==================================================================
+    # ==================================================================
+    # Process the parameters and create a parameter file for the subset
+    params = list(pdb.keys())
+
+    # Remove the POI-related parameters if we have no POIs
+    if len(new_poi_gage_segment) == 0:
+        con.print('[gold3]WARNING[/]: No POIs found for model subset')
+        # bandit_log.warning('No POI gages found for subset; removing POI-related parameters.')
+
+        for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
+            if rp in params:
+                params.remove(rp)
+
+    params.sort()
+
+    # Build dictionary of resized dimensions for the model subset
+    # dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
+    dims = resize_dims(pdb=pdb,
+                       num_hru=len(hru_order_subset),
+                       num_seg=len(new_nhm_seg),
+                       num_deplcrv=len(uniq_deplcrv),
+                       num_poi=len(new_poi_gage_segment))
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Build Parameters for extracted model
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    new_ps = Parameters(metadata=prms_meta)
+
+    # Add the global dimensions
+    for dd, dv in dims.items():
+        new_ps.dimensions.add(dd, dv)
+
+    for pp in params:
+        src_param = pdb.get(pp)
+
+        new_ps.add(name=pp)
+        cnew_param = new_ps.get(pp)
+
+        ndims = src_param.ndim
+        dim_order = list(src_param.dimensions.keys())
+
+        first_dimension = dim_order[0]
+        outdata = None
+
+        # Write out the data for the parameter
+        if ndims == 0:
+            # Scalar parameters
+            outdata = src_param.data
+        elif ndims == 1:
+            # 1D Parameters
+            # if first_dimension == 'one':
+            #     outdata = src_param.data
+            if first_dimension == 'nsegment':
+                if pp in ['tosegment']:
+                    outdata = np.array(new_tosegment)
+                else:
+                    outdata = pdb.get_subset(pp, new_nhm_seg)
+            elif first_dimension == 'ndeplval':
+                # snarea_thresh - this is really a 2D in disguise, however,
+                # it is stored in C-order unlike other 2D arrays
+                outdata = pdb.get_subset(pp, hru_order_subset)
+            elif first_dimension == 'npoigages':
+                if pp == 'poi_gage_segment':
+                    outdata = np.array(new_poi_gage_segment)
+                elif pp == 'poi_gage_id':
+                    outdata = np.array(new_poi_gage_id)
+                elif pp == 'poi_type':
+                    outdata = np.array(new_poi_type)
+                else:
+                    con.print(f'[red]ERROR[/]: Unkown parameter, {pp}, with dimensions {first_dimension}')
+                    # bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
+            elif first_dimension in HRU_DIMS:
+                if pp == 'hru_deplcrv':
+                    outdata = pdb.get_subset(pp, hru_order_subset)
+                elif pp == 'hru_segment':
+                    outdata = np.array(new_hru_segment)
+                else:
+                    outdata = pdb.get_subset(pp, hru_order_subset)
+            else:
+                con.print(f'[red]ERROR[/]: No rules to handle dimension {first_dimension}')
+                # bandit_log.error(f'No rules to handle dimension {first_dimension}')
+        elif ndims == 2:
+            # 2D Parameters
+            if first_dimension == 'nsegment':
+                outdata = pdb.get_subset(pp, new_nhm_seg)
+            elif first_dimension in HRU_DIMS:
+                outdata = pdb.get_subset(pp, hru_order_subset)
+            else:
+                err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
+                con.print(f'[red]ERROR[/]: {err_txt}')
+                # bandit_log.error(err_txt)
+
+        cnew_param.data = outdata
+
+    return new_ps
+
+
+def get_hru_and_seg_subset_maps(orig_hru_segment: ParamDataType,
+                                orig_nhm_id: ParamDataType,
+                                nhm_seg_subset: NDArray,
+                                hru_noroute: NDArray) -> Tuple[Dict[int, List[int]], Dict[int, int]]:
+    """Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
+    new_nhm_seg and hru_noroute.
+
+    :param orig_hru_segment: NHM HRU segments from source parameter database
+    :param orig_nhm_id: NHM HRU IDs from source parameter database
+    :param nhm_seg_subset: Array of segment IDs for parameter subset
+    :param hru_noroute: Array of non-routed HRUs to include in parameter subset
+    :return: Dictionaries mapping segments-to-HRUs and HRUs-to-segments
+    """
+
     # Create a dictionary mapping hru_segment segments to hru_segment 1-based indices filtered by
     # new_nhm_seg and hru_noroute.
+    # Assumes all inputs are numpy arrays
     seg_to_hru = dict()
     hru_to_seg = dict()
 
-    for ii, vv in enumerate(orig_hru_segment):
-        # Contains both new_nhm_seg values and non-routed HRU values
-        # keys are 1-based, values in arrays are 1-based
-        hid = orig_nhm_id[ii]
-        if vv in nhm_seg_subset:
-            seg_to_hru.setdefault(vv, []).append(hid)
-            hru_to_seg[hid] = vv
-        elif hid in hru_noroute:
-            if vv != 0:
-                err_txt = f'User-supplied non-routed HRU {hid} that routes to stream segment {vv}; skipping.'
-                logger.error(err_txt)
-            else:
-                seg_to_hru.setdefault(vv, []).append(hid)
-                hru_to_seg[hid] = vv
+    # Create boolean masks for efficient filtering
+    in_seg_subset = np.isin(orig_hru_segment, nhm_seg_subset)
+    in_hru_noroute = np.isin(orig_nhm_id, hru_noroute)
+
+    # Process in original order to maintain ordering
+    for cidx in range(len(orig_hru_segment)):
+      cseg = orig_hru_segment[cidx]
+      hid = orig_nhm_id[cidx]
+
+      if in_seg_subset[cidx]:
+          seg_to_hru.setdefault(cseg, []).append(hid)
+          hru_to_seg[hid] = cseg
+      elif in_hru_noroute[cidx]:
+          if cseg != 0:
+              err_txt = f'User-supplied non-routed HRU {hid} that routes to stream segment {cseg}; skipping.'
+              logger.error(err_txt)
+          else:
+              seg_to_hru.setdefault(cseg, []).append(hid)
+              hru_to_seg[hid] = cseg
 
     return seg_to_hru, hru_to_seg
 
 
-def get_output_order(hru_to_seg, seg_to_hru, orig_hru_segment, orig_nhm_id_to_idx,
-                     new_nhm_seg, new_nhm_seg_to_idx1, hru_noroute, keep_hru_order=False):
+def get_output_order(hru_to_seg: Dict[int, int],
+                     seg_to_hru: Dict[int, List[int]],
+                     orig_hru_segment: ParamDataType,
+                     orig_nhm_id_to_idx: Dict[int, int],
+                     new_nhm_seg_to_idx1: Dict[int, int],
+                     hru_noroute: NDArray,
+                     keep_hru_order: bool = False) -> Tuple[List[int], List[int]]:
+    """Create lists of HRU ids and HRU segments for a model subset.
+
+    :param hru_to_seg: Dictionary mapping HRUs to segments
+    :param seg_to_hru: Dictionary mapping segments to HRUs
+    :param orig_hru_segment: NHM HRU segments from source parameter database
+    :param orig_nhm_id_to_idx: Dictionary mapping NHM HRU IDs to indices in the source parameter database
+    :param new_nhm_seg_to_idx1: Dictionary mapping segment IDs to 1-based indices in the subset
+    :param hru_noroute: Array of non-routed HRUs to include in parameter subset
+    :param keep_hru_order: If True, keep the original HRU-relative order in the model subset
+    :return: Lists of HRU ids and HRU segments for the model subset
+    """
+
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
     if keep_hru_order:
         # NOTE: Segments that have no HRUs connected to them are not logged
         hru_order_subset = [kk for kk in hru_to_seg.keys()]
 
-        new_hru_segment = [new_nhm_seg_to_idx1[kk] if kk in new_nhm_seg else 0 if kk == 0 else -1 for kk in
-                           hru_to_seg.values()]
+        new_hru_segment = []
+
+        for cseg in hru_to_seg.values():
+            if cseg in new_nhm_seg_to_idx1:
+                new_hru_segment.append(new_nhm_seg_to_idx1[cseg])
+            elif cseg == 0:
+                new_hru_segment.append(0)
+            else:
+                new_hru_segment.append(-1)
     else:
         # Get NHM HRU ids ordered by the segments in the model subset - indices are 1-based
         hru_order_subset = []
-        for xx in new_nhm_seg:
-            if xx in seg_to_hru:
-                for yy in seg_to_hru[xx]:
-                    hru_order_subset.append(yy)
+        for cseg in new_nhm_seg_to_idx1.keys():
+            if cseg in seg_to_hru:
+                for chru in seg_to_hru[cseg]:
+                    hru_order_subset.append(chru)
             else:
-                logger.warning(f'Stream segment {xx} has no HRUs connected to it.')
+                logger.warning(f'Stream segment {cseg} has no HRUs connected to it.')
 
         # Append the additional non-routed HRUs to the list
         if len(hru_noroute) > 0:
-            for xx in hru_noroute:
-                if orig_hru_segment[orig_nhm_id_to_idx[xx]] == 0:
-                    logger.info(f'User-supplied HRU {xx} is not connected to any stream segment')
-                    hru_order_subset.append(xx)
+            for cseg in hru_noroute:
+                if orig_hru_segment[orig_nhm_id_to_idx[cseg]] == 0:
+                    logger.info(f'User-supplied HRU {cseg} is not connected to any stream segment')
+                    hru_order_subset.append(cseg)
                 else:
-                    err_txt = f'User-supplied HRU {xx} routes to stream segment ' + \
-                              f'{orig_hru_segment[orig_nhm_id_to_idx[xx]]} - Skipping.'
+                    err_txt = f'User-supplied HRU {cseg} routes to stream segment ' + \
+                              f'{orig_hru_segment[orig_nhm_id_to_idx[cseg]]} - Skipping.'
                     logger.error(err_txt)
 
-        # Renumber the hru_segments for the subset
-        new_hru_segment = []
-
-        for xx in new_nhm_seg:
-            if xx in seg_to_hru:
-                for _ in seg_to_hru[xx]:
-                    # The new indices should be 1-based from PRMS
-                    new_hru_segment.append(new_nhm_seg_to_idx1[xx])
-
-        # Append zeroes to new_hru_segment for each additional non-routed HRU
-        if len(hru_noroute) > 0:
-            for xx in hru_noroute:
-                if orig_hru_segment[orig_nhm_id_to_idx[xx]] == 0:
-                    new_hru_segment.append(0)
-
+        new_hru_segment = _renumber_hru_segments(seg_to_hru, orig_hru_segment, orig_nhm_id_to_idx,
+                                                 new_nhm_seg_to_idx1, hru_noroute)
     return hru_order_subset, new_hru_segment
 
 
-def get_poi_subset(nhm_params, new_nhm_seg, new_nhm_seg_to_idx1, seg_to_hru, addl_gages=None):
+def _renumber_hru_segments(seg_to_hru, orig_hru_segment, orig_nhm_id_to_idx,
+                           new_nhm_seg_to_idx1, hru_noroute):
+    # Renumber the hru_segments for the subset
+    new_hru_segment = []
+
+    for cseg, cidx in new_nhm_seg_to_idx1.items():
+        if cseg in seg_to_hru:
+            for _ in seg_to_hru[cseg]:
+                # The new indices should be 1-based from PRMS
+                new_hru_segment.append(cidx)
+
+    # Append zeroes to new_hru_segment for each additional non-routed HRU
+    if len(hru_noroute) > 0:
+        for cseg in hru_noroute:
+            if orig_hru_segment[orig_nhm_id_to_idx[cseg]] == 0:
+                new_hru_segment.append(0)
+    return new_hru_segment
+
+
+def get_poi_subset(nhm_params: Parameters,
+                   new_nhm_seg_to_idx1: Dict[int, int],
+                   seg_to_hru: Dict[int, List[int]],
+                   addl_gages: Optional[Dict]  = None) -> Tuple[List[int], List[str], List[int]]:
+    """Create lists of POI IDs, segments, and types for a model subset.
+
+    :param nhm_params: Source NHM parameter database
+    :param new_nhm_seg_to_idx1: Dictionary mapping segment IDs to 1-based indices in the subset
+    :param seg_to_hru: Dictionary mapping segments to HRUs
+    :param addl_gages: Dictionary additional streamgages to include in the subset
+    :return: Lists of POI IDs, segments, and types for the model subset
+    """
+
     # Subset poi_gage_segment
     new_poi_gage_segment = []
     new_poi_gage_id = []
@@ -245,7 +445,7 @@ def get_poi_subset(nhm_params, new_nhm_seg, new_nhm_seg_to_idx1, seg_to_hru, add
         nhm_seg_dict = nhm_params.get('nhm_seg').index_map
         poi_gage_dict = nhm_params.get('poi_gage_segment').index_map
 
-        for ss in new_nhm_seg:
+        for ss in new_nhm_seg_to_idx1.keys():
             sidx = nhm_seg_dict[ss] + 1
             if sidx in poi_gage_segment:
                 # print('   {}'.format(poi_gage_segment.index(sidx)))
@@ -286,8 +486,22 @@ def get_poi_subset(nhm_params, new_nhm_seg, new_nhm_seg_to_idx1, seg_to_hru, add
     return new_poi_gage_segment, new_poi_gage_id, new_poi_type
 
 
-def resize_dims(src_global_dims, num_hru, num_seg, num_deplcrv, num_poi):
-    dims = {kk.name: kk.size for kk in src_global_dims}
+def resize_dims(pdb: Parameters,
+                num_hru: int,
+                num_seg: int,
+                num_deplcrv: int,
+                num_poi: int) -> Dict[str, int]:
+    """Returns a dictionary of dimensions from the source parameter database resized to the model subset.
+
+    :param pdb: Original parameter database
+    :param num_hru: Number of HRUs in the model subset
+    :param num_seg: Number of segments in the model subset
+    :param num_deplcrv: Number of snow depletion curves in the model subset
+    :param num_poi: Number of Points-of-Interest (POIs) in the model subset
+    :return: Dictionary of the resized dimensions
+    """
+
+    dims = {kk.name: kk.size for kk in pdb.dimensions.values()}
 
     # Resize dimensions to the model subset
     crap_dims = dims.copy()   # need a copy since we modify dims

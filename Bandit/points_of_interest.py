@@ -125,6 +125,7 @@ class POI:
             # print('\t\tOpen dataset')
             self.__outdata = xr.open_mfdataset(self.__src_path,
                                                chunks={}, combine='nested',
+                                               join='outer',
                                                # chunks={'poi_id': 1040}, combine='nested',
                                                concat_dim='poi_id', decode_cf=True,
                                                engine='netcdf4')

@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 
-import argparse
 import datetime
 import errno
 import logging
 import numpy as np
 import os
-import sys
 import time
 
 from cyclopts import App, Parameter, validators
@@ -17,7 +15,7 @@ from typing import Annotated, List, Optional, Union
 from pyPRMS.base.console import get_console_instance
 
 from Bandit import __version__
-from Bandit.bandit_helpers import set_date, resize_dims
+from Bandit.bandit_helpers import create_parameter_subset, set_date
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
 import Bandit.bandit_cfg as bc   # type: ignore
@@ -116,7 +114,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     param_filename = Path(config.param_filename)   # Name of the output parameter file
     paramdb_dir = Path(config.paramdb_dir)   # Location of the NHM parameter database
     cbh_dir = Path(config.cbh_dir)
-    hru_noroute = config.hru_noroute   # List of additional HRUs (have no route to segment within subset)
+    hru_noroute = np.array(config.hru_noroute)   # Array of additional HRUs (have no route to segment within subset)
 
     # if prms_version == 6:
     #     cbh_netcdf = True
@@ -139,6 +137,15 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     ctl.get('start_time').values = st_date
     ctl.get('end_time').values = en_date
 
+    # Default the various *ON_OFF variables to 0 (off)
+    # The original values are needed to reduce parameters by module,
+    # but it's best to disable them in the final control file since
+    # no output variables are defined for them.
+    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
+                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
+    for vv in disable_vars:
+        ctl.get(vv).values = 0
+
     # Output revision of NhmParamDb
     git_url = git_commit_url(paramdb_dir)
     nhmparamdb_revision = git_commit(paramdb_dir, length=7)
@@ -148,7 +155,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     # Load the NHMparamdb
     if verbose:
-        # con.print('[green4]INFO[/]: Loading NHM ParamDb')
         con.print(f'[green4]INFO[/]: Parameter database: {git_repo(paramdb_dir)}')
         con.print(f'[green4]INFO[/]: Branch: {git_branch(paramdb_dir)}')
         con.print(f'[green4]INFO[/]: Commit: {nhmparamdb_revision}')
@@ -162,17 +168,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     if not no_filter_params:
         # Reduce the parameters to those required by the selected modules
         pdb.remove(pdb.unneeded_parameters)
-
-    # Default the various *ON_OFF variables to 0 (off)
-    # The original values are needed to reduce parameters by module,
-    # but it's best to disable them in the final control file since
-    # no output variables are defined for them.
-    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
-                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
-    for vv in disable_vars:
-        ctl.get(vv).values = 0
-
-    nhm_global_dimensions = pdb.dimensions
 
     # Trim paramdb parameters for single-HRU extractions
     params = list(pdb.keys())
@@ -204,9 +199,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # Now remove those parameters
     for rp in remove_params:
         if rp in params:
-            params.remove(rp)
-
-    params.sort()
+            pdb.remove(rp)
 
     # ====================================================================
     # ====================================================================
@@ -250,92 +243,18 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         # ==================================================================
         # ==================================================================
         # Process the parameters and create a parameter file for the subset
-        params = list(pdb.keys())
 
-        # Remove the POI-related parameters
-        for rp in remove_params:
-            if rp in params:
-                params.remove(rp)
-
-        params.sort()
-
-        # Build dictionary of resized dimensions for the model subset
-        dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
-                           num_hru=len(hru_order_subset),
-                           num_seg=len(new_nhm_seg),
-                           num_deplcrv=len(uniq_deplcrv),
-                           num_poi=0)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Build Parameters for extracted model
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        new_ps = Parameters(metadata=prms_meta)
-
-        # Add the global dimensions
-        for dd, dv in dims.items():
-            new_ps.dimensions.add(dd, dv)
-
-        for pp in params:
-            src_param = pdb.get(pp)
-
-            # if args.verbose:
-            #     sys.stdout.write('\r                                       ')
-            #     sys.stdout.write(f'\rProcessing {src_param.name} ')
-            #     sys.stdout.flush()
-
-            new_ps.add(name=pp)
-            cnew_param = new_ps.get(pp)
-
-            ndims = src_param.ndim
-            dim_order = list(src_param.dimensions.keys())
-
-            first_dimension = dim_order[0]
-            outdata = None
-
-            # Write out the data for the parameter
-            if ndims == 0:
-                # Scalar parameters
-                outdata = src_param.data
-            elif ndims == 1:
-                # 1D Parameters
-                if first_dimension == 'one':
-                    outdata = src_param.data
-                elif include_stream and first_dimension == 'nsegment':
-                    if pp in ['tosegment']:
-                        outdata = np.array(0)
-                    else:
-                        outdata = pdb.get_subset(pp, new_nhm_seg)
-                elif first_dimension == 'ndeplval':
-                    # snarea_thresh - this is really a 2D in disguise, however,
-                    # it is stored in C-order unlike other 2D arrays
-                    outdata = pdb.get_subset(pp, hru_order_subset)
-                elif first_dimension in HRU_DIMS:
-                    if pp == 'hru_deplcrv':
-                        outdata = pdb.get_subset(pp, hru_order_subset)
-                    elif pp == 'hru_segment':
-                        if include_stream:
-                            outdata = np.array(1)
-                        else:
-                            print(f'ERROR: {src_param.name} should not be here')
-                            pass
-                    else:
-                        outdata = pdb.get_subset(pp, hru_order_subset)
-                else:
-                    bandit_log.error(f'No rules to handle dimension {first_dimension}')
-            elif ndims == 2:
-                # 2D Parameters
-                if first_dimension == 'nsegment':
-                    if include_stream:
-                        outdata = pdb.get_subset(pp, new_nhm_seg)
-                    else:
-                        print(f'ERROR: {src_param.name} should not be here')
-                elif first_dimension in HRU_DIMS:
-                    outdata = pdb.get_subset(pp, hru_order_subset)
-                else:
-                    err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
-                    bandit_log.error(err_txt)
-
-            cnew_param.data = outdata
+        # The following 5 variables are not used for single-HRU extractions
+        new_hru_segment = []
+        new_poi_gage_id = []
+        new_poi_gage_segment = []
+        new_poi_type = []
+        new_tosegment = []
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Process the parameters and create a parameter file for the subset
+        new_ps = create_parameter_subset(prms_meta, pdb, hru_order_subset,
+                                         new_hru_segment, new_nhm_seg, new_poi_gage_id,
+                                         new_poi_gage_segment, new_poi_type, new_tosegment)
 
         # We're far enough along without error to go ahead and make the directory
         try:
@@ -361,12 +280,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             new_ps.write_parameter_file(sg_dir / param_filename, header=header)
 
         ctl.get('param_file').values = str(param_filename)
-
-        # if args.verbose:
-        #     sys.stdout.write('\n')
-        #     sys.stdout.write('\r                                       ')
-        #     sys.stdout.write('\r\tParameter file written: {}\n'.format('{}/{}'.format(outdir, param_filename)))
-        # sys.stdout.flush()
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Write CBH files
