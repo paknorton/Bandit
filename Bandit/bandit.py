@@ -24,6 +24,7 @@ from Bandit import __version__
 from Bandit.bandit_helpers import (create_parameter_subset, parse_gages, set_date, subset_stream_network,
                                    get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
+from Bandit.config_validator import ConfigValidator
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI   # type: ignore
 import Bandit.bandit_cfg as bc   # type: ignore
@@ -128,13 +129,22 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     config = bc.Cfg(config_file)
 
+    validator = ConfigValidator(config)
+    errors = validator.validate()
+    if errors:
+        for err in errors:
+            bandit_log.error(err)
+            con.print(f'[red]ERROR[/]: {err}')
+        con.print(f'[red]Configuration has {len(errors)} error(s). Fix the above issues and retry.[/]')
+        exit(2)
+
     outdir = Path(config.output_dir)   # Where to output the subset
     param_filename = Path(config.param_filename)   # Name of the output parameter file
     paramdb_dir = Path(config.paramdb_dir)   # Location of the NHM parameter database
     cbh_dir = Path(config.cbh_dir)
     dsmost_seg = config.outlets   # List of outlets
     uscutoff_seg = config.cutoffs   # List of upstream cutoffs
-    hru_noroute = np.array(config.hru_noroute)   # List of additional HRUs (have no route to segment within subset)
+    hru_noroute = np.array(config.hru_noroute)   # Array of additional HRUs (have no route to segment within subset)
 
     # if prms_version == 6:
     #     cbh_netcdf = True
@@ -195,15 +205,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
     if not pdb.exists('poi_gage_segment'):
         con.print('[gold3]WARNING[/]: Missing POI-related parameters. To include POIs, set csvON_OFF > 0 in the control file')
-
-    # Default the various *ON_OFF variables to 0 (off)
-    # The original values are needed to reduce parameters by module,
-    # but it's best to disable them in the final control file since
-    # no output variables are defined for them.
-    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
-                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
-    for vv in disable_vars:
-        ctl.get(vv).values = 0
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Get tosegment_nhm
@@ -274,8 +275,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # HRU-related parameters can either be output with the legacy, segment-oriented order
     # or can be output maintaining their original HRU-relative order from the parameter database.
     hru_order_subset, new_hru_segment = get_output_order(hru_to_seg, seg_to_hru, hru_segment,
-                                                         nhm_id_to_idx, new_nhm_seg,
-                                                         new_nhm_seg_to_idx1, hru_noroute,
+                                                         nhm_id_to_idx, new_nhm_seg_to_idx1, hru_noroute,
                                                          keep_hru_order=keep_hru_order)
 
     con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {len(hru_order_subset)}')
@@ -292,13 +292,13 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Subset poi_gage_segment
-    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg,
-                                                                         new_nhm_seg_to_idx1,
+    new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg_to_idx1,
                                                                          seg_to_hru,
                                                                          addl_gages=addl_gages)
 
     con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {len(new_poi_gage_id)}')
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Process the parameters and create a parameter file for the subset
     new_ps = create_parameter_subset(prms_meta, pdb, hru_order_subset,
                                      new_hru_segment, new_nhm_seg, new_poi_gage_id,
@@ -342,7 +342,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         else:
             raise ValueError('Missing CBH files')
 
-        # Add the global NHM IDs
+        # Add the global NHM IDs from source parameter database
         cbh_hdl.set_nhm_id(pdb.get('nhm_id').data)
 
         if cbh_netcdf:
@@ -356,7 +356,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             # Set the control file variables for the CBH files
             for cfv in config.cbh_var_map.values():
                 ctl.get(cfv).values = cbh_outfile.name
-
         else:
             for cvar, cfv in config.cbh_var_map.items():
                 if verbose:
@@ -441,6 +440,15 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write control file
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Default the various *ON_OFF variables to 0 (off)
+    # The original values are needed to reduce parameters by module,
+    # but it's best to disable them in the final control file since
+    # no output variables are defined for them.
+    disable_vars = ['basinOutON_OFF', 'csvON_OFF', 'mapOutON_OFF', 'nhruOutON_OFF',
+                    'nsegmentOutON_OFF', 'nsubOutON_OFF']
+    for vv in disable_vars:
+        ctl.get(vv).values = 0
+
     ctl.write(str(Path(config.control_filename).with_suffix('.bandit')))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
