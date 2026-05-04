@@ -3,7 +3,6 @@
 import datetime
 import logging
 import os
-import sys
 import time
 
 from packaging.version import Version
@@ -17,6 +16,8 @@ import pyogrio as pyg  # type: ignore
 from cyclopts import App, Parameter, validators
 from dask.distributed import Client
 from numpy.typing import NDArray
+
+from rich.rule import Rule
 
 from pyPRMS.base.console import get_console_instance
 
@@ -115,7 +116,8 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             # Change into job directory before running extraction
             os.chdir(job_dir)
         else:
-            print(f'ERROR: Invalid jobs directory: {str(job_dir)}')
+            con.print(f'[red]ERROR[/]: Invalid jobs directory: {str(job_dir)}')
+            bandit_log.error(f'Invalid jobs directory: {str(job_dir)}')
             exit(-1)
 
     bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
@@ -320,8 +322,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     ctl.get('param_file').values = str(param_filename)
 
     if verbose:
-        sys.stdout.write('\n')
-    sys.stdout.flush()
+        con.print('')
     
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Write CBH files
@@ -416,7 +417,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     bandit_log.warning(warn_txt)
                 else:
                     if verbose:
-                        print(f'Writing dynamic parameter {cparam}')
+                        con.print(f'[green4]INFO[/]: Writing dynamic parameter {cparam}')
 
                     mydyn = dyn_params.DynamicParameters(str(input_file), cparam, st_date, en_date, hru_order_subset)
 
@@ -494,7 +495,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         src_gis = Path(config.gis['src_filename'])
 
         if verbose:
-            print('-'*40)
+            con.print(Rule())
             con.print('Writing shapefiles for model subset', style='green4')
 
         if len(config.gis) == 0 or not src_gis.exists():
