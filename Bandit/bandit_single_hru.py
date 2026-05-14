@@ -170,7 +170,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         pdb.remove(pdb.unneeded_parameters)
 
     # Trim paramdb parameters for single-HRU extractions
-    params = list(pdb.keys())
+    params = list(pdb.parameters.keys())
 
     # Initial list of parameters not included in single-hru extractions
     if include_stream:

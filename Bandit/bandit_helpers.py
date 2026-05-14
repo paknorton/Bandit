@@ -194,7 +194,7 @@ def create_parameter_subset(prms_meta: MetaDataType,
     # ==================================================================
     # ==================================================================
     # Process the parameters and create a parameter file for the subset
-    params = list(pdb.keys())
+    params = list(pdb.parameters.keys())
 
     # Remove the POI-related parameters if we have no POIs
     if len(new_poi_gage_segment) == 0:
