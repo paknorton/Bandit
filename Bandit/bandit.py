@@ -27,8 +27,7 @@ from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import get_streamnet_subset, set_date   # type: ignore
 
 from Bandit import __version__
-from Bandit.bandit_helpers import (parse_gages,
-                                   get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
+from Bandit.bandit_helpers import parse_gages
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
@@ -261,14 +260,11 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
             #                 needs to be loaded and used to map the nhm HRU ids to their
             #                 respective indices.
-            hru_segment = pdb.get('hru_segment_nhm').data
-            nhm_id = pdb.get('nhm_id').data
-            nhm_id_to_idx = pdb.get('nhm_id').index_map
-            bandit_log.info(f'Number of NHM hru_segment entries: {hru_segment.size}')
+            bandit_log.info(f'Number of NHM hru_segment entries: {pdb.get("hru_segment_nhm").data.size}')
 
-            # Create a dictionaries mapping hru_segment segments to hru_segment 1-based indices filtered by
-            # new_nhm_seg and hru_noroute.
-            seg_to_hru, hru_to_seg = get_hru_and_seg_subset_maps(hru_segment, nhm_id, new_nhm_seg, hru_noroute)
+            # Create dictionaries mapping segments to HRUs and HRUs to segments
+            # filtered by the segment subset and non-routed HRUs.
+            seg_to_hru, hru_to_seg = pdb.get_subset_maps(new_nhm_seg, hru_noroute)
 
             if set(hru_to_seg.values()) == set(hru_noroute):
                 # This occurs when there are no ROUTED HRUs for any of the stream segments
@@ -278,9 +274,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
             # HRU-related parameters can either be output with the legacy, segment-oriented order
             # or can be output maintaining their original HRU-relative order from the parameter database.
-            hru_order_subset, new_hru_segment = get_output_order(hru_to_seg, seg_to_hru, hru_segment,
-                                                                 nhm_id_to_idx, new_nhm_seg_to_idx1, hru_noroute,
-                                                                 keep_hru_order=keep_hru_order)
+            hru_order_subset, new_hru_segment = pdb.get_output_order(hru_to_seg, seg_to_hru,
+                                                                     new_nhm_seg_to_idx1, hru_noroute,
+                                                                     keep_hru_order=keep_hru_order)
 
             con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {len(hru_order_subset)}')
             bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
@@ -296,9 +292,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Subset poi_gage_segment
-            new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg_to_idx1,
-                                                                                 seg_to_hru,
-                                                                                 addl_gages=addl_gages)
+            new_poi_gage_segment, new_poi_gage_id, new_poi_type = pdb.get_poi_subset(new_nhm_seg_to_idx1,
+                                                                                     seg_to_hru,
+                                                                                     addl_gages=addl_gages)
 
             con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {len(new_poi_gage_id)}')
 
