@@ -27,7 +27,7 @@ from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import get_streamnet_subset, set_date   # type: ignore
 
 from Bandit import __version__
-from Bandit.bandit_helpers import (create_parameter_subset, parse_gages,
+from Bandit.bandit_helpers import (parse_gages,
                                    get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
@@ -304,9 +304,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Process the parameters and create a parameter file for the subset
-            new_ps = create_parameter_subset(prms_meta, pdb, hru_order_subset,
-                                             new_hru_segment, new_nhm_seg, new_poi_gage_id,
-                                             new_poi_gage_segment, new_poi_type, new_tosegment)
+            new_ps = pdb.create_subset(hru_order_subset, new_hru_segment, new_nhm_seg,
+                                       new_poi_gage_id, new_poi_gage_segment,
+                                       new_poi_type, new_tosegment)
 
             # Write the new parameter file
             if verbose:

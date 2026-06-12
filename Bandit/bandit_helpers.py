@@ -5,11 +5,8 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import Dict, List, Optional, Tuple
 
-from pyPRMS.base.console import get_console_instance
-from pyPRMS.constants import MetaDataType
 from pyPRMS import Parameters   # type: ignore
 from pyPRMS.parameters.Parameter import ParamDataType
-from pyPRMS.constants import HRU_DIMS
 
 logger = logging.getLogger(__name__)
 
@@ -58,139 +55,6 @@ def parse_gages(items: List[str]) -> Dict:
 
 
 
-def create_parameter_subset(prms_meta: MetaDataType,
-                            pdb: Parameters,
-                            hru_order_subset: List[int],
-                            new_hru_segment: List[int],
-                            new_nhm_seg: List[int],
-                            new_poi_gage_id: List[str],
-                            new_poi_gage_segment: List[int],
-                            new_poi_type: List[int],
-                            new_tosegment: List[int]):
-    """Create a new Parameters object that is a subset of the original parameter database.
-
-    :param prms_meta: PRMS metadata object
-    :param pdb: Original parameter database
-    :param hru_order_subset: List of HRUs to include in the subset
-    :param new_hru_segment: List of HRUs segments for HRUs subset
-    :param new_nhm_seg: List of NHM segments for subset
-    :param new_poi_gage_id: List of POI gage ids for subset
-    :param new_poi_gage_segment: List of POI gage segments for subset
-    :param new_poi_type: List of POI types for subset
-    :param new_tosegment: List of tosegment values for subset
-    :return: New Parameters object with subset of parameters
-    """
-
-    # Rich library
-    con = get_console_instance(record=True)
-
-    # nhm_global_dimensions = pdb.dimensions
-
-    # ==========================================================================
-    # ==========================================================================
-    # Get subset of hru_deplcrv using hru_order_subset
-    # A single snarea_curve can be referenced by multiple HRUs
-    hru_deplcrv_subset = pdb.get_subset('hru_deplcrv', hru_order_subset)
-
-    # noinspection PyTypeChecker
-    uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()  # type: ignore
-
-    # ==================================================================
-    # ==================================================================
-    # Process the parameters and create a parameter file for the subset
-    params = list(pdb.parameters.keys())
-
-    # Remove the POI-related parameters if we have no POIs
-    if len(new_poi_gage_segment) == 0:
-        con.print('[gold3]WARNING[/]: No POIs found for model subset')
-        # bandit_log.warning('No POI gages found for subset; removing POI-related parameters.')
-
-        for rp in ['poi_gage_id', 'poi_gage_segment', 'poi_type']:
-            if rp in params:
-                params.remove(rp)
-
-    params.sort()
-
-    # Build dictionary of resized dimensions for the model subset
-    # dims = resize_dims(src_global_dims=nhm_global_dimensions.values(),
-    dims = resize_dims(pdb=pdb,
-                       num_hru=len(hru_order_subset),
-                       num_seg=len(new_nhm_seg),
-                       num_deplcrv=len(uniq_deplcrv),
-                       num_poi=len(new_poi_gage_segment))
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Build Parameters for extracted model
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    new_ps = Parameters(metadata=prms_meta)
-
-    # Add the global dimensions
-    for dd, dv in dims.items():
-        new_ps.dimensions.add(dd, dv)
-
-    for pp in params:
-        src_param = pdb.get(pp)
-
-        new_ps.add(name=pp)
-        cnew_param = new_ps.get(pp)
-
-        ndims = src_param.ndim
-        dim_order = list(src_param.dimensions.keys())
-
-        first_dimension = dim_order[0]
-        outdata = None
-
-        # Write out the data for the parameter
-        if ndims == 0:
-            # Scalar parameters
-            outdata = src_param.data
-        elif ndims == 1:
-            # 1D Parameters
-            # if first_dimension == 'one':
-            #     outdata = src_param.data
-            if first_dimension == 'nsegment':
-                if pp in ['tosegment']:
-                    outdata = np.array(new_tosegment)
-                else:
-                    outdata = pdb.get_subset(pp, new_nhm_seg)
-            elif first_dimension == 'ndeplval':
-                # snarea_thresh - this is really a 2D in disguise, however,
-                # it is stored in C-order unlike other 2D arrays
-                outdata = pdb.get_subset(pp, hru_order_subset)
-            elif first_dimension == 'npoigages':
-                if pp == 'poi_gage_segment':
-                    outdata = np.array(new_poi_gage_segment)
-                elif pp == 'poi_gage_id':
-                    outdata = np.array(new_poi_gage_id)
-                elif pp == 'poi_type':
-                    outdata = np.array(new_poi_type)
-                else:
-                    con.print(f'[red]ERROR[/]: Unkown parameter, {pp}, with dimensions {first_dimension}')
-                    # bandit_log.error(f'Unkown parameter, {pp}, with dimensions {first_dimension}')
-            elif first_dimension in HRU_DIMS:
-                if pp == 'hru_deplcrv':
-                    outdata = pdb.get_subset(pp, hru_order_subset)
-                elif pp == 'hru_segment':
-                    outdata = np.array(new_hru_segment)
-                else:
-                    outdata = pdb.get_subset(pp, hru_order_subset)
-            else:
-                con.print(f'[red]ERROR[/]: No rules to handle dimension {first_dimension}')
-                # bandit_log.error(f'No rules to handle dimension {first_dimension}')
-        elif ndims == 2:
-            # 2D Parameters
-            if first_dimension == 'nsegment':
-                outdata = pdb.get_subset(pp, new_nhm_seg)
-            elif first_dimension in HRU_DIMS:
-                outdata = pdb.get_subset(pp, hru_order_subset)
-            else:
-                err_txt = f'No rules to handle 2D parameter, {pp}, which contains dimension {first_dimension}'
-                con.print(f'[red]ERROR[/]: {err_txt}')
-                # bandit_log.error(err_txt)
-
-        cnew_param.data = outdata
-
-    return new_ps
 
 
 def get_hru_and_seg_subset_maps(orig_hru_segment: ParamDataType,
@@ -390,39 +254,6 @@ def get_poi_subset(nhm_params: Parameters,
     return new_poi_gage_segment, new_poi_gage_id, new_poi_type
 
 
-def resize_dims(pdb: Parameters,
-                num_hru: int,
-                num_seg: int,
-                num_deplcrv: int,
-                num_poi: int) -> Dict[str, int]:
-    """Returns a dictionary of dimensions from the source parameter database resized to the model subset.
-
-    :param pdb: Original parameter database
-    :param num_hru: Number of HRUs in the model subset
-    :param num_seg: Number of segments in the model subset
-    :param num_deplcrv: Number of snow depletion curves in the model subset
-    :param num_poi: Number of Points-of-Interest (POIs) in the model subset
-    :return: Dictionary of the resized dimensions
-    """
-
-    dims = {kk.name: kk.size for kk in pdb.dimensions.values()}
-
-    # Resize dimensions to the model subset
-    crap_dims = dims.copy()   # need a copy since we modify dims
-    for dd, dv in crap_dims.items():
-        # dimensions 'nmonths' and 'one' are never changed
-        if dd in HRU_DIMS:
-            dims[dd] = num_hru
-        elif dd == 'nsegment':
-            dims[dd] = num_seg
-        elif dd == 'ndeplval':
-            dims[dd] = num_deplcrv * 11
-            dims['ndepl'] = num_deplcrv
-        elif dd == 'npoigages':
-            dims[dd] = num_poi
-            dims['nobs'] = num_poi
-
-    return dims
 
 
 # def build_extraction(dag_ds_subset: nx.classes.digraph.DiGraph,
