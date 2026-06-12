@@ -23,7 +23,6 @@ from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import set_date   # type: ignore
 
 from Bandit import __version__
-from Bandit.bandit_helpers import create_parameter_subset
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
@@ -263,9 +262,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         new_tosegment = []
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Process the parameters and create a parameter file for the subset
-        new_ps = create_parameter_subset(prms_meta, pdb, hru_order_subset,
-                                         new_hru_segment, new_nhm_seg, new_poi_gage_id,
-                                         new_poi_gage_segment, new_poi_type, new_tosegment)
+        new_ps = pdb.create_subset(hru_order_subset, new_hru_segment, new_nhm_seg,
+                                   new_poi_gage_id, new_poi_gage_segment,
+                                   new_poi_type, new_tosegment)
 
         # We're far enough along without error to go ahead and make the directory
         try:
