@@ -11,7 +11,7 @@ import time
 from cyclopts import App, Parameter, validators
 from packaging.version import Version
 from pathlib import Path
-from typing import Annotated, List, Optional, Union
+from typing import Annotated, Optional, Union
 
 from pyPRMS.base.console import get_console_instance
 from pyPRMS import Cbh   # type: ignore
@@ -233,23 +233,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         else:
             new_nhm_seg = []
 
-        # ==========================================================================
-        # Get subset of hru_deplcrv using hru_order_subset
-        # A single snarea_curve can be referenced by multiple HRUs
-        hru_deplcrv_subset = pdb.get_subset('hru_deplcrv', hru_order_subset)
-
-        # noinspection PyTypeChecker
-        uniq_deplcrv: List = np.unique(hru_deplcrv_subset).tolist()  # type: ignore
-
-        uniq_dict = {}
-        for ii, xx in enumerate(uniq_deplcrv):
-            uniq_dict[xx] = ii + 1
-
-        # Create new hru_deplcrv and renumber
-        new_hru_deplcrv = [uniq_dict[xx] for xx in hru_deplcrv_subset]
-        bandit_log.info(f'Size of hru_deplcrv for subset: {len(new_hru_deplcrv)}')
-
-        # ==================================================================
         # ==================================================================
         # Process the parameters and create a parameter file for the subset
 
