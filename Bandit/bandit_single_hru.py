@@ -5,6 +5,7 @@ import errno
 import logging
 import numpy as np
 import os
+import pyogrio as pyg  # type: ignore
 import time
 
 from cyclopts import App, Parameter, validators
@@ -13,30 +14,31 @@ from pathlib import Path
 from typing import Annotated, List, Optional, Union
 
 from pyPRMS.base.console import get_console_instance
-
-from Bandit import __version__
-from Bandit.bandit_helpers import create_parameter_subset, set_date
-from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
-from Bandit.model_output import ModelOutput
-import Bandit.bandit_cfg as bc   # type: ignore
-import Bandit.prms_nwis as prms_nwis   # type: ignore
-
-from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
-from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS import Cbh   # type: ignore
 from pyPRMS import ControlFile   # type: ignore
 from pyPRMS import ParamDb   # type: ignore
 from pyPRMS import Parameters   # type: ignore
+from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
+from pyPRMS.metadata.metadata import MetaData   # type: ignore
+from pyPRMS.prms_helpers import set_date   # type: ignore
 
-import pyogrio as pyg  # type: ignore
+from Bandit import __version__
+from Bandit.bandit_helpers import create_parameter_subset
+from Bandit.config_validator import ConfigValidator
+from Bandit.exceptions import BanditError
+from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
+from Bandit.model_output import ModelOutput
+from Bandit.points_of_interest import POI   # type: ignore
+import Bandit.bandit_cfg as bc   # type: ignore
+import Bandit.dynamic_parameters as dyn_params
+import Bandit.prms_nwis as prms_nwis   # type: ignore
+
 import warnings
-# warnings.filterwarnings('ignore', category=RuntimeWarning)
 warnings.filterwarnings('ignore', message=r'.*Measured \(M\) geometry types are not supported.*')
 warnings.filterwarnings('ignore',
                         message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
 warnings.filterwarnings('ignore', message='.*Slicing with an out-of-order index is generating 10 times more chunks.*')
 warnings.filterwarnings('ignore', message=r'.*organizePolygons\(\) received a polygon with more than 100 parts.*')
-# from pyogrio import list_drivers, list_layers, read_info, read_dataframe, write_dataframe
 
 # Rich library
 con = get_console_instance(record=True)
@@ -109,6 +111,15 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
 
     config = bc.Cfg(config_file)
+
+    validator = ConfigValidator(config)
+    errors = validator.validate()
+    if errors:
+        for err in errors:
+            bandit_log.error(err)
+            con.print(f'[red]ERROR[/]: {err}')
+        con.print(f'[red]Configuration has {len(errors)} error(s). Fix the above issues and retry.[/]')
+        raise BanditError(f'Configuration has {len(errors)} error(s). Fix the above issues and retry.', exit_code=2)
 
     outdir = Path(config.output_dir)   # Where to output the subset
     param_filename = Path(config.param_filename)   # Name of the output parameter file

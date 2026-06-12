@@ -24,10 +24,10 @@ from pyPRMS import ParamDb   # type: ignore
 from pyPRMS import Parameters   # type: ignore
 from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
 from pyPRMS.metadata.metadata import MetaData   # type: ignore
-from pyPRMS.prms_helpers import get_streamnet_subset   # type: ignore
+from pyPRMS.prms_helpers import get_streamnet_subset, set_date   # type: ignore
 
 from Bandit import __version__
-from Bandit.bandit_helpers import (create_parameter_subset, parse_gages, set_date,
+from Bandit.bandit_helpers import (create_parameter_subset, parse_gages,
                                    get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError

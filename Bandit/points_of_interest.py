@@ -9,7 +9,7 @@ import xarray as xr
 from pathlib import Path
 from typing import List, Optional, Union
 
-from Bandit.bandit_helpers import set_date
+from pyPRMS.prms_helpers import set_date   # type: ignore
 
 logger = logging.getLogger(__name__)
 
