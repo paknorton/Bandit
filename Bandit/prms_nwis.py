@@ -28,7 +28,7 @@ from rich.table import Table
 pretty.install()
 con = Console()
 
-from Bandit.bandit_helpers import set_date
+from pyPRMS.prms_helpers import set_date   # type: ignore
 
 # from rich.console import Console
 # from rich import pretty
