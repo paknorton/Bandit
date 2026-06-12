@@ -2,44 +2,41 @@
 
 import datetime
 import logging
-import os
-import sys
-import time
-
-from packaging.version import Version
-from pathlib import Path
-from typing import Annotated, List, Optional, Union
-
 import networkx as nx   # type: ignore
 import numpy as np
+import os
 import pyogrio as pyg  # type: ignore
+import sys
+import time
 
 from cyclopts import App, Parameter, validators
 from dask.distributed import Client
 from numpy.typing import NDArray
-
+from packaging.version import Version
+from pathlib import Path
 from rich.rule import Rule
+from typing import Annotated, List, Optional, Union
 
 from pyPRMS.base.console import get_console_instance
+from pyPRMS import Cbh   # type: ignore
+from pyPRMS import ControlFile   # type: ignore
+from pyPRMS import ParamDb   # type: ignore
+from pyPRMS import Parameters   # type: ignore
+from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
+from pyPRMS.metadata.metadata import MetaData   # type: ignore
+from pyPRMS.prms_helpers import get_streamnet_subset   # type: ignore
 
 from Bandit import __version__
-from Bandit.exceptions import BanditError
-from Bandit.bandit_helpers import (create_parameter_subset, parse_gages, set_date, subset_stream_network,
+from Bandit.bandit_helpers import (create_parameter_subset, parse_gages, set_date,
                                    get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
-from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.config_validator import ConfigValidator
+from Bandit.exceptions import BanditError
+from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI   # type: ignore
 import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
 import Bandit.prms_nwis as prms_nwis   # type: ignore
-
-from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
-from pyPRMS.metadata.metadata import MetaData   # type: ignore
-from pyPRMS import Cbh   # type: ignore
-from pyPRMS import ControlFile   # type: ignore
-from pyPRMS import ParamDb   # type: ignore
-from pyPRMS import Parameters   # type: ignore
 
 import warnings
 warnings.filterwarnings('ignore', message=r'.*Measured \(M\) geometry types are not supported.*')
@@ -244,7 +241,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                         con.print(f'[red]ERROR[/]: Cycle found for segment {xx}')
                         bandit_log.error(f'Cycle found for segment {xx}')
 
-            dag_ds_subset = subset_stream_network(dag_ds, uscutoff_seg, dsmost_seg)
+            dag_ds_subset = get_streamnet_subset(dag_ds, uscutoff_seg, dsmost_seg)
 
             # Segments in model subset
             new_nhm_seg = np.array([ee[0] for ee in dag_ds_subset.edges])
@@ -580,7 +577,6 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     con.print(f'[green4]INFO[/]: Geo write time: {time.time() - stime:0.3f} s')
 
             bandit_log.info(f'========== END {datetime.datetime.now().isoformat()} ==========')
-
     finally:
         if chdir_needed:
             os.chdir(stdir)
