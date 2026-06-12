@@ -17,8 +17,7 @@ from pyPRMS.base.console import get_console_instance
 from pyPRMS import Cbh   # type: ignore
 from pyPRMS import ControlFile   # type: ignore
 from pyPRMS import ParamDb   # type: ignore
-from pyPRMS import Parameters   # type: ignore
-from pyPRMS.constants import HRU_DIMS, PRMS_VERSION   # type: ignore
+from pyPRMS.constants import PRMS_VERSION   # type: ignore
 from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import set_date   # type: ignore
 
