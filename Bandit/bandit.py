@@ -27,8 +27,7 @@ from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import get_streamnet_subset, set_date   # type: ignore
 
 from Bandit import __version__
-from Bandit.bandit_helpers import (parse_gages,
-                                   get_hru_and_seg_subset_maps, get_output_order, get_poi_subset)
+from Bandit.bandit_helpers import parse_gages
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
@@ -250,63 +249,29 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             if verbose:
                 con.print(f'segments: {new_nhm_seg}')
 
-            # Using a dictionary mapping nhm_seg to 1-based index for speed
-            new_nhm_seg_to_idx1 = dict((ss, ii+1) for ii, ss in enumerate(new_nhm_seg))
-
-            # Generate the renumbered local tosegments (1-based with zero being an outlet)
-            new_tosegment = [new_nhm_seg_to_idx1[ee[1]] if ee[1] in new_nhm_seg_to_idx1
-                             else 0 for ee in dag_ds_subset.edges]
-
-            # 2019-09-16 PAN: This initially assumed hru_segment in the monolithic paramdb was ALWAYS
-            #                 ordered 1..nhru. This is not always the case so the nhm_id parameter
-            #                 needs to be loaded and used to map the nhm HRU ids to their
-            #                 respective indices.
-            hru_segment = pdb.get('hru_segment_nhm').data
-            nhm_id = pdb.get('nhm_id').data
-            nhm_id_to_idx = pdb.get('nhm_id').index_map
-            bandit_log.info(f'Number of NHM hru_segment entries: {hru_segment.size}')
-
-            # Create a dictionaries mapping hru_segment segments to hru_segment 1-based indices filtered by
-            # new_nhm_seg and hru_noroute.
-            seg_to_hru, hru_to_seg = get_hru_and_seg_subset_maps(hru_segment, nhm_id, new_nhm_seg, hru_noroute)
-
-            if set(hru_to_seg.values()) == set(hru_noroute):
-                # This occurs when there are no ROUTED HRUs for any of the stream segments
-                con.print('[red]ERROR[/]: No HRUs associated with any of the segments')
-                bandit_log.error('No HRUs associated with any of the segments; exiting.')
-                raise BanditError('No HRUs associated with any of the segments', exit_code=2)
-
-            # HRU-related parameters can either be output with the legacy, segment-oriented order
-            # or can be output maintaining their original HRU-relative order from the parameter database.
-            hru_order_subset, new_hru_segment = get_output_order(hru_to_seg, seg_to_hru, hru_segment,
-                                                                 nhm_id_to_idx, new_nhm_seg_to_idx1, hru_noroute,
-                                                                 keep_hru_order=keep_hru_order)
-
-            con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {len(hru_order_subset)}')
-            bandit_log.info(f'Number of HRUs in subset: {len(hru_order_subset)}')
-            bandit_log.info(f'Size of hru_segment for subset: {len(new_hru_segment)}')
-            if verbose:
-                con.print(f'HRUs: {hru_order_subset}')
-
-            # Use hru_order_subset to pull selected indices for parameters with nhru dimensions
-            # hru_order_subset contains the in-order indices for the subset of hru_segments
-            # new_hru_segment contains the in-order indices for the subset of tosegments
-            # --------------------------------------------------------------------------
-
-            # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Subset poi_gage_segment
-            new_poi_gage_segment, new_poi_gage_id, new_poi_type = get_poi_subset(pdb, new_nhm_seg_to_idx1,
-                                                                                 seg_to_hru,
-                                                                                 addl_gages=addl_gages)
+            # Extract the parameter subset from the stream network subgraph
+            try:
+                new_ps = pdb.extract_subset(dag_ds_subset, hru_noroute,
+                                            keep_hru_order=keep_hru_order,
+                                            addl_gages=addl_gages)
+            except ValueError as err:
+                con.print(f'[red]ERROR[/]: {err}')
+                bandit_log.error(str(err))
+                raise BanditError(str(err), exit_code=2)
 
-            con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {len(new_poi_gage_id)}')
+            # Derive HRU order from the resulting subset (needed for CBH, dynamic params, GIS)
+            hru_order_subset = new_ps.get('nhm_id').data.tolist()
 
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Process the parameters and create a parameter file for the subset
-            new_ps = pdb.create_subset(hru_order_subset, new_hru_segment, new_nhm_seg,
-                                       new_poi_gage_id, new_poi_gage_segment,
-                                       new_poi_type, new_tosegment)
+            # Derive POI gage IDs from the subset (needed for streamgage downloads, GIS)
+            new_poi_gage_id = new_ps.get('poi_gage_id').tolist() if new_ps.exists('poi_gage_id') else []
+
+            num_hru = len(hru_order_subset)
+            num_poi = len(new_poi_gage_id)
+
+            con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {num_hru}')
+            bandit_log.info(f'Number of HRUs in subset: {num_hru}')
+            con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {num_poi}')
 
             # Write the new parameter file
             if verbose:
