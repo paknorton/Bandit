@@ -44,4 +44,10 @@ def parse_gages(items: List[str]) -> Dict:
     return d
 
 
-
+def write_gis(gdf, gis_dir, gis_type, layer):
+    if gis_type in ['shp']:
+        geo_outfile = gis_dir / f'model_{layer}.{gis_type}'
+        gdf.to_file(geo_outfile)
+    else:
+        geo_outfile = gis_dir / f'model_layers.{gis_type}'
+        gdf.to_file(geo_outfile, layer=layer)

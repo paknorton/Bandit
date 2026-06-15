@@ -11,7 +11,7 @@ import time
 
 from cyclopts import App, Parameter, validators
 from dask.distributed import Client
-from numpy.typing import NDArray
+# from numpy.typing import NDArray
 from packaging.version import Version
 from pathlib import Path
 from rich.rule import Rule
@@ -27,7 +27,7 @@ from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import get_streamnet_subset, set_date   # type: ignore
 
 from Bandit import __version__
-from Bandit.bandit_helpers import parse_gages
+from Bandit.bandit_helpers import parse_gages, write_gis
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
@@ -227,6 +227,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
             # Build the stream network
             dag_ds = pdb.stream_network(tosegment='tosegment_nhm', seg_id='nhm_seg')
+            assert dag_ds is not None
 
             bandit_log.debug(f'Number of NHM downstream nodes: {dag_ds.number_of_nodes()}')
             bandit_log.debug(f'Number of NHM downstream edges: {dag_ds.number_of_edges()}')
@@ -468,75 +469,62 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     con.print('Writing shapefiles for model subset', style='green4')
 
                 if len(config.gis) == 0 or not src_gis.exists():
-                    bandit_log.error(f'Source GIS file'
-                                     f'does not exist. Shapefiles will not be created')
+                    bandit_log.error(f'Source GIS file does not exist. Shapefiles will not be created')
                 else:
                     # Create GIS subdirectory if it doesn't already exist
                     gis_dir = outdir / 'GIS'
                     gis_dir.mkdir(exist_ok=True)
 
                     dst_gis_type = config.gis["dst_extension"]
-                    geo_outfile = gis_dir / f'model_layers.{dst_gis_type}'
 
                     for kk, vv in config.gis['layers'].items():
                         vv['include_fields'].extend([vv['key']])
+                        src_include_flds = vv['include_fields']
+                        src_layer = vv['layer']
+                        src_key = vv['key']
+                        dst_layer = vv['type']
 
-                        if vv['type'] == 'nhru':
-                            geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
-                                                          columns=vv['include_fields'], force_2d=True,
-                                                          where=f'{vv["key"]} >= {min(hru_order_subset)} AND {vv["key"]} <= {max(hru_order_subset)}')
-                            bb = geo_file[geo_file[vv['key']].isin(hru_order_subset)]
-                            bb = bb.rename(columns={vv['key']: 'nhm_id'})
+                        if dst_layer == 'nhru':
+                            geo_file = pyg.read_dataframe(src_gis, layer=src_layer,
+                                                          columns=src_include_flds, force_2d=True,
+                                                          where=f'{src_key} >= {min(hru_order_subset)} AND {src_key} <= {max(hru_order_subset)}')
+
+                            bb = geo_file[geo_file[src_key].isin(hru_order_subset)]
+                            bb = bb.rename(columns={src_key: 'nhm_id'})
                             local_ids = new_ps.get_dataframe('nhm_id').reset_index()
                             bb = bb.merge(local_ids, on='nhm_id')
+                            write_gis(gdf=bb, gis_dir=gis_dir, gis_type=dst_gis_type, layer=dst_layer)
 
+                            # Create a domain outline from the subset HRUs
                             # Buffer the HRUs to make them visible to reduce/remove artifacts
                             # in the dissolved layer caused by tiny gaps between HRUs
                             bb2 = bb.copy()
                             # bb2['geometry'] = bb2['geometry'].buffer(0.0002)
                             domain_layer = bb2.dissolve(aggfunc={'nhm_id': 'count'})
                             domain_layer.rename(columns={'nhm_id': 'num_hrus'}, inplace=True)
+                            write_gis(gdf=domain_layer, gis_dir=gis_dir, gis_type=dst_gis_type, layer='domain')
+                        elif dst_layer == 'nsegment':
+                            geo_file = pyg.read_dataframe(src_gis, layer=src_layer,
+                                                          columns=src_include_flds, force_2d=True,
+                                                          where=f'{src_key} >= {min(new_nhm_seg)} AND {src_key} <= {max(new_nhm_seg)}')
 
-                            if dst_gis_type == 'gpkg':
-                                bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
-                                domain_layer.to_file(geo_outfile, layer='domain', driver='GPKG')
-                            else:
-                                geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
-                                bb.to_file(geo_outfile)
-
-                                domain_outfile = gis_dir / f'model_domain.{dst_gis_type}'
-                                domain_layer.to_file(domain_outfile)
-                        elif vv['type'] == 'nsegment':
-                            geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
-                                                          columns=vv['include_fields'], force_2d=True,
-                                                          where=f'{vv["key"]} >= {min(new_nhm_seg)} AND {vv["key"]} <= {max(new_nhm_seg)}')
-                            bb = geo_file[geo_file[vv['key']].isin(new_nhm_seg)]
-                            bb = bb.rename(columns={vv['key']: 'nhm_seg'})
+                            bb = geo_file[geo_file[src_key].isin(new_nhm_seg)]
+                            bb = bb.rename(columns={src_key: 'nhm_seg'})
                             local_ids = new_ps.get_dataframe('nhm_seg').reset_index()
                             bb = bb.merge(local_ids, on='nhm_seg')
-
-                            if dst_gis_type == 'gpkg':
-                                bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
-                            else:
-                                geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
-                                bb.to_file(geo_outfile)
-                        elif vv['type'] == 'npoigages':
+                            write_gis(gdf=bb, gis_dir=gis_dir, gis_type=dst_gis_type, layer=dst_layer)
+                        elif dst_layer == 'npoigages':
                             if len(new_poi_gage_id) > 0:
-                                geo_file = pyg.read_dataframe(src_gis, layer=vv['layer'],
-                                                              columns=vv['include_fields'], force_2d=True)
+                                geo_file = pyg.read_dataframe(src_gis, layer=src_layer,
+                                                              columns=src_include_flds, force_2d=True)
 
-                                bb = geo_file[geo_file[vv['key']].isin(new_poi_gage_id)]
-                                bb = bb.rename(columns={vv['key']: 'gage_id', vv['include_fields'][0]: 'nhm_seg'})
-
-                                if dst_gis_type == 'gpkg':
-                                    bb.to_file(geo_outfile, layer=vv['type'], driver='GPKG')
-                                else:
-                                    geo_outfile = gis_dir / f'model_{vv["type"]}.{dst_gis_type}'
-                                    bb.to_file(geo_outfile)
+                                bb = geo_file[geo_file[src_key].isin(new_poi_gage_id)]
+                                bb = bb.rename(columns={src_key: 'gage_id', src_include_flds[0]: 'nhm_seg'})
+                                write_gis(gdf=bb, gis_dir=gis_dir, gis_type=dst_gis_type, layer=dst_layer)
                             else:
                                 bandit_log.info('No POIs in model subset so POI GIS layer not written.')
                         else:
-                            bandit_log.warning(f'Layer, {kk}, has unknown type, {vv["type"]}; skipping.')
+                            bandit_log.warning(f'Layer, {kk}, has unknown type, {dst_layer}; skipping.')
 
                 if verbose:
                     con.print(f'[green4]INFO[/]: Geo write time: {time.time() - stime:0.3f} s')
