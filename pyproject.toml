@@ -7,7 +7,7 @@ name = "Bandit"
 description = "A set of command-line tools for extracting model subsets from the National Hydrologic Model parameter database"
 readme = "README.rst"
 dynamic = ["version"]
-requires-python = ">=3.9,<3.15"
+requires-python = ">=3.10,<3.15"
 license = {file = "LICENSE"}
 authors = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
 maintainers = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
