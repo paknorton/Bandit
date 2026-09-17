@@ -307,14 +307,14 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
                 # Read the CBH source file
                 if cbh_dir.suffix == '.nc':
-                    cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='netcdf')
+                    cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='netcdf', parameters=pdb)
                 elif cbh_dir.suffix == '.zarr':
-                    cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='zarr')
+                    cbh_hdl = Cbh(cbh_dir, metadata=prms_meta, engine='zarr', parameters=pdb)
                 else:
                     raise ValueError('Missing CBH files')
 
                 # Add the global NHM IDs from source parameter database
-                cbh_hdl.set_nhm_id(pdb.get('nhm_id').data)
+                # cbh_hdl.set_nhm_id(pdb.get('nhm_id').data)
 
                 if cbh_netcdf:
                     cbh_outfile = outdir / 'cbh.nc'
