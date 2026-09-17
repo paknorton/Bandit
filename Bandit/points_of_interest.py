@@ -7,11 +7,18 @@ import sys
 import xarray as xr
 
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from pyPRMS.prms_helpers import set_date   # type: ignore
 
+from Bandit import WDFN
+
 logger = logging.getLogger(__name__)
+
+# Mapping of POI metadata variable names to the keys returned by
+# WDFN.get_monitoring_locations() for ad-hoc streamgage lookups.
+_WDFN_META_VARS = ('poi_name', 'latitude', 'longitude',
+                   'drainage_area', 'drainage_area_contrib')
 
 
 class POI:
@@ -21,6 +28,8 @@ class POI:
                  gage_ids: Optional[List[str]] = None,
                  st_date: Optional[datetime.datetime] = None,
                  en_date: Optional[datetime.datetime] = None,
+                 online_lookup: Optional[bool] = False,
+                 api_key: Optional[str] = None,
                  verbose: Optional[bool] = False):
         """Create the POI object.
 
@@ -28,6 +37,9 @@ class POI:
         :param gage_ids: list of streamgages to retrieve
         :param st_date: start date for retrieving streamgage observations
         :param en_date: end date for retrieving streamgage observations
+        :param online_lookup: attempt an online WDFN lookup for gages missing
+            from the source files (e.g. ad-hoc gages), falling back to NaN
+        :param api_key: optional USGS Water Data API key for the WDFN lookup
         :param bool verbose: output additional debuggin information
         """
 
@@ -44,9 +56,17 @@ class POI:
         self.__outdata = None
         self.__date_range = None
         self.__final_outorder = None
+        self.__online_lookup = online_lookup
+        self.__api_key = api_key
         self.__verbose = verbose
 
+        # Overlays populated for gages missing from the source files.
+        self.__missing_ids: List[str] = []
+        self.__discharge_overlay: Optional[pd.DataFrame] = None
+        self.__meta_overlay: Dict[str, Dict] = {}
+
         self.read()
+        self._resolve_missing_gages()
 
     @property
     def data(self) -> Optional[xr.Dataset]:
@@ -135,24 +155,135 @@ class POI:
         else:
             logger.warning('No poi_ids were specified.')
 
+    def _resolve_missing_gages(self):
+        """Identify requested gages missing from the source files.
+
+        Any requested gage ID that is not present in the source POI netCDF
+        files is treated as an ad-hoc streamgage. Each such gage is noted in
+        the log. When online lookup is enabled, daily streamflow and
+        monitoring-location metadata are retrieved from the USGS Water Data
+        API (WDFN); gages that cannot be retrieved fall back to NaN entries.
+        """
+
+        if self.__outdata is None or not self.__gageids:
+            return
+
+        source_ids = set(self.__outdata['poi_id'].values.tolist())
+        self.__missing_ids = [gg for gg in self.__gageids if gg not in source_ids]
+
+        if not self.__missing_ids:
+            return
+
+        for gg in self.__missing_ids:
+            logger.info(f'Ad-hoc streamgage {gg}: not found in POI source files')
+
+        if not self.__online_lookup:
+            for gg in self.__missing_ids:
+                logger.info(f'Ad-hoc streamgage {gg}: online lookup disabled; '
+                            f'writing NaN streamflow')
+            return
+
+        # Attempt an online WDFN lookup for the missing (ad-hoc) gages.
+        logger.info(f'Attempting online WDFN lookup for {len(self.__missing_ids)} '
+                    f'ad-hoc streamgage(s): {self.__missing_ids}')
+
+        try:
+            self.__discharge_overlay = WDFN.get_daily_streamflow(gage_ids=self.__missing_ids,
+                                                                 st_date=self.__stdate,
+                                                                 en_date=self.__endate,
+                                                                 api_key=self.__api_key)
+        except Exception as err:   # noqa: BLE001 - fall back to NaN on any failure
+            logger.warning(f'WDFN streamflow lookup failed for ad-hoc gages '
+                           f'{self.__missing_ids}: {err}')
+            self.__discharge_overlay = None
+
+        try:
+            self.__meta_overlay = WDFN.get_monitoring_locations(gage_ids=self.__missing_ids,
+                                                                api_key=self.__api_key)
+        except Exception as err:   # noqa: BLE001 - metadata is best-effort
+            logger.warning(f'WDFN metadata lookup failed for ad-hoc gages '
+                           f'{self.__missing_ids}: {err}')
+            self.__meta_overlay = {}
+
+        # Log the outcome for each ad-hoc gage.
+        for gg in self.__missing_ids:
+            has_data = False
+            if self.__discharge_overlay is not None and gg in self.__discharge_overlay.columns:
+                has_data = bool(self.__discharge_overlay[gg].notna().any())
+
+            if has_data:
+                logger.info(f'Ad-hoc streamgage {gg}: streamflow retrieved from WDFN')
+            else:
+                logger.info(f'Ad-hoc streamgage {gg}: no WDFN streamflow available; '
+                            f'writing NaN streamflow')
+
     def get(self, var: str) -> pd.DataFrame:
         """Get a subset of data for a given variable.
+
+        Requested gage IDs that are not present in the source netCDF files
+        (e.g. ad-hoc streamgages added via ``--add-gages``) are filled with
+        NaN entries. The requested order of the gage IDs is preserved.
 
         :param var: Name of variable from netCDF file
         :returns: Pandas DataFrame of extracted data
         """
-        if 'time' in self.__outdata[var].dims:
+
+        # Reindex on poi_id so that any requested gage IDs missing from the
+        # source data are inserted as NaN while preserving the requested order.
+        # This avoids a KeyError ("not all values found in index 'poi_id'")
+        # when ad-hoc streamgages have no observations in the cached source files.
+        subset = self.__outdata[var].reindex(poi_id=self.__gageids)
+
+        if 'time' in subset.dims:
             if self.__stdate is not None and self.__endate is not None:
                 try:
-                    data = self.__outdata[var].loc[self.__gageids, self.__stdate:self.__endate].to_pandas()
+                    data = subset.loc[:, self.__stdate:self.__endate].to_pandas()
                 except IndexError:
                     print(f'ERROR: Indices (time, poi_id) were used to subset {var} which expects' +
                           f'indices ({" ".join(map(str, self.__outdata[var].coords))})')
                     raise
             else:
-                data = self.__outdata[var].loc[self.__gageids, :].to_pandas()
+                data = subset.loc[:, :].to_pandas()
         else:
-            data = self.__outdata[var].loc[self.__gageids].to_pandas()
+            data = subset.to_pandas()
+
+        # Overlay any online WDFN data retrieved for ad-hoc gages missing from
+        # the source files. Gages with no online data remain NaN.
+        data = self._overlay_missing(var, data)
+        return data
+
+    def _overlay_missing(self, var: str, data: pd.DataFrame) -> pd.DataFrame:
+        """Overlay online WDFN data for ad-hoc gages onto reindexed results.
+
+        :param var: name of the variable being retrieved
+        :param data: reindexed data (NaN rows for missing gages) to update
+        :returns: data with any available online values filled in
+        """
+
+        if not self.__missing_ids:
+            return data
+
+        if var == 'discharge':
+            if self.__discharge_overlay is None:
+                return data
+
+            # data is indexed by poi_id (rows) x time (columns). The overlay is
+            # indexed by date (rows) x gage (columns), so align by transposing.
+            for gg in self.__missing_ids:
+                if gg in self.__discharge_overlay.columns and gg in data.index:
+                    series = self.__discharge_overlay[gg]
+                    series = series.reindex(data.columns)
+                    data.loc[gg, :] = series.to_numpy()
+            return data
+
+        if var in _WDFN_META_VARS:
+            for gg in self.__missing_ids:
+                if gg in self.__meta_overlay and gg in data.index:
+                    value = self.__meta_overlay[gg].get(var)
+                    if value is not None:
+                        data.loc[gg] = value
+            return data
+
         return data
 
     def write_ascii(self, filename: Union[str, Path]):
@@ -214,10 +345,13 @@ class POI:
         :param filename: name of the netCDF file to create
         """
 
-        poiname_list = self.get('poi_name').tolist()
+        # Ad-hoc streamgages missing from the source files return NaN for
+        # poi_name; replace those with an empty string so string handling works.
+        poiname_list = ['' if isinstance(nn, float) and np.isnan(nn) else nn
+                        for nn in self.get('poi_name').tolist()]
 
         max_poiid_len = len(max(self.__gageids, key=len))
-        max_poiname_len = len(max(poiname_list, key=len))
+        max_poiname_len = max(len(max(poiname_list, key=len)), 1)
 
         # Create a netCDF file for the CBH data
         nco = nc.Dataset(filename, 'w', clobber=True)

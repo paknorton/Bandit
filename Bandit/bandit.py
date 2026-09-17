@@ -437,8 +437,17 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
                     if config.exists('poi_dir') and config.poi_dir != '':
                         bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
+
+                        # When ad-hoc gages were supplied on the command line,
+                        # enable an online WDFN lookup for any gage that has no
+                        # observations in the cached POI source files. Gages
+                        # that cannot be retrieved fall back to NaN entries.
+                        online_lookup = bool(addl_gages)
+                        wdfn_api_key = config.wdfn_api_key if config.exists('wdfn_api_key') else None
+
                         streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
-                                         gage_ids=new_poi_gage_id, verbose=verbose)
+                                         gage_ids=new_poi_gage_id, online_lookup=online_lookup,
+                                         api_key=wdfn_api_key, verbose=verbose)
                     else:
                         # Default to retrieving only NWIS stations from waterservices.usgs.gov
                         bandit_log.info('No poi_dir: retrieving only NWIS POIs from online NWIS service.')
