@@ -138,21 +138,32 @@ class POI:
     def get(self, var: str) -> pd.DataFrame:
         """Get a subset of data for a given variable.
 
+        Requested gage IDs that are not present in the source netCDF files
+        (e.g. ad-hoc streamgages added via ``--add-gages``) are filled with
+        NaN entries. The requested order of the gage IDs is preserved.
+
         :param var: Name of variable from netCDF file
         :returns: Pandas DataFrame of extracted data
         """
-        if 'time' in self.__outdata[var].dims:
+
+        # Reindex on poi_id so that any requested gage IDs missing from the
+        # source data are inserted as NaN while preserving the requested order.
+        # This avoids a KeyError ("not all values found in index 'poi_id'")
+        # when ad-hoc streamgages have no observations in the cached source files.
+        subset = self.__outdata[var].reindex(poi_id=self.__gageids)
+
+        if 'time' in subset.dims:
             if self.__stdate is not None and self.__endate is not None:
                 try:
-                    data = self.__outdata[var].loc[self.__gageids, self.__stdate:self.__endate].to_pandas()
+                    data = subset.loc[:, self.__stdate:self.__endate].to_pandas()
                 except IndexError:
                     print(f'ERROR: Indices (time, poi_id) were used to subset {var} which expects' +
                           f'indices ({" ".join(map(str, self.__outdata[var].coords))})')
                     raise
             else:
-                data = self.__outdata[var].loc[self.__gageids, :].to_pandas()
+                data = subset.loc[:, :].to_pandas()
         else:
-            data = self.__outdata[var].loc[self.__gageids].to_pandas()
+            data = subset.to_pandas()
         return data
 
     def write_ascii(self, filename: Union[str, Path]):
@@ -214,10 +225,13 @@ class POI:
         :param filename: name of the netCDF file to create
         """
 
-        poiname_list = self.get('poi_name').tolist()
+        # Ad-hoc streamgages missing from the source files return NaN for
+        # poi_name; replace those with an empty string so string handling works.
+        poiname_list = ['' if isinstance(nn, float) and np.isnan(nn) else nn
+                        for nn in self.get('poi_name').tolist()]
 
         max_poiid_len = len(max(self.__gageids, key=len))
-        max_poiname_len = len(max(poiname_list, key=len))
+        max_poiname_len = max(len(max(poiname_list, key=len)), 1)
 
         # Create a netCDF file for the CBH data
         nco = nc.Dataset(filename, 'w', clobber=True)
