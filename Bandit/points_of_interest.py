@@ -138,10 +138,37 @@ class POI:
             self.__gageids = [gage_ids]
         self.__outdata = None
 
-    def read(self):
-        """Read POI files stored in netCDF format."""
+    @staticmethod
+    def _is_zarr_source(src_path: Optional[str]) -> bool:
+        """Determine whether a source path points to a zarr store.
 
-        if self.__gageids:
+        A source is treated as zarr when its path ends with the ``.zarr``
+        suffix (the convention used for zarr streamflow cache files).
+
+        :param src_path: source path to inspect
+        :returns: True if the path refers to a zarr store, otherwise False
+        """
+
+        if not src_path:
+            return False
+        return str(src_path).rstrip('/').endswith('.zarr')
+
+    def read(self):
+        """Read POI files stored in netCDF or zarr format.
+
+        The source format is inferred from ``src_path``: paths ending in
+        ``.zarr`` are opened as a zarr store, otherwise the path is treated
+        as one or more netCDF files.
+        """
+
+        if not self.__gageids:
+            logger.warning('No poi_ids were specified.')
+            return
+
+        if self._is_zarr_source(self.__src_path):
+            # print('\t\tOpen zarr dataset')
+            self.__outdata = xr.open_zarr(self.__src_path, decode_cf=True)
+        else:
             # print('\t\tOpen dataset')
             self.__outdata = xr.open_mfdataset(self.__src_path,
                                                chunks={}, combine='nested',
@@ -152,8 +179,6 @@ class POI:
             # NOTE: With a multi-file dataset the time attributes 'units' and
             #       'calendar' are lost.
             #       see https://github.com/pydata/xarray/issues/2436
-        else:
-            logger.warning('No poi_ids were specified.')
 
     def _resolve_missing_gages(self):
         """Identify requested gages missing from the source files.

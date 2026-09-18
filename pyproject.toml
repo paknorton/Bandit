@@ -27,7 +27,8 @@ dependencies = ["cyclopts",
     "rich",
     "ruamel.yaml",
     "setuptools",
-    "xarray", ]
+    "xarray",
+    "zarr", ]
 
 [project.optional-dependencies]
 dev = ["mypy",
