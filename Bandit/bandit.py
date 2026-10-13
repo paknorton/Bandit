@@ -45,6 +45,8 @@ warnings.filterwarnings('ignore',
                         message='.*Column names longer than 10 characters will be truncated when saved to ESRI Shapefile*')
 warnings.filterwarnings('ignore', message='.*Slicing with an out-of-order index is generating 10 times more chunks.*')
 warnings.filterwarnings('ignore', message=r'.*organizePolygons\(\) received a polygon with more than 100 parts.*')
+warnings.filterwarnings('ignore', message=r'.*Normalized\/laundered field name.*')
+warnings.filterwarnings('ignore', message=r'.*Port .* is already in use.*')
 
 # Rich library
 con = get_console_instance(record=True)
@@ -157,7 +159,8 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         #     streamflow_netcdf = True
 
         # Load PRMS metadata
-        con.print(f'[green4]INFO[/]: Loading PRMS metadata for version {prms_version}')
+        if verbose:
+            con.print(f'[green4]INFO[/]: Loading PRMS metadata for version {prms_version}')
         prms_meta = MetaData(version=prms_version, verbose=verbose).metadata
 
         # Load the control file
@@ -181,8 +184,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
         # client = Client(threads_per_worker=1)
         with Client() as client:
-            dash_link = client.dashboard_link
-            con.print(f'Dask dashboard: {dash_link}')
+            if verbose:
+                dash_link = client.dashboard_link
+                con.print(f'Dask dashboard: {dash_link}')
 
             # Load the NHMparamdb
             if verbose:
@@ -247,7 +251,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
             # Segments in model subset
             new_nhm_seg = np.array([ee[0] for ee in dag_ds_subset.edges])
-            con.print(f'[green4]INFO[/]: Number of stream segments in model subset: {len(new_nhm_seg)}')
+            if verbose:
+                con.print(f'[green4]INFO[/]: Number of stream segments in model subset: {len(new_nhm_seg)}')
+
             bandit_log.info(f'Number of segments in model subset: {len(new_nhm_seg)}')
             if verbose:
                 con.print(f'segments: {new_nhm_seg}')
@@ -272,9 +278,12 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             num_hru = len(hru_order_subset)
             num_poi = len(new_poi_gage_id)
 
-            con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {num_hru}')
+            if verbose:
+                con.print(f'[green4]INFO[/]: Number of HRUs in model subset: {num_hru}')
+                con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {num_poi}')
+
             bandit_log.info(f'Number of HRUs in subset: {num_hru}')
-            con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {num_poi}')
+
 
             # Write the new parameter file
             if verbose:
