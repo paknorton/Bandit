@@ -168,7 +168,10 @@ def main():
     work_count = 0
 
     for kk, vv in segs_by_poi.items():
-        cdir = kk
+        if args.prefix is None:
+            cdir = kk
+        else:
+            cdir = f'{args.prefix}{kk}'
 
         # Create the directory if needed
         if not os.path.exists(cdir):
