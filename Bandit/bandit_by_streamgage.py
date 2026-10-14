@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import datetime
+import html
+import json
 import logging
 import os
 import queue
@@ -16,6 +19,7 @@ from pathlib import Path
 from rich.progress import (BarColumn, MofNCompleteColumn, Progress, SpinnerColumn,
                            TaskProgressColumn, TextColumn, TimeElapsedColumn,
                            TimeRemainingColumn)
+from rich.table import Table
 from typing import Annotated
 
 from pyPRMS.base.console import get_console_instance   # type: ignore
@@ -105,7 +109,8 @@ class WorkerThread(threading.Thread):
 
 
 def get_streamgage_segments(filename: str | Path,
-                            poi_id_to_seg: dict) -> 'OrderedDict[str, int]':
+                            poi_id_to_seg: dict) -> tuple['OrderedDict[str, int]',
+                                                          'OrderedDict[str, str]']:
     """Map streamgage POI IDs from a file to NHM POI segments.
 
     The input file contains one streamgage POI ID per line. Blank lines and
@@ -115,7 +120,8 @@ def get_streamgage_segments(filename: str | Path,
 
     :param filename: File containing streamgage POI IDs (one per line)
     :param poi_id_to_seg: Mapping of poi_gage_id to poi_gage_segment
-    :returns: Ordered mapping of valid streamgage ID to NHM POI segment
+    :returns: A tuple of (valid streamgage ID -> NHM POI segment,
+              skipped streamgage ID -> reason it was skipped)
     """
 
     with open(filename, 'r') as fhdl:
@@ -124,22 +130,28 @@ def get_streamgage_segments(filename: str | Path,
     # Create dictionary of streamgage IDs to nhm_seg for POI
     segs_by_poi: 'OrderedDict[str, int]' = OrderedDict()
 
+    # Streamgages that could not be used, mapped to the reason they were skipped
+    skipped: 'OrderedDict[str, str]' = OrderedDict()
+
     for kk in streamgages:
         poiseg = poi_id_to_seg.get(kk, None)
 
         if poiseg is None:
-            con.print(f'Streamgage {kk} is not a POI in the parameter database; skipping',
-                      style='dark_orange3')
+            reason = 'not a POI in the parameter database'
+            con.print(f'Streamgage {kk} is {reason}; skipping', style='dark_orange3')
+            skipped[kk] = reason
         elif poiseg == 0:
-            con.print(f'Streamgage {kk} has poi_gage_segment = 0; skipping',
-                      style='dark_orange3')
+            reason = 'poi_gage_segment = 0'
+            con.print(f'Streamgage {kk} has {reason}; skipping', style='dark_orange3')
+            skipped[kk] = reason
         elif kk in segs_by_poi:
-            con.print(f'Streamgage {kk} has multiple assigned segments in the parameter database; skipping',
-                      style='red')
+            reason = 'multiple assigned segments in the parameter database'
+            con.print(f'Streamgage {kk} has {reason}; skipping', style='red')
+            skipped[kk] = reason
         else:
             segs_by_poi[kk] = poiseg
 
-    return segs_by_poi
+    return segs_by_poi, skipped
 
 
 def stop_pool(pool: list[WorkerThread], cmd_q: queue.Queue):
@@ -163,6 +175,133 @@ def stop_pool(pool: list[WorkerThread], cmd_q: queue.Queue):
 
     for thread in pool:
         thread.join(timeout=5.0)
+
+
+# A summary row: (streamgage, HRUs, segments, POIs, status). Count fields are
+# ints for completed runs, otherwise a placeholder string such as '-'.
+SummaryRow = tuple[str, 'int | str', 'int | str', 'int | str', str]
+
+
+def collect_summary_rows(dir_by_gage: 'OrderedDict[str, str]',
+                         job_dir: str | Path,
+                         skipped: 'OrderedDict[str, str] | None' = None) -> list[SummaryRow]:
+    """Collect per-streamgage summary rows for the roll-up report.
+
+    Each extraction's counts are read from the ``summary.json`` written by
+    bandit into that run's output directory. A gage whose run did not produce
+    a summary (e.g. it failed or was never started) is marked as not completed.
+    Streamgages skipped before extraction (invalid POIs) are listed with the
+    reason they were skipped.
+
+    :param dir_by_gage: Mapping of streamgage ID to its output directory name
+    :param job_dir: Top-level job directory the extractions ran under
+    :param skipped: Mapping of skipped streamgage ID to the reason it was skipped
+    :returns: List of summary rows, completed/failed first then skipped
+    """
+
+    rows: list[SummaryRow] = []
+    for gage, cdir in dir_by_gage.items():
+        summary_file = Path(job_dir) / cdir / 'summary.json'
+
+        num_hru: int | str
+        num_seg: int | str
+        num_poi: int | str
+        status: str
+
+        if summary_file.is_file():
+            try:
+                with open(summary_file, 'r') as fhdl:
+                    data = json.load(fhdl)
+                num_hru = data.get('num_hru', '?')
+                num_seg = data.get('num_segments', '?')
+                num_poi = data.get('num_poi', '?')
+                status = 'completed'
+            except (OSError, json.JSONDecodeError):
+                num_hru = num_seg = num_poi = '-'
+                status = 'unreadable summary'
+        else:
+            num_hru = num_seg = num_poi = '-'
+            status = 'not completed'
+
+        rows.append((gage, num_hru, num_seg, num_poi, status))
+
+    # Append rows for streamgages that were skipped before any extraction ran
+    for gage, reason in (skipped or {}).items():
+        rows.append((gage, '-', '-', '-', f'skipped: {reason}'))
+
+    return rows
+
+
+def print_summary_table(rows: list[SummaryRow]):
+    """Print a summary table of the batch extraction to the console.
+
+    :param rows: Summary rows from :func:`collect_summary_rows`
+    """
+
+    table = Table(title='Bandit extraction summary')
+    table.add_column('Streamgage')
+    table.add_column('HRUs', justify='right')
+    table.add_column('Segments', justify='right')
+    table.add_column('POIs', justify='right')
+    table.add_column('Status')
+
+    for gage, num_hru, num_seg, num_poi, status in rows:
+        if status == 'completed':
+            style = 'green4'
+        elif status.startswith('skipped'):
+            style = 'dark_orange3'
+        else:
+            style = 'red'
+
+        table.add_row(str(gage), str(num_hru), str(num_seg), str(num_poi),
+                      f'[{style}]{status}[/]')
+
+    con.print(table)
+
+
+def write_summary_report(report_path: str | Path, rows: list[SummaryRow]):
+    """Write an HTML table summarizing each streamgage extraction.
+
+    :param report_path: Path of the HTML report to write
+    :param rows: Summary rows from :func:`collect_summary_rows`
+    """
+
+    generated = datetime.datetime.now().isoformat(timespec='seconds')
+
+    lines = ['<!DOCTYPE html>',
+             '<html lang="en">',
+             '<head>',
+             '<meta charset="utf-8">',
+             '<title>Bandit extraction summary</title>',
+             '<style>',
+             'body { font-family: sans-serif; margin: 2em; }',
+             'table { border-collapse: collapse; }',
+             'th, td { border: 1px solid #ccc; padding: 4px 10px; text-align: right; }',
+             'th { background: #f0f0f0; }',
+             'td.gage, td.status { text-align: left; }',
+             '</style>',
+             '</head>',
+             '<body>',
+             '<h1>Bandit extraction summary</h1>',
+             f'<p>Generated {html.escape(generated)}</p>',
+             '<table>',
+             '<thead>',
+             '<tr><th>Streamgage</th><th>HRUs</th><th>Segments</th>'
+             '<th>POIs</th><th>Status</th></tr>',
+             '</thead>',
+             '<tbody>']
+
+    for gage, num_hru, num_seg, num_poi, status in rows:
+        lines.append(f'<tr><td class="gage">{html.escape(str(gage))}</td>'
+                     f'<td>{html.escape(str(num_hru))}</td>'
+                     f'<td>{html.escape(str(num_seg))}</td>'
+                     f'<td>{html.escape(str(num_poi))}</td>'
+                     f'<td class="status">{html.escape(status)}</td></tr>')
+
+    lines.extend(['</tbody>', '</table>', '</body>', '</html>', ''])
+
+    with open(report_path, 'w') as fhdl:
+        fhdl.write('\n'.join(lines))
 
 
 app = App(default_parameter=Parameter(negative=()))
@@ -240,7 +379,7 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
     poi_id_to_seg = pdb.poi_to_seg
 
     # Read streamgage file and map IDs to NHM POI segments
-    segs_by_poi = get_streamgage_segments(streamgages, poi_id_to_seg)
+    segs_by_poi, skipped_gages = get_streamgage_segments(streamgages, poi_id_to_seg)
 
     if not segs_by_poi:
         raise BanditError('No valid streamgages found; nothing to extract', exit_code=1)
@@ -260,11 +399,17 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
 
     work_count = 0
 
+    # Map each streamgage to the directory its extraction runs in, so the
+    # per-run summaries can be collected into a roll-up report afterward.
+    dir_by_gage: 'OrderedDict[str, str]' = OrderedDict()
+
     for kk, vv in segs_by_poi.items():
         if prefix is None:
             cdir = kk
         else:
             cdir = f'{prefix}{kk}'
+
+        dir_by_gage[kk] = cdir
 
         # Create the directory if needed
         if not os.path.exists(cdir):
@@ -331,6 +476,15 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
     # Stop the workers, discarding any extractions that have not yet started.
     # Extractions already running are allowed to finish.
     stop_pool(pool, cmd_q)
+
+    # Build a roll-up report from the per-run summaries. This runs even on an
+    # abort so the report reflects whatever extractions did complete.
+    rows = collect_summary_rows(dir_by_gage, job_dir, skipped_gages)
+    print_summary_table(rows)
+
+    report = Path(job_dir) / 'extraction_summary.html'
+    write_summary_report(report, rows)
+    con.print(f'Summary report: {report}')
 
     if aborted:
         raise BanditError('Batch extraction stopped before all streamgages were processed',
