@@ -127,26 +127,40 @@ class WorkerThread(threading.Thread):
 
 
 def read_file(filename: str | Path) -> dict:
-    """Read a csv with single ID followed by one or more values
+    """Read a CSV of a POI ID followed by one or more integer values.
 
-    The format of the file is CSV with a comma separator with one poi_id (string) per row
-    followed by one or more integer HRU IDs or segment IDs
+    The file has a header row, then one POI ID (string) per row followed by one
+    or more integer HRU IDs or segment IDs::
+
         poi_id,ids
         00000000,4,67,8,...
 
-    :param filename: File containing one ID per line"""
+    Blank lines and surrounding whitespace are ignored.
+
+    :param filename: File to read
+    :returns: Mapping of POI ID to its list of integer values
+    :raises BanditError: If a non-header row contains a non-integer value
+    """
 
     values_by_id = {}
 
-    src_file = open(filename, 'r')
+    with open(filename, 'r') as src_file:
+        # Skip the header row
+        src_file.readline()
 
-    # Skip the header row
-    src_file.readline()
+        # Read in the non-routed HRUs or segment cutoffs by POI
+        for line in src_file:
+            cols = [cc.strip() for cc in line.strip().split(',')]
 
-    # Read in the non-routed HRUs or segment cutoffs by POI
-    for line in src_file:
-        cols = line.strip().replace(' ', '').split(',')
-        values_by_id[cols[0]] = [int(xx) for xx in cols[1:]]
+            if not cols or not cols[0]:
+                # Skip blank lines (and lines with no POI ID)
+                continue
+
+            try:
+                values_by_id[cols[0]] = [int(xx) for xx in cols[1:]]
+            except ValueError as err:
+                raise BanditError(f'Non-integer value in {filename} for POI {cols[0]}: {err}',
+                                  exit_code=1)
 
     return values_by_id
 
@@ -360,6 +374,10 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
                   verbose: Annotated[bool, Parameter(name=['--verbose', '-v'])] = False):
     """Batch Bandit extractions driven by a file of streamgage POI IDs.
 
+    Each streamgage is extracted to its own directory. Per-POI upstream segment
+    cutoffs and non-routed HRUs can optionally be supplied as CSV files (see
+    ``seg_cutoffs`` and ``nr_hrus``) and are applied to the matching streamgage.
+
     Any extra tokens supplied after the known options are passed through,
     unchanged, to each ``bandit`` extraction. Use the ``--`` delimiter to
     separate pass-through flags from this command's own options, e.g.::
@@ -421,9 +439,6 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
 
     # Update control_filename to include the main extraction path
     config.update_value('control_filename', f'{job_dir}/control.default')
-
-    # List of upstream cutoffs (not allowed with by-streamgage extractions)
-    config.update_value('cutoffs', [])
 
     # Load PRMS metadata
     prms_meta = MetaData(verbose=False).metadata
