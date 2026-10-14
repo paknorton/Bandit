@@ -1,44 +1,69 @@
 #!/usr/bin/env python3
 
-from Bandit import bandit_cfg as bc
-from pyPRMS.metadata.metadata import MetaData
-from pyPRMS import ParamDb
+from __future__ import annotations
 
-from collections import OrderedDict
+import logging
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
 
-from pyPRMS.base.console import get_console_instance
-con = None
+from collections import OrderedDict
+from cyclopts import App, Parameter
+from pathlib import Path
+from typing import Annotated
+
+from pyPRMS.base.console import get_console_instance   # type: ignore
+from pyPRMS.metadata.metadata import MetaData   # type: ignore
+from pyPRMS import ParamDb   # type: ignore
+
+from Bandit import bandit_cfg as bc
+from Bandit.exceptions import BanditError
+
+__author__ = 'Parker Norton (pnorton@usgs.gov)'
+
+# Rich console for user-facing output
+con = get_console_instance()
+
+# Default arguments passed through to each bandit extraction when the
+# user does not supply any on the command line.
+DEFAULT_BANDIT_ARGS = ['--no_filter_params', '--keep_hru_order']
+
+# Setup logging
+bandit_log = logging.getLogger('bandit')
 
 
 class WorkerThread(threading.Thread):
-    """ A worker thread that takes directory names from a queue, finds all
-        files in them recursively and reports the result.
+    """A worker thread that pulls bandit commands off a queue and runs them.
 
-        Input is done by placing directory names (as strings) into the
-        Queue passed in dir_q.
+    Input is done by placing commands (as lists of tokens) into the queue
+    passed in ``input_q``.
 
-        Output is done by placing tuples into the Queue passed in result_q.
-        Each tuple is (thread name, dirname, [list of files]).
+    Output is done by placing tuples into the queue passed in ``result_q``.
+    Each tuple is (thread name, command, return code).
 
-        Ask the thread to stop by calling its join() method.
+    Ask the thread to stop by calling its :meth:`join` method.
     """
-    def __init__(self, input_q, result_q):
-        super(WorkerThread, self).__init__()
+
+    def __init__(self, input_q: queue.Queue, result_q: queue.Queue):
+        """Init method for WorkerThread.
+
+        :param input_q: Queue of commands to run
+        :param result_q: Queue to place command results into
+        """
+        super().__init__()
         self.input_q = input_q
         self.result_q = result_q
         self.stoprequest = threading.Event()
 
     def run(self):
-        # As long as we weren't asked to stop, try to take new tasks from the
-        # queue. The tasks are taken with a blocking 'get', so no CPU
-        # cycles are wasted while waiting.
-        # Also, 'get' is given a timeout, so stoprequest is always checked,
-        # even if there's nothing in the queue.
+        """Pull commands from the input queue and run them until asked to stop.
+
+        The tasks are taken with a blocking ``get`` given a short timeout so
+        that ``stoprequest`` is always checked, even when the queue is empty.
+        """
         while not self.stoprequest.is_set():
             try:
                 thecmd = self.input_q.get(True, 0.05)
@@ -48,71 +73,106 @@ class WorkerThread(threading.Thread):
                 continue
 
     def join(self, timeout=None):
-        self.stoprequest.set()
-        super(WorkerThread, self).join(timeout)
+        """Request the thread stop and wait for it to finish.
 
-    def run_cmd(self, thecmd):
+        :param timeout: Optional timeout in seconds
+        """
+        self.stoprequest.set()
+        super().join(timeout)
+
+    def run_cmd(self, thecmd: list[str]) -> int:
+        """Run a single bandit command in a subprocess.
+
+        :param thecmd: Command to run, as a list of argument tokens
+        :returns: Return code from the subprocess (-1 on failure to launch)
+        """
         retcode = 0
 
         try:
-            retcode = subprocess.call(thecmd, shell=True)
-        except:
-            # Error running command
-            print("Error: run_cmd() shutting down")
-            print(retcode)
+            retcode = subprocess.call(thecmd)
+        except Exception as err:   # noqa: BLE001
+            # Error launching the command; shut this worker down
+            bandit_log.error(f'run_cmd() failed to launch {thecmd}: {err}')
             retcode = -1
             self.stoprequest.set()
         return retcode
 
 
-def get_streamgage_segments(filename, poi_id_to_seg):
-    """Returns dictionary mapping streamgages to NHM POI segments"""
+def get_streamgage_segments(filename: str | Path,
+                            poi_id_to_seg: dict) -> 'OrderedDict[str, int]':
+    """Map streamgage POI IDs from a file to NHM POI segments.
 
-    global con
-    con = get_console_instance()
+    The input file contains one streamgage POI ID per line. Blank lines and
+    surrounding whitespace are ignored. Streamgages that are not POIs in the
+    parameter database, that have ``poi_gage_segment == 0``, or that are
+    assigned multiple segments are reported and skipped.
+
+    :param filename: File containing streamgage POI IDs (one per line)
+    :param poi_id_to_seg: Mapping of poi_gage_id to poi_gage_segment
+    :returns: Ordered mapping of valid streamgage ID to NHM POI segment
+    """
 
     with open(filename, 'r') as fhdl:
-        streamgages = fhdl.read().splitlines()
+        streamgages = [ll.strip() for ll in fhdl.read().splitlines() if ll.strip()]
 
     # Create dictionary of streamgage IDs to nhm_seg for POI
-    segs_by_poi = OrderedDict()
+    segs_by_poi: 'OrderedDict[str, int]' = OrderedDict()
 
     for kk in streamgages:
-        poiseg = poi_id_to_seg.setdefault(kk, None)
+        poiseg = poi_id_to_seg.get(kk, None)
 
         if poiseg is None:
-            con.print(f'Streamgage {kk} is not a POI in the parameter database; skipping', style='dark_orange3')
+            con.print(f'Streamgage {kk} is not a POI in the parameter database; skipping',
+                      style='dark_orange3')
         elif poiseg == 0:
-            con.print(f'Streamgage {kk} has poi_gage_segment = 0; skipping', style='dark_orange3')
+            con.print(f'Streamgage {kk} has poi_gage_segment = 0; skipping',
+                      style='dark_orange3')
         elif kk in segs_by_poi:
-            con.print(f'Streamgage {kk} has multiple assigned segments in the parameter database; skipping', style='red')
-            # print(f'    {kk} -> {segs_by_poi[kk]}')
-            # print(f'    {kk} -> {poiseg}')
+            con.print(f'Streamgage {kk} has multiple assigned segments in the parameter database; skipping',
+                      style='red')
         else:
             segs_by_poi[kk] = poiseg
 
     return segs_by_poi
 
 
-def main():
-    import argparse
-    from distutils.spawn import find_executable
+app = App(default_parameter=Parameter(negative=()))
 
-    global con
-    con = get_console_instance()
 
-    # Command line arguments
-    parser = argparse.ArgumentParser(description='Batch script for Bandit extractions')
+@app.default
+def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', '-s'])],
+                  *bandit_args: Annotated[str, Parameter(allow_leading_hyphen=True)],
+                  prefix: Annotated[str | None, Parameter(name=['--prefix', '-p'])] = None,
+                  num_threads: Annotated[int, Parameter(name=['--num-threads', '-n'])] = 8,
+                  verbose: Annotated[bool, Parameter(name=['--verbose', '-v'])] = False):
+    """Batch Bandit extractions driven by a file of streamgage POI IDs.
 
-    parser.add_argument('-s', '--streamgages', help='File containing streamgage POI IDs', default='', type=str)
-    parser.add_argument('-p', '--prefix', help='Directory prefix to add')
-    parser.add_argument('-v', '--verbose', help='Output additional information', action='store_true')
+    Any extra tokens supplied after the known options are passed through,
+    unchanged, to each ``bandit`` extraction. Use the ``--`` delimiter to
+    separate pass-through flags from this command's own options, e.g.::
 
-    args = parser.parse_args()
+        bandit_by_streamgage -s sample.csv -- --param_netcdf --streamflow_netcdf
 
-    if not args.streamgages:
-        print('ERROR: Must specify the streamgage POI ID file.')
-        exit(1)
+    When no pass-through arguments are supplied, the defaults
+    ``--no_filter_params --keep_hru_order`` are used.
+
+    :param streamgages: File containing streamgage POI IDs (one per line)
+    :param bandit_args: Additional arguments passed through to each bandit run
+    :param prefix: Directory prefix to add to each extraction output directory
+    :param num_threads: Number of concurrent bandit extractions to run
+    :param verbose: Output additional information
+    """
+
+    streamgages = Path(streamgages)
+
+    if not streamgages.is_file():
+        raise BanditError(f'Streamgage file does not exist: {streamgages}', exit_code=1)
+
+    # Arguments to pass through to each bandit extraction
+    passthrough_args = list(bandit_args) if bandit_args else list(DEFAULT_BANDIT_ARGS)
+
+    if verbose:
+        con.print(f'Pass-through bandit arguments: {" ".join(passthrough_args)}')
 
     # Should be in the current job directory
     job_dir = os.getcwd()
@@ -124,20 +184,17 @@ def main():
     config.update_value('control_filename', f'{job_dir}/control.default')
 
     # List of upstream cutoffs (not allowed with by-streamgage extractions)
-    config.cutoffs = []
+    config.update_value('cutoffs', [])
 
-    cmd_bandit = find_executable('bandit')
+    cmd_bandit = shutil.which('bandit')
 
     if not cmd_bandit:
-        print('ERROR: Unable to find bandit executable')
-        exit(1)
-
-    num_threads = 8
+        raise BanditError('Unable to find bandit executable', exit_code=1)
 
     # ****************************************************************************
     # Initialize the threads
-    cmd_q = queue.Queue()
-    result_q = queue.Queue()
+    cmd_q: queue.Queue = queue.Queue()
+    result_q: queue.Queue = queue.Queue()
 
     # Create pool of threads
     pool = [WorkerThread(input_q=cmd_q, result_q=result_q) for __ in range(num_threads)]
@@ -148,7 +205,7 @@ def main():
             thread.start()
         except (KeyboardInterrupt, SystemExit):
             # Shutdown the threads when the program is terminated
-            print('Program terminated.')
+            con.print('Program terminated.')
             thread.join()
             sys.exit(1)
 
@@ -156,41 +213,39 @@ def main():
     prms_meta = MetaData(verbose=False).metadata
 
     # Get the POI-to-segment mappings from the parameter database
-    pdb = ParamDb(config.paramdb_dir, metadata=prms_meta, verbose=args.verbose)
-    # nhm_params = pdb.parameters
+    pdb = ParamDb(config.paramdb_dir, metadata=prms_meta, verbose=verbose)
 
     # Get dictionary which maps poi_gage_id to poi_gage_segment
     poi_id_to_seg = pdb.poi_to_seg
 
     # Read streamgage file and map IDs to NHM POI segments
-    segs_by_poi = get_streamgage_segments(args.streamgages, poi_id_to_seg)
+    segs_by_poi = get_streamgage_segments(streamgages, poi_id_to_seg)
 
     work_count = 0
 
     for kk, vv in segs_by_poi.items():
-        if args.prefix is None:
+        if prefix is None:
             cdir = kk
         else:
-            cdir = f'{args.prefix}{kk}'
+            cdir = f'{prefix}{kk}'
 
         # Create the directory if needed
         if not os.path.exists(cdir):
             try:
                 os.makedirs(cdir)
             except OSError as err:
-                con.print(f'\tError creating directory: {err}', style='red')
-                exit(1)
+                raise BanditError(f'Error creating directory: {err}', exit_code=1)
 
-        # Update the outlets and output_dir config variables
-        config.update_value('outlets', vv)
-        # config.update_value('outlets', vv.item())
+        # Update the outlets and output_dir config variables.
+        # outlets is a list of segments; a streamgage maps to a single segment.
+        config.update_value('outlets', [vv])
         config.update_value('output_dir', f'{job_dir}/{cdir}')
 
         config.write(f'{cdir}/bandit.cfg')
 
         # Add bandit job to the processing queue
         work_count += 1
-        cmd = f'{cmd_bandit} --no_filter_params --keep_hru_order --job-dir {job_dir}/{cdir}'
+        cmd = [cmd_bandit] + passthrough_args + ['--job-dir', f'{job_dir}/{cdir}']
 
         cmd_q.put(cmd)
 
@@ -207,14 +262,28 @@ def main():
 
         if result[2] != 0 and result[2] < 200:
             # An error occurred running the command
-            # Return-codes greater than 200 are generated by bandit errors, that
+            # Return-codes greater than 200 are generated by bandit errors that
             # don't necessitate shutting the entire job down.
-            print(f'\nThread {result[0]} return code = {result[2]} ({result[1]})')
+            con.print(f'\nThread {result[0]} return code = {result[2]} ({" ".join(result[1])})')
             work_count = 0
 
-    # Ask for the threads to die and wait for them to do it
+    # Ask the threads to die and wait for them to do it
     for thread in pool:
         thread.join()
+
+    # Finish the in-place progress line with a newline
+    sys.stdout.write('\n')
+    sys.stdout.flush()
+
+
+def main():
+    """CLI entry point for batch Bandit extractions by streamgage."""
+    try:
+        app()
+    except BanditError as err:
+        bandit_log.error(str(err))
+        con.print(f'[red]ERROR[/]: {err}')
+        sys.exit(err.exit_code)
 
 
 if __name__ == '__main__':
