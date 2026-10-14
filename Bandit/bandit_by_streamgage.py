@@ -126,6 +126,45 @@ class WorkerThread(threading.Thread):
         return retcode
 
 
+def read_file(filename: str | Path) -> dict:
+    """Read a CSV of a POI ID followed by one or more integer values.
+
+    The file has a header row, then one POI ID (string) per row followed by one
+    or more integer HRU IDs or segment IDs::
+
+        poi_id,ids
+        00000000,4,67,8,...
+
+    Blank lines and surrounding whitespace are ignored.
+
+    :param filename: File to read
+    :returns: Mapping of POI ID to its list of integer values
+    :raises BanditError: If a non-header row contains a non-integer value
+    """
+
+    values_by_id = {}
+
+    with open(filename, 'r') as src_file:
+        # Skip the header row
+        src_file.readline()
+
+        # Read in the non-routed HRUs or segment cutoffs by POI
+        for line in src_file:
+            cols = [cc.strip() for cc in line.strip().split(',')]
+
+            if not cols or not cols[0]:
+                # Skip blank lines (and lines with no POI ID)
+                continue
+
+            try:
+                values_by_id[cols[0]] = [int(xx) for xx in cols[1:]]
+            except ValueError as err:
+                raise BanditError(f'Non-integer value in {filename} for POI {cols[0]}: {err}',
+                                  exit_code=1)
+
+    return values_by_id
+
+
 def get_streamgage_segments(filename: str | Path,
                             poi_id_to_seg: dict) -> tuple['OrderedDict[str, int]',
                                                           'OrderedDict[str, str]']:
@@ -328,10 +367,16 @@ app = App(default_parameter=Parameter(negative=()))
 @app.default
 def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', '-s'])],
                   *bandit_args: Annotated[str, Parameter(allow_leading_hyphen=True)],
+                  seg_cutoffs: Annotated[Path | None, Parameter(name=['--seg_cutoffs', '-c'])] = None,
+                  nr_hrus: Annotated[Path | None, Parameter(name=['--nr_hrus', '-n'])] = None,
                   prefix: Annotated[str | None, Parameter(name=['--prefix', '-p'])] = None,
-                  num_threads: Annotated[int, Parameter(name=['--num-threads', '-n'])] = 8,
+                  num_threads: Annotated[int, Parameter(name=['--num-threads', '-N'])] = 8,
                   verbose: Annotated[bool, Parameter(name=['--verbose', '-v'])] = False):
     """Batch Bandit extractions driven by a file of streamgage POI IDs.
+
+    Each streamgage is extracted to its own directory. Per-POI upstream segment
+    cutoffs and non-routed HRUs can optionally be supplied as CSV files (see
+    ``seg_cutoffs`` and ``nr_hrus``) and are applied to the matching streamgage.
 
     Any extra tokens supplied after the known options are passed through,
     unchanged, to each ``bandit`` extraction. Use the ``--`` delimiter to
@@ -344,6 +389,8 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
 
     :param streamgages: File containing streamgage POI IDs (one per line)
     :param bandit_args: Additional arguments passed through to each bandit run
+    :param seg_cutoffs: File containing upstream cutoff segments for model by POI
+    :param nr_hrus: File containing non-route HRUs in model by POI
     :param prefix: Directory prefix to add to each extraction output directory
     :param num_threads: Number of concurrent bandit extractions to run
     :param verbose: Output additional information
@@ -393,9 +440,6 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
     # Update control_filename to include the main extraction path
     config.update_value('control_filename', f'{job_dir}/control.default')
 
-    # List of upstream cutoffs (not allowed with by-streamgage extractions)
-    config.update_value('cutoffs', [])
-
     # Load PRMS metadata
     prms_meta = MetaData(verbose=False).metadata
 
@@ -410,6 +454,22 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
 
     if not segs_by_poi:
         raise BanditError('No valid streamgages found; nothing to extract', exit_code=1)
+
+    if seg_cutoffs is None:
+        us_seg_cutoffs = {}
+    else:
+        if not seg_cutoffs.is_file():
+            raise BanditError(f'Upstream segment cutoff file does not exist: {seg_cutoffs}', exit_code=1)
+        else:
+            us_seg_cutoffs = read_file(seg_cutoffs)
+
+    if nr_hrus is None:
+        nonrouted_hrus = {}
+    else:
+        if not nr_hrus.is_file():
+            raise BanditError(f'Non-routed HRUs file does not exist: {nr_hrus}', exit_code=1)
+        else:
+            nonrouted_hrus = read_file(nr_hrus)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Setup validated and there is work to do: initialize the worker pool.
@@ -451,6 +511,8 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
         # Update the outlets and output_dir config variables.
         # outlets is a list of segments; a streamgage maps to a single segment.
         config.update_value('outlets', [vv])
+        config.update_value('cutoffs',  us_seg_cutoffs.get(kk, []))
+        config.update_value('hru_noroute', nonrouted_hrus.get(kk, []))
         config.update_value('output_dir', f'{job_dir}/{cdir}')
 
         config.write(f'{cdir}/bandit.cfg')
