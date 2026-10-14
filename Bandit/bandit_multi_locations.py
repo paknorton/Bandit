@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
 
+"""Batch Bandit extractions driven by a file of named locations.
+
+Each location has one or more stream segment outlets and, optionally, upstream
+segment cutoffs and non-routed HRUs. The outlets file has the format::
+
+    name,outlets
+    mill,1242
+    norwalk,1244,1245
+    quinnipiac,868
+
+The location name in the first column may be a string (e.g. ``mill``) or an
+integer (e.g. a headwater area ID). The optional cutoffs and non-routed HRU
+files use the same first-column location key followed by integer segment or
+HRU IDs.
+
+Each location is extracted into its own output directory and the per-run
+summaries are collected into a console table and an HTML roll-up report.
+"""
+
 from __future__ import annotations
 
 import datetime
@@ -27,22 +46,6 @@ from Bandit import bandit_cfg as bc
 from Bandit.exceptions import BanditError
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
-
-"""Generate model extractions for named locations in the NHM.
-
-Each location has one or more stream segment outlets and, optionally, upstream
-segment cutoffs and non-routed HRUs. The outlets file has the format::
-
-    name,outlets
-    mill,1242
-    norwalk,1244,1245
-    quinnipiac,868
-
-The location name in the first column may be a string (e.g. ``mill``) or an
-integer (e.g. a headwater area ID). The optional cutoffs and non-routed HRU
-files use the same first-column location key followed by integer segment or
-HRU IDs.
-"""
 
 # Rich console for user-facing output
 con = get_console_instance()
