@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
 
+"""Batch Bandit extractions driven by a file of streamgage POI IDs.
+
+The input file lists one streamgage POI ID per line. Each streamgage is mapped
+to its NHM POI segment via the parameter database and extracted into its own
+output directory. Streamgages that are not POIs, that have no assigned segment,
+or that map to multiple segments are reported and skipped.
+
+Per-streamgage upstream segment cutoffs and non-routed HRUs can optionally be
+supplied as CSV files. The per-run summaries are collected into a console table
+and an HTML roll-up report.
+"""
+
 from __future__ import annotations
 
 import datetime
