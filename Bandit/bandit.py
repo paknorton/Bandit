@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import networkx as nx   # type: ignore
 import numpy as np
@@ -65,13 +66,26 @@ clog = logging.StreamHandler()
 clog.setLevel(logging.ERROR)
 clog.setFormatter(log_fmt)
 
-# Handler for logging to file
-flog = logging.FileHandler(f'{os.getcwd()}/bandit.log')
-flog.setLevel(logging.INFO)
-flog.setFormatter(log_fmt)
-
-root.addHandler(flog)
 bandit_log.addHandler(clog)
+
+# NOTE: The log file handler is added inside extract() *after* any change into
+# the job directory, so that bandit.log is written in the directory the
+# extraction actually runs in (see add_log_file_handler). Creating it here, at
+# import time, would bind it to the current working directory and send the log
+# to the wrong place for --job-dir runs.
+
+
+def add_log_file_handler(log_dir: str | Path) -> logging.FileHandler:
+    """Add a file handler that writes bandit.log into the given directory.
+
+    :param log_dir: Directory in which to create bandit.log
+    :returns: The handler that was added (so it can be removed later)
+    """
+    file_handler = logging.FileHandler(f'{log_dir}/bandit.log')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(log_fmt)
+    root.addHandler(file_handler)
+    return file_handler
 
 app = App(default_parameter=Parameter(negative=()))
 
@@ -123,6 +137,10 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             con.print(f'[red]ERROR[/]: Invalid jobs directory: {str(job_dir)}')
             bandit_log.error(f'Invalid jobs directory: {str(job_dir)}')
             raise BanditError(f'Invalid jobs directory: {str(job_dir)}', exit_code=-1)
+
+    # Write bandit.log into the directory the extraction runs in (the job
+    # directory when --job-dir is used, otherwise the current directory).
+    file_handler = add_log_file_handler(os.getcwd())
 
     try:
         bandit_log.info(f'========== START {datetime.datetime.now().isoformat()} ==========')
@@ -283,6 +301,20 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                 con.print(f'[green4]INFO[/]: Number of POI gages in model subset: {num_poi}')
 
             bandit_log.info(f'Number of HRUs in subset: {num_hru}')
+            bandit_log.info(f'Number of POI gages in subset: {num_poi}')
+
+            # Write a small machine-readable summary of the subset counts.
+            # Batch drivers (e.g. bandit_by_streamgage) read these to build a
+            # roll-up report without having to parse the log file.
+            summary = {'num_hru': num_hru,
+                       'num_segments': len(new_nhm_seg),
+                       'num_poi': num_poi,
+                       'poi_gage_ids': new_poi_gage_id}
+            try:
+                with open(outdir / 'summary.json', 'w') as sfhdl:
+                    json.dump(summary, sfhdl, indent=2)
+            except OSError as err:
+                bandit_log.warning(f'Could not write summary.json: {err}')
 
 
             # Write the new parameter file
@@ -551,6 +583,11 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
             bandit_log.info(f'========== END {datetime.datetime.now().isoformat()} ==========')
     finally:
+        # Remove the per-run file handler so repeated in-process calls do not
+        # accumulate handlers or keep writing to a previous job's log.
+        root.removeHandler(file_handler)
+        file_handler.close()
+
         if chdir_needed:
             os.chdir(stdir)
 
