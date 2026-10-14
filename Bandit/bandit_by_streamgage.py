@@ -57,6 +57,9 @@ class WorkerThread(threading.Thread):
         :param result_q: Queue to place command results into
         """
         super().__init__()
+        # Daemon threads so an unhandled interrupt in the main thread cannot
+        # be blocked indefinitely waiting on a worker to finish.
+        self.daemon = True
         self.input_q = input_q
         self.result_q = result_q
         self.stoprequest = threading.Event()
@@ -139,6 +142,29 @@ def get_streamgage_segments(filename: str | Path,
     return segs_by_poi
 
 
+def stop_pool(pool: list[WorkerThread], cmd_q: queue.Queue):
+    """Stop a pool of worker threads, abandoning any un-started work.
+
+    Any commands still queued are discarded so that no new extractions start.
+    Each worker is then asked to stop and briefly joined. Workers are daemon
+    threads, so an extraction still running past the join timeout does not
+    block process exit (its output directory may be left incomplete).
+
+    :param pool: Worker threads to stop
+    :param cmd_q: Command queue to drain of un-started work
+    """
+
+    # Discard any queued commands that have not been picked up yet
+    while True:
+        try:
+            cmd_q.get_nowait()
+        except queue.Empty:
+            break
+
+    for thread in pool:
+        thread.join(timeout=5.0)
+
+
 app = App(default_parameter=Parameter(negative=()))
 
 
@@ -204,13 +230,7 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
 
     # Start the threads
     for thread in pool:
-        try:
-            thread.start()
-        except (KeyboardInterrupt, SystemExit):
-            # Shutdown the threads when the program is terminated
-            con.print('Program terminated.')
-            thread.join()
-            sys.exit(1)
+        thread.start()
 
     # Load PRMS metadata
     prms_meta = MetaData(verbose=False).metadata
@@ -268,12 +288,20 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
                         TextColumn('remaining'),
                         console=con)
 
+    aborted = False
+
     with progress:
         task = progress.add_task('Extracting', total=total_jobs)
 
         remaining = total_jobs
         while remaining > 0:
-            result = result_q.get()
+            try:
+                result = result_q.get()
+            except KeyboardInterrupt:
+                con.print('\n[gold3]Interrupted[/]: stopping remaining extractions')
+                aborted = True
+                break
+
             progress.advance(task)
             remaining -= 1
 
@@ -283,11 +311,16 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
                 # that don't necessitate shutting the entire job down.
                 con.print(f'[red]ERROR[/]: Thread {result[0]} return code = {result[2]} '
                           f'({" ".join(result[1])})')
+                aborted = True
                 break
 
-    # Ask the threads to die and wait for them to do it
-    for thread in pool:
-        thread.join()
+    # Stop the workers, discarding any extractions that have not yet started.
+    # Extractions already running are allowed to finish.
+    stop_pool(pool, cmd_q)
+
+    if aborted:
+        raise BanditError('Batch extraction stopped before all streamgages were processed',
+                          exit_code=1)
 
 
 def main():
