@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 
-from __future__ import annotations
+"""Batch Bandit extractions driven by a file of streamgage POI IDs.
+
+The input file lists one streamgage POI ID per line. Each streamgage is mapped
+to its NHM POI segment via the parameter database and extracted into its own
+output directory. Streamgages that are not POIs, that have no assigned segment,
+or that map to multiple segments are reported and skipped.
+
+Per-streamgage upstream segment cutoffs and non-routed HRUs can optionally be
+supplied as CSV files. The per-run summaries are collected into a console table
+and an HTML roll-up report.
+"""
 
 import datetime
 import html
@@ -13,7 +23,6 @@ import subprocess
 import sys
 import threading
 
-from collections import OrderedDict
 from cyclopts import App, Parameter
 from pathlib import Path
 from rich.progress import (BarColumn, MofNCompleteColumn, Progress, SpinnerColumn,
@@ -166,8 +175,8 @@ def read_file(filename: str | Path) -> dict:
 
 
 def get_streamgage_segments(filename: str | Path,
-                            poi_id_to_seg: dict) -> tuple['OrderedDict[str, int]',
-                                                          'OrderedDict[str, str]']:
+                            poi_id_to_seg: dict) -> tuple['dict[str, int]',
+                                                          'dict[str, str]']:
     """Map streamgage POI IDs from a file to NHM POI segments.
 
     The input file contains one streamgage POI ID per line. Blank lines and
@@ -185,10 +194,10 @@ def get_streamgage_segments(filename: str | Path,
         streamgages = [ll.strip() for ll in fhdl.read().splitlines() if ll.strip()]
 
     # Create dictionary of streamgage IDs to nhm_seg for POI
-    segs_by_poi: 'OrderedDict[str, int]' = OrderedDict()
+    segs_by_poi: 'dict[str, int]' = {}
 
     # Streamgages that could not be used, mapped to the reason they were skipped
-    skipped: 'OrderedDict[str, str]' = OrderedDict()
+    skipped: 'dict[str, str]' = {}
 
     for kk in streamgages:
         poiseg = poi_id_to_seg.get(kk, None)
@@ -239,9 +248,9 @@ def stop_pool(pool: list[WorkerThread], cmd_q: queue.Queue):
 SummaryRow = tuple[str, 'int | str', 'int | str', 'int | str', str]
 
 
-def collect_summary_rows(dir_by_gage: 'OrderedDict[str, str]',
+def collect_summary_rows(dir_by_gage: 'dict[str, str]',
                          job_dir: str | Path,
-                         skipped: 'OrderedDict[str, str] | None' = None) -> list[SummaryRow]:
+                         skipped: 'dict[str, str] | None' = None) -> list[SummaryRow]:
     """Collect per-streamgage summary rows for the roll-up report.
 
     Each extraction's counts are read from the ``summary.json`` written by
@@ -491,7 +500,7 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
 
     # Map each streamgage to the directory its extraction runs in, so the
     # per-run summaries can be collected into a roll-up report afterward.
-    dir_by_gage: 'OrderedDict[str, str]' = OrderedDict()
+    dir_by_gage: 'dict[str, str]' = {}
 
     for kk, vv in segs_by_poi.items():
         if prefix is None:
