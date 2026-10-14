@@ -13,7 +13,6 @@ import subprocess
 import sys
 import threading
 
-from collections import OrderedDict
 from cyclopts import App, Parameter
 from pathlib import Path
 from rich.progress import (BarColumn, MofNCompleteColumn, Progress, SpinnerColumn,
@@ -155,7 +154,7 @@ def _location_key(raw: str) -> LocationId:
         return raw
 
 
-def read_outlets(filename: str | Path) -> 'OrderedDict[LocationId, list[int]]':
+def read_outlets(filename: str | Path) -> 'dict[LocationId, list[int]]':
     """Read a CSV of a location ID followed by one or more integer values.
 
     The file has a header row, then one location ID per row followed by one or
@@ -173,7 +172,7 @@ def read_outlets(filename: str | Path) -> 'OrderedDict[LocationId, list[int]]':
     :raises BanditError: If a non-header row has no values or a non-integer value
     """
 
-    values_by_id: 'OrderedDict[LocationId, list[int]]' = OrderedDict()
+    values_by_id: 'dict[LocationId, list[int]]' = {}
 
     with open(filename, 'r') as src_file:
         # Skip the header row
@@ -200,7 +199,7 @@ def read_outlets(filename: str | Path) -> 'OrderedDict[LocationId, list[int]]':
     return values_by_id
 
 
-def read_values(filename: str | Path) -> 'OrderedDict[LocationId, list[int]]':
+def read_values(filename: str | Path) -> 'dict[LocationId, list[int]]':
     """Read a CSV of a location ID followed by zero or more integer values.
 
     Used for the optional upstream segment cutoff and non-routed HRU files,
@@ -212,7 +211,7 @@ def read_values(filename: str | Path) -> 'OrderedDict[LocationId, list[int]]':
     :raises BanditError: If a non-header row contains a non-integer value
     """
 
-    values_by_id: 'OrderedDict[LocationId, list[int]]' = OrderedDict()
+    values_by_id: 'dict[LocationId, list[int]]' = {}
 
     with open(filename, 'r') as src_file:
         # Skip the header row
@@ -282,7 +281,7 @@ def stop_pool(pool: list[WorkerThread], cmd_q: queue.Queue):
 SummaryRow = tuple[str, 'int | str', 'int | str', 'int | str', str]
 
 
-def collect_summary_rows(dir_by_loc: 'OrderedDict[LocationId, str]',
+def collect_summary_rows(dir_by_loc: 'dict[LocationId, str]',
                          job_dir: str | Path) -> list[SummaryRow]:
     """Collect per-location summary rows for the roll-up report.
 
@@ -401,10 +400,10 @@ app = App(default_parameter=Parameter(negative=()))
 
 
 @app.default
-def multi_locations(seg_outlets: Annotated[Path, Parameter(name=['--segoutlets', '-s'])],
+def multi_locations(seg_outlets: Annotated[Path, Parameter(name=['--seg_outlets', '-s'])],
                     *bandit_args: Annotated[str, Parameter(allow_leading_hyphen=True)],
-                    seg_cutoffs: Annotated[Path | None, Parameter(name=['--segcutoffs', '-c'])] = None,
-                    nr_hrus: Annotated[Path | None, Parameter(name=['--nrhrus', '-n'])] = None,
+                    seg_cutoffs: Annotated[Path | None, Parameter(name=['--seg_cutoffs', '-c'])] = None,
+                    nr_hrus: Annotated[Path | None, Parameter(name=['--nr_hrus', '-n'])] = None,
                     prefix: Annotated[str | None, Parameter(name=['--prefix', '-p'])] = None,
                     num_threads: Annotated[int, Parameter(name=['--num-threads', '-N'])] = 8,
                     verbose: Annotated[bool, Parameter(name=['--verbose', '-v'])] = False):
@@ -519,7 +518,7 @@ def multi_locations(seg_outlets: Annotated[Path, Parameter(name=['--segoutlets',
 
     # Map each location to the directory its extraction runs in, so the
     # per-run summaries can be collected into a roll-up report afterward.
-    dir_by_loc: 'OrderedDict[LocationId, str]' = OrderedDict()
+    dir_by_loc: 'dict[LocationId, str]' = {}
 
     for kk, vv in segments_by_loc.items():
         cdir = location_dirname(kk, prefix)
