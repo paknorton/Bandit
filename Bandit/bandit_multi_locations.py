@@ -169,7 +169,8 @@ def read_outlets(filename: str | Path) -> 'dict[LocationId, list[int]]':
 
     :param filename: File to read
     :returns: Mapping of location ID to its list of integer values
-    :raises BanditError: If a non-header row has no values or a non-integer value
+    :raises BanditError: If a non-header row has no values, a non-integer value,
+                         or a duplicate location ID
     """
 
     values_by_id: 'dict[LocationId, list[int]]' = {}
@@ -186,6 +187,9 @@ def read_outlets(filename: str | Path) -> 'dict[LocationId, list[int]]':
                 continue
 
             loc = _location_key(cols[0])
+
+            if loc in values_by_id:
+                raise BanditError(f'Duplicate location {loc} in {filename}', exit_code=1)
 
             if len(cols) < 2 or not any(cols[1:]):
                 raise BanditError(f'Location {loc} in {filename} has no values', exit_code=1)
@@ -208,7 +212,8 @@ def read_values(filename: str | Path) -> 'dict[LocationId, list[int]]':
 
     :param filename: File to read
     :returns: Mapping of location ID to its list of integer values
-    :raises BanditError: If a non-header row contains a non-integer value
+    :raises BanditError: If a non-header row contains a non-integer value or a
+                         duplicate location ID
     """
 
     values_by_id: 'dict[LocationId, list[int]]' = {}
@@ -225,6 +230,9 @@ def read_values(filename: str | Path) -> 'dict[LocationId, list[int]]':
                 continue
 
             loc = _location_key(cols[0])
+
+            if loc in values_by_id:
+                raise BanditError(f'Duplicate location {loc} in {filename}', exit_code=1)
 
             try:
                 values_by_id[loc] = [int(xx) for xx in cols[1:] if xx]
