@@ -12,8 +12,6 @@ supplied as CSV files. The per-run summaries are collected into a console table
 and an HTML roll-up report.
 """
 
-from __future__ import annotations
-
 import datetime
 import html
 import json
