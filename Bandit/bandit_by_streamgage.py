@@ -206,31 +206,29 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
     # Should be in the current job directory
     job_dir = os.getcwd()
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Fail fast: validate everything that can go wrong before spawning any
+    # worker threads. Nothing below should start the thread pool until there
+    # is confirmed work to queue.
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    cmd_bandit = shutil.which('bandit')
+
+    if not cmd_bandit:
+        raise BanditError('Unable to find bandit executable', exit_code=1)
+
     # Read the default configuration file
-    config = bc.Cfg(f'{job_dir}/bandit.cfg')
+    config_file = Path(job_dir) / 'bandit.cfg'
+
+    if not config_file.is_file():
+        raise BanditError(f'Configuration file does not exist: {config_file}', exit_code=1)
+
+    config = bc.Cfg(config_file)
 
     # Update control_filename to include the main extraction path
     config.update_value('control_filename', f'{job_dir}/control.default')
 
     # List of upstream cutoffs (not allowed with by-streamgage extractions)
     config.update_value('cutoffs', [])
-
-    cmd_bandit = shutil.which('bandit')
-
-    if not cmd_bandit:
-        raise BanditError('Unable to find bandit executable', exit_code=1)
-
-    # ****************************************************************************
-    # Initialize the threads
-    cmd_q: queue.Queue = queue.Queue()
-    result_q: queue.Queue = queue.Queue()
-
-    # Create pool of threads
-    pool = [WorkerThread(input_q=cmd_q, result_q=result_q) for __ in range(num_threads)]
-
-    # Start the threads
-    for thread in pool:
-        thread.start()
 
     # Load PRMS metadata
     prms_meta = MetaData(verbose=False).metadata
@@ -243,6 +241,22 @@ def by_streamgage(streamgages: Annotated[Path, Parameter(name=['--streamgages', 
 
     # Read streamgage file and map IDs to NHM POI segments
     segs_by_poi = get_streamgage_segments(streamgages, poi_id_to_seg)
+
+    if not segs_by_poi:
+        raise BanditError('No valid streamgages found; nothing to extract', exit_code=1)
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Setup validated and there is work to do: initialize the worker pool.
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    cmd_q: queue.Queue = queue.Queue()
+    result_q: queue.Queue = queue.Queue()
+
+    # Create pool of threads
+    pool = [WorkerThread(input_q=cmd_q, result_q=result_q) for __ in range(num_threads)]
+
+    # Start the threads
+    for thread in pool:
+        thread.start()
 
     work_count = 0
 
