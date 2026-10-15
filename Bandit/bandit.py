@@ -34,6 +34,7 @@ from Bandit.exceptions import BanditError
 from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI   # type: ignore
+from Bandit.streamgage_report import generate_report, ReportError
 import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
 import Bandit.prms_nwis as prms_nwis   # type: ignore
@@ -98,7 +99,10 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             no_filter_params: bool = False,
             keep_hru_order: bool = False,
             prms_version: str | Version = PRMS_VERSION,
-            add_gages: list[str] | None = None):
+            add_gages: list[str] | None = None,
+            streamgage_report: bool = False,
+            streamgage_report_dir: str | Path | None = None,
+            streamgage_report_offline: bool = False):
     """Extract model subsets from the National Hydrologic Model parameter database
 
     :param config_file: Name of config file to use for extraction
@@ -115,6 +119,12 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                       Each gage_id, segment pair should be separated with a space. Segment must
                       exist in the model subset and not be used by existing POIs. These ad-hoc gages
                       are marked in the subset parameter file as poi_type=0
+    :param streamgage_report: Write an HTML inspection report (one page per POI, plus an index map)
+                              for the streamgage observations in the model subset
+    :param streamgage_report_dir: Directory to write the streamgage report into
+                                  (default: <output_dir>/streamgage_report)
+    :param streamgage_report_offline: Embed plotly.js in each report so the plots render without
+                                      internet access (produces larger HTML files)
     """
 
     if isinstance(prms_version, str):
@@ -475,7 +485,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                         con.print(f'[green4]INFO[/]: Retrieving streamgage observations for {len(new_poi_gage_id)} stations', style='green4')
 
                     if config.exists('poi_dir') and config.poi_dir != '':
-                        bandit_log.info('Retrieving POIs from local HYDAT and NWIS netcdf files')
+                        bandit_log.info('Retrieving POIs from local HYDAT and NWIS cache files')
 
                         # When ad-hoc gages were supplied on the command line,
                         # enable an online WDFN lookup for any gage that has no
@@ -498,6 +508,49 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                         streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
                     else:
                         streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
+
+                    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                    # Write optional streamgage (POI) HTML report
+                    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                    if streamgage_report:
+                        report_dir = (Path(streamgage_report_dir) if streamgage_report_dir
+                                      else outdir / 'streamgage_report')
+
+                        if verbose:
+                            con.print(Rule())
+                            con.print(f'Writing streamgage report for {len(new_poi_gage_id)} POI(s)',
+                                      style='green4')
+
+                        try:
+                            report_result = generate_report(streamflow=streamflow,
+                                                             gage_ids=new_poi_gage_id,
+                                                             outdir=report_dir,
+                                                             st_date=st_date, en_date=en_date,
+                                                             offline=streamgage_report_offline,
+                                                             con=con, verbose=verbose)
+
+                            n_written = len(report_result['written'])
+                            n_failed = len(report_result['failed'])
+                            bandit_log.info(f'Streamgage report: {n_written} page(s) written to '
+                                            f'{report_result["outdir"]}')
+                            if report_result['index'] is not None:
+                                bandit_log.info(f'Streamgage report index map: {report_result["index"]}')
+                            if n_failed > 0:
+                                bandit_log.info(f'Streamgage report: {n_failed} POI(s) had no report '
+                                                f'(no usable observations)')
+
+                            if verbose:
+                                con.print(f'[green4]INFO[/]: Streamgage report written to '
+                                          f'{report_result["outdir"]} ({n_written} page(s), '
+                                          f'{n_failed} skipped)')
+                                if report_result['index'] is not None:
+                                    con.print(f'[green4]INFO[/]: Streamgage index map: '
+                                              f'{report_result["index"]}')
+                        except ReportError as err:
+                            # The report is an optional add-on; a failure here
+                            # must not abort an otherwise-successful extraction.
+                            con.print(f'[gold3]WARNING[/]: Streamgage report not generated: {err}')
+                            bandit_log.warning(f'Streamgage report not generated: {err}')
                 else:
                     # TODO: 2025-03-25 PAN - this should write a netcdf file if that option was selected
                     if verbose:
