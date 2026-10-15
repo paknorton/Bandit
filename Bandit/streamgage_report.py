@@ -24,8 +24,9 @@ source does), an ``index.html`` Leaflet map is also written. Each POI is
 color-coded by its percent of missing days and links to its per-station
 report.
 
-The report is an optional feature; ``plotly`` must be installed. If it is
-not available an informative :class:`ReportError` is raised.
+``plotly`` (a Bandit dependency) is required to render the plots. If it is
+somehow unavailable an informative :class:`ReportError` is raised rather than
+aborting the whole extraction.
 """
 
 import ast
@@ -96,10 +97,10 @@ def _require_plotly():
     try:
         import plotly.graph_objects as go   # type: ignore
     except ImportError as err:   # noqa: F841
-        raise ReportError('The streamgage report requires the optional '
-                          "'plotly' package. Install it with "
-                          "'pip install plotly' (or the Bandit 'report' "
-                          'extra) and retry.') from None
+        raise ReportError("The streamgage report requires the 'plotly' "
+                          'package, which is a Bandit dependency but could '
+                          "not be imported. Reinstall Bandit (e.g. 'pip "
+                          "install -e .') or run 'pip install plotly'.") from None
     return go
 
 

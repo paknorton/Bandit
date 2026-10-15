@@ -22,6 +22,7 @@ dependencies = ["cyclopts",
     "networkx>=2",
     "numpy",
     "pandas",
+    "plotly",
     "pyogrio>=0.4.2",
     "pyyaml",
     "rich",
@@ -36,7 +37,6 @@ dev = ["mypy",
        "pytest",
        "pytest-cov",
        "pytest-xdist",]
-report = ["plotly",]
 
 [project.urls]
 Repository = "https://github.com/paknorton/Bandit.git"
