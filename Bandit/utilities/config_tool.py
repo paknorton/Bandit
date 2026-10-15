@@ -11,7 +11,7 @@
 import glob
 import logging
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, List, Optional, Set, Tuple
 
 import pyogrio as pyg   # type: ignore
 
@@ -52,10 +52,15 @@ PATH_VARS = [
     'streamgage_file',
 ]
 
-# Variables that must NOT be overwritten by the update command. These are
+# Variables that are protected from the update command by default. These are
 # specific to an individual extraction/run rather than to the shared data
-# environment, so they are preserved in the target config.
-NO_UPDATE_VARS = [
+# environment, so they are preserved in the target config unless the user names
+# them explicitly via --include. The nested GIS key is referenced in dotted
+# form ('gis.dst_extension').
+PROTECTED_VARS = [
+    'output_dir',
+    'control_filename',
+    'param_filename',
     'outlets',
     'cutoffs',
     'hru_noroute',
@@ -65,15 +70,13 @@ NO_UPDATE_VARS = [
     'output_cbh',
     'output_shapefiles',
     'output_streamflow',
+    'start_date',
+    'end_date',
+    'gis.dst_extension',
 ]
 
-# Nested GIS keys that must NOT be overwritten by the update command.
-NO_UPDATE_GIS_VARS = [
-    'dst_extension',
-]
-
-# Date variables are never updated, but a message is emitted when they differ
-# between the source and the target config.
+# Date variables get special reporting: when a date differs but is not included
+# for update, a NOTE is emitted rather than silently leaving it unchanged.
 DATE_VARS = [
     'start_date',
     'end_date',
@@ -105,6 +108,71 @@ def _config_keys(config: bc.Cfg) -> List[str]:
     # The underlying dict is name-mangled on the Cfg instance.
     cfgdict = getattr(config, '_Cfg__cfgdict', {})
     return list(cfgdict.keys())
+
+
+def _resolve_include(include: Optional[List[str]]) -> Set[str]:
+    """Parse and validate the --include option for the update command.
+
+    Accepts values given either as a comma-separated list in a single option
+    or by repeating the option. Each name must be one of the protected
+    variables; an unknown name raises a BanditError so typos do not silently
+    skip an intended update.
+
+    :param include: Raw values collected from the --include option, or None
+    :returns: Set of validated protected-variable names to update
+    """
+    if not include:
+        return set()
+
+    names: Set[str] = set()
+    for raw in include:
+        for part in str(raw).split(','):
+            name = part.strip()
+            if name:
+                names.add(name)
+
+    unknown = sorted(n for n in names if n not in PROTECTED_VARS)
+    if unknown:
+        allowed = ', '.join(PROTECTED_VARS)
+        raise BanditError(
+            f"--include has unknown variable(s): {', '.join(unknown)}. "
+            f"Allowed values: {allowed}",
+            exit_code=2)
+
+    return names
+
+
+# Sentinel used to distinguish "variable not present" from a real value such
+# as None or an empty string when comparing two configs.
+_MISSING = object()
+
+
+def _diff_gis(src_gis: dict, other_gis: dict) -> List[Tuple[str, Any, Any]]:
+    """Return per-key differences between two gis sections.
+
+    Produces one (variable, src_value, other_value) tuple for each top-level
+    gis key whose value differs, named as 'gis.<key>'. Keys present in only
+    one of the two sections are reported with the _MISSING sentinel.
+
+    :param src_gis: The 'gis' mapping from the source config
+    :param other_gis: The 'gis' mapping from the other config
+    :returns: List of (variable, src_value, other_value) tuples
+    """
+    rows: List[Tuple[str, Any, Any]] = []
+
+    keys: List[str] = list(src_gis.keys())
+    for key in other_gis.keys():
+        if key not in keys:
+            keys.append(key)
+
+    for key in keys:
+        src_val = src_gis.get(key, _MISSING)
+        other_val = other_gis.get(key, _MISSING)
+
+        if src_val is _MISSING or other_val is _MISSING or src_val != other_val:
+            rows.append((f'gis.{key}', src_val, other_val))
+
+    return rows
 
 
 def _format_value(value: Any) -> str:
@@ -295,14 +363,18 @@ def diff(source_config: Annotated[Path, Parameter(validator=validators.Path(exis
             names.append(name)
 
     rows: List[Tuple[str, Any, Any]] = []
-    _MISSING = object()
 
     for name in names:
         src_val = src.get_value(name) if src.exists(name) else _MISSING
         other_val = other.get_value(name) if other.exists(name) else _MISSING
 
         if src_val is _MISSING or other_val is _MISSING or src_val != other_val:
-            rows.append((name, src_val, other_val))
+            # For the nested gis section, report only the specific keys that
+            # differ rather than dumping the whole dict.
+            if name == 'gis' and isinstance(src_val, dict) and isinstance(other_val, dict):
+                rows.extend(_diff_gis(src_val, other_val))
+            else:
+                rows.append((name, src_val, other_val))
 
     if not rows:
         con.print(f'[green4]OK[/]: {source_config} and {config_file} have no differences')
@@ -324,25 +396,42 @@ def diff(source_config: Annotated[Path, Parameter(validator=validators.Path(exis
 
 @app.command
 def update(source_config: Annotated[Path, Parameter(validator=validators.Path(exists=True))],
-           config_file: Annotated[Path, Parameter(validator=validators.Path(exists=True))]):
+           config_file: Annotated[Path, Parameter(validator=validators.Path(exists=True))],
+           include: Optional[List[str]] = None):
     """Update a config file from a source config file.
 
     Copies values from the source config into the target config, while leaving
-    run-specific variables untouched (outlets, cutoffs, hru_noroute, check_DAG,
+    run-specific variables untouched by default (output_dir, control_filename,
+    param_filename, outlets, cutoffs, hru_noroute, check_DAG,
     include_model_output, output_vars, output_cbh, output_shapefiles,
-    output_streamflow, and gis.dst_extension). The start_date and end_date are
-    not updated, but a message is emitted when they differ between the files.
+    output_streamflow, start_date, end_date, and gis.dst_extension).
+
+    Use --include to allow one or more of these protected variables to be
+    updated as well, as a comma-separated list or by repeating the option, e.g.
+    '--include output_dir,start_date,end_date' or '--include output_dir
+    --include start_date'. The nested GIS key is named in dotted form
+    (gis.dst_extension). A protected date that differs but is not included for
+    update produces a NOTE instead of being changed.
+
     Updated variables are reported in a table showing the original and new
     values. The target config file is rewritten in place.
 
     :param source_config: Name of the source config file to copy values from
     :param config_file: Name of the config file to update
+    :param include: Protected variables to also update (comma-separated or repeated)
     """
     src = _load_config(source_config)
     target = _load_config(config_file)
 
-    # Report date mismatches without updating them.
+    include_set = _resolve_include(include)
+
+    updated: List[Tuple[str, Any, Any]] = []
+
+    # Report date mismatches that are not being updated, so the user is aware
+    # of the difference even though the target is left unchanged.
     for name in DATE_VARS:
+        if name in include_set:
+            continue
         if src.exists(name) and target.exists(name):
             src_val = src.get_value(name)
             target_val = target.get_value(name)
@@ -351,18 +440,17 @@ def update(source_config: Annotated[Path, Parameter(validator=validators.Path(ex
                           f'source={_format_value(src_val)}, '
                           f'target={_format_value(target_val)} (not updated)')
 
-    updated: List[Tuple[str, Any, Any]] = []
-
     for name in _config_keys(src):
-        if name in NO_UPDATE_VARS or name in DATE_VARS:
+        # Skip protected variables unless the user opted them in via --include.
+        if name in PROTECTED_VARS and name not in include_set:
             continue
 
         src_val = src.get_value(name)
 
-        # Handle the GIS section specially so dst_extension is preserved while
-        # other GIS keys are updated.
+        # Handle the GIS section specially so gis.dst_extension is preserved
+        # (unless included) while the other GIS keys are updated.
         if name == 'gis':
-            new_gis, gis_updates = _merge_gis(target, src_val)
+            new_gis, gis_updates = _merge_gis(target, src_val, include_set)
             if gis_updates:
                 target.update_value('gis', new_gis)
                 updated.extend(gis_updates)
@@ -400,11 +488,13 @@ def update(source_config: Annotated[Path, Parameter(validator=validators.Path(ex
     con.print(f'[green4]OK[/]: Updated {len(updated)} variable(s) in {config_file}')
 
 
-def _merge_gis(target: bc.Cfg, src_gis: Any) -> Tuple[Any, List[Tuple[str, Any, Any]]]:
+def _merge_gis(target: bc.Cfg, src_gis: Any,
+               include_set: Set[str]) -> Tuple[Any, List[Tuple[str, Any, Any]]]:
     """Merge source GIS settings into the target, preserving protected keys.
 
     :param target: The target Cfg instance being updated
     :param src_gis: The 'gis' value from the source config
+    :param include_set: Protected variable names the user opted in for update
     :returns: Tuple of (new gis value, list of (variable, old, new) updates)
     """
     updates: List[Tuple[str, Any, Any]] = []
@@ -425,13 +515,15 @@ def _merge_gis(target: bc.Cfg, src_gis: Any) -> Tuple[Any, List[Tuple[str, Any, 
     new_gis = target_gis
 
     for key, src_val in src_gis.items():
-        if key in NO_UPDATE_GIS_VARS:
+        dotted = f'gis.{key}'
+        # Skip protected nested keys unless the user opted them in via --include.
+        if dotted in PROTECTED_VARS and dotted not in include_set:
             continue
 
         old_val = new_gis.get(key)
         if old_val != src_val:
             new_gis[key] = src_val
-            updates.append((f'gis.{key}', old_val, src_val))
+            updates.append((dotted, old_val, src_val))
 
     return new_gis, updates
 
