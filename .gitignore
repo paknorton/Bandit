@@ -72,5 +72,6 @@ Icon
 
 .kiro
 .vscode
+*.code-workspace
 
 .DS_Store
