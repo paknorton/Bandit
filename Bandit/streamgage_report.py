@@ -750,12 +750,163 @@ def _map_legend_html() -> str:
             + ''.join(rows) + '</div>')
 
 
-def _build_index_map(features: List[dict], outdir: Path) -> Optional[Path]:
+# Styling (Leaflet path options) for each optional context overlay. Keys are
+# the Bandit subset layer names written by the shapefile/geopackage step.
+_CONTEXT_LAYER_STYLE = {
+    'domain':    {'color': '#d7301f', 'weight': 2,   'fillColor': '#d7301f',
+                  'fillOpacity': 0.05, 'label': 'Domain outline', 'default_on': True},
+    'nhru':      {'color': '#7f7f7f', 'weight': 0.6, 'fillColor': '#7f7f7f',
+                  'fillOpacity': 0.08, 'label': 'HRUs',           'default_on': False},
+    'nsegment':  {'color': '#1f6fb4', 'weight': 1.2, 'fillColor': '#1f6fb4',
+                  'fillOpacity': 0.0,  'label': 'Stream segments', 'default_on': True},
+}
+
+# Order (bottom-to-top) in which context overlays are drawn / listed.
+_CONTEXT_LAYER_ORDER = ['nhru', 'domain', 'nsegment']
+
+
+def _context_layer_path(gis_dir: Path, gis_type: str, layer: str) -> Optional[Path]:
+    """Resolve the on-disk path for a subset GIS layer.
+
+    Mirrors the naming used by ``Bandit.bandit_helpers.write_gis``: shapefiles
+    are written one-per-layer as ``model_<layer>.shp`` while any other format
+    (e.g. geopackage) is a single ``model_layers.<ext>`` holding named layers.
+
+    :param gis_dir: directory the subset GIS layers were written to
+    :param gis_type: destination GIS extension (e.g. ``shp`` or ``gpkg``)
+    :param layer: subset layer name (``nhru`` / ``nsegment`` / ``domain``)
+    :returns: path to the file holding the layer, or None if it does not exist
+    """
+
+    if gis_type == 'shp':
+        candidate = gis_dir / f'model_{layer}.{gis_type}'
+    else:
+        candidate = gis_dir / f'model_layers.{gis_type}'
+    return candidate if candidate.exists() else None
+
+
+def _reproject_geographic(gdf: Any) -> Any:
+    """Reproject a GeoDataFrame to geographic lon/lat degrees for Leaflet.
+
+    Leaflet expects lon/lat coordinates. WGS84 (EPSG:4326) is preferred, but
+    some PROJ builds fail the NAD83 datum-ensemble transform for projected
+    source CRSs (e.g. CONUS Albers / EPSG:5070), yielding non-finite
+    coordinates. When that happens this falls back to NAD83 geographic
+    (EPSG:4269), which differs from WGS84 by well under a meter and is
+    indistinguishable at web-map scale.
+
+    :param gdf: a GeoDataFrame (with a defined CRS) to reproject
+    :returns: the reprojected GeoDataFrame (unchanged if already geographic
+        lon/lat); may still contain non-finite coordinates if every attempt
+        fails
+    """
+
+    import numpy as _np
+
+    if gdf.crs is None:
+        return gdf
+
+    # Already geographic lon/lat (4326 or 4269) => nothing to do.
+    epsg = gdf.crs.to_epsg()
+    if epsg in (4326, 4269):
+        return gdf
+
+    out = gdf.to_crs(4326)
+    if _np.isfinite(out.total_bounds).all():
+        return out
+
+    # WGS84 transform produced non-finite coordinates; fall back to NAD83.
+    logger.info('WGS84 reprojection produced non-finite coordinates; '
+                'falling back to NAD83 (EPSG:4269) for the index map')
+    return gdf.to_crs(4269)
+
+
+def _load_context_layers(gis_dir: Optional[Path],
+                         gis_type: Optional[str],
+                         simplify_tolerance_m: float = 100.0,
+                         con: Any = None) -> List[Tuple[str, str, dict]]:
+    """Read subset GIS layers and return them as WGS84 GeoJSON for the map.
+
+    Reads the ``nhru``, ``nsegment`` and ``domain`` subset layers (whichever
+    exist), reprojects them to WGS84, lightly simplifies polygon/line geometry
+    to keep the embedded GeoJSON small, and returns one entry per layer.
+
+    :param gis_dir: directory holding the subset GIS layers (None disables
+        context overlays)
+    :param gis_type: destination GIS extension (e.g. ``shp`` or ``gpkg``)
+    :param simplify_tolerance_m: simplification tolerance in meters (applied in
+        the layer's projected CRS); set to 0 to disable simplification
+    :param con: optional rich Console for warnings
+    :returns: list of (layer_name, geojson_str, style_dict) tuples in draw
+        order; empty when no layers could be read
+    """
+
+    if gis_dir is None or gis_type is None:
+        return []
+
+    try:
+        import pyogrio   # type: ignore
+    except ImportError:
+        return []
+
+    layers: List[Tuple[str, str, dict]] = []
+
+    for layer in _CONTEXT_LAYER_ORDER:
+        path = _context_layer_path(gis_dir, gis_type, layer)
+        if path is None:
+            continue
+
+        try:
+            # read_dataframe returns a GeoDataFrame (geopandas); the geopackage
+            # case needs the layer name, the shapefile case does not.
+            if gis_type == 'shp':
+                gdf = pyogrio.read_dataframe(path)
+            else:
+                gdf = pyogrio.read_dataframe(path, layer=layer)
+        except Exception as err:   # noqa: BLE001 - context layers are best-effort
+            logger.warning(f'Could not read context layer {layer!r} from {path}: {err}')
+            if con is not None:
+                con.print(f'[gold3]WARNING[/]: Could not read context layer {layer!r}: {err}')
+            continue
+
+        if gdf is None or len(gdf) == 0:
+            continue
+
+        # Keep only geometry to minimize embedded size.
+        gdf = gdf[['geometry']].copy()
+
+        # Simplify in the projected source CRS (tolerance is in meters there),
+        # then reproject to geographic lon/lat for Leaflet.
+        try:
+            if (simplify_tolerance_m and gdf.crs is not None and gdf.crs.is_projected):
+                gdf['geometry'] = gdf.geometry.simplify(simplify_tolerance_m,
+                                                        preserve_topology=True)
+
+            gdf = _reproject_geographic(gdf)
+            geojson = gdf.to_json()
+        except Exception as err:   # noqa: BLE001
+            logger.warning(f'Could not process context layer {layer!r}: {err}')
+            if con is not None:
+                con.print(f'[gold3]WARNING[/]: Could not process context layer {layer!r}: {err}')
+            continue
+
+        style = _CONTEXT_LAYER_STYLE.get(layer, {'color': '#888', 'weight': 1,
+                                                 'fillColor': '#888', 'fillOpacity': 0.05,
+                                                 'label': layer, 'default_on': False})
+        layers.append((layer, geojson, style))
+
+    return layers
+
+
+def _build_index_map(features: List[dict], outdir: Path,
+                     context_layers: Optional[List[Tuple[str, str, dict]]] = None) -> Optional[Path]:
     """Build a self-contained Leaflet index map and write it to ``index.html``.
 
     :param features: list of GeoJSON-style feature dicts (one per gage with a
         valid location)
     :param outdir: directory the reports (and index.html) live in
+    :param context_layers: optional list of (layer_name, geojson_str, style)
+        tuples drawn as selectable overlays (nhru / nsegment / domain)
     :returns: path to the written ``index.html``, or None when no mappable
         features exist
     """
@@ -764,6 +915,8 @@ def _build_index_map(features: List[dict], outdir: Path) -> Optional[Path]:
 
     if not features:
         return None
+
+    context_layers = context_layers or []
 
     lats = [f['geometry']['coordinates'][1] for f in features]
     lons = [f['geometry']['coordinates'][0] for f in features]
@@ -775,6 +928,32 @@ def _build_index_map(features: List[dict], outdir: Path) -> Optional[Path]:
     n_stations = len(features)
     n_nodata = sum(1 for f in features if f['properties']['color'] == NODATA_COLOR)
     n_missing_report = sum(1 for f in features if not f['properties']['href'])
+
+    # Build the JS that creates each context overlay (nhru / nsegment / domain)
+    # as its own toggleable Leaflet layer, and the overlay entries for the
+    # layer control. Layers flagged default_on are added to the map initially.
+    context_js_parts: List[str] = []
+    overlay_entries: List[str] = []
+    default_on_adds: List[str] = []
+
+    for idx, (layer, geojson, style) in enumerate(context_layers):
+        var = f'ctxLayer{idx}'
+        path_style = {'color':       style.get('color', '#888'),
+                      'weight':      style.get('weight', 1),
+                      'fillColor':   style.get('fillColor', style.get('color', '#888')),
+                      'fillOpacity': style.get('fillOpacity', 0.05)}
+        label = style.get('label', layer)
+        context_js_parts.append(
+            f'  var {var}Data = {geojson};\n'
+            f'  var {var} = L.geoJSON({var}Data, {{ style: {json.dumps(path_style)}, '
+            f'interactive: false }});')
+        overlay_entries.append(f'{json.dumps(label)}: {var}')
+        if style.get('default_on'):
+            default_on_adds.append(f'  {var}.addTo(map);')
+
+    context_js = '\n'.join(context_js_parts)
+    default_on_js = '\n'.join(default_on_adds)
+    overlays_js = '{' + ', '.join(overlay_entries) + '}'
 
     html_doc = f'''<!DOCTYPE html>
 <html lang="en">
@@ -816,9 +995,16 @@ def _build_index_map(features: List[dict], outdir: Path) -> Optional[Path]:
 
   esriTopo.addTo(map);
 
+  // Optional context overlays (nhru / nsegment / domain) from the subset GIS.
+{context_js}
+
+  // Add default-on context overlays beneath the POI markers.
+{default_on_js}
+
   L.control.layers({{'Esri Topographic': esriTopo,
-                     'Esri Imagery': esriImagery}}, null,
-                   {{ position: 'topleft' }}).addTo(map);
+                     'Esri Imagery': esriImagery}},
+                   {overlays_js},
+                   {{ position: 'topleft', collapsed: false }}).addTo(map);
 
   var poiLayer = L.geoJSON(poiData, {{
       pointToLayer: function(feature, latlng) {{
@@ -885,6 +1071,8 @@ def generate_report(streamflow: Any,
                     st_date: Optional[datetime.datetime] = None,
                     en_date: Optional[datetime.datetime] = None,
                     offline: bool = False,
+                    gis_dir: Optional[Union[str, Path]] = None,
+                    gis_type: Optional[str] = None,
                     con: Any = None,
                     verbose: bool = False) -> Dict[str, Any]:
     """Generate per-streamgage HTML reports (and an index map when possible).
@@ -899,6 +1087,11 @@ def generate_report(streamflow: Any,
     :param offline: embed the full plotly.js library in each HTML file so the
         plots render without internet access (larger files). By default
         plotly.js is loaded from a CDN.
+    :param gis_dir: optional directory holding the subset GIS layers; when
+        provided (together with ``gis_type``) the index map gains selectable
+        nhru / nsegment / domain overlays
+    :param gis_type: destination GIS extension of the subset layers (e.g.
+        ``shp`` or ``gpkg``)
     :param con: optional rich Console for progress / status messages
     :param verbose: emit additional per-gage messages
     :returns: a summary dict with keys ``written``, ``failed``, ``index`` and
@@ -971,7 +1164,15 @@ def generate_report(streamflow: Any,
                                                 'color':    _missing_pct_color(pct),
                                                 'href':     f'{station}.html' if has_report else ''}})
 
-    index_file = _build_index_map(map_features, outdir)
+    # Load optional context overlays (nhru / nsegment / domain) from the
+    # subset GIS layers so the index map can toggle them.
+    context_layers = _load_context_layers(Path(gis_dir) if gis_dir else None,
+                                          gis_type, con=con)
+    if context_layers and verbose:
+        _msg(f'[green4]INFO[/]: Index map context layers: '
+             f'{", ".join(name for name, _, _ in context_layers)}')
+
+    index_file = _build_index_map(map_features, outdir, context_layers)
 
     return {'written': written,
             'failed':  failed,
