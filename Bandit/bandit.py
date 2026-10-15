@@ -615,22 +615,43 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     con.print(f'Writing streamgage report for {len(new_poi_gage_id)} POI(s)',
                               style='green4')
 
+                # Note the status of the index-map context layers (nhru /
+                # nsegment / domain). They are only available when the subset
+                # GIS layers were written by the shapefile step above.
+                if report_gis_dir is not None:
+                    bandit_log.info('Streamgage report: including nhru, nsegment, and domain '
+                                    'context layers on the index map')
+                elif not config.output_shapefiles:
+                    msg = ('Streamgage report: nhru/nsegment/domain context layers omitted from '
+                           'the index map; set output_shapefiles to true to include them')
+                    bandit_log.info(msg)
+                    if verbose:
+                        con.print(f'[green4]INFO[/]: {msg}')
+                else:
+                    msg = ('Streamgage report: nhru/nsegment/domain context layers omitted from '
+                           'the index map because the subset GIS layers were not written')
+                    bandit_log.info(msg)
+                    if verbose:
+                        con.print(f'[gold3]INFO[/]: {msg}')
+
                 try:
                     report_result = generate_report(streamflow=streamflow,
-                                                     gage_ids=new_poi_gage_id,
-                                                     outdir=report_dir,
-                                                     st_date=st_date, en_date=en_date,
-                                                     offline=streamgage_report_offline,
-                                                     gis_dir=report_gis_dir,
-                                                     gis_type=report_gis_type,
-                                                     con=con, verbose=verbose)
+                                                    gage_ids=new_poi_gage_id,
+                                                    outdir=report_dir,
+                                                    st_date=st_date, en_date=en_date,
+                                                    offline=streamgage_report_offline,
+                                                    gis_dir=report_gis_dir,
+                                                    gis_type=report_gis_type,
+                                                    con=con, verbose=verbose)
 
                     n_written = len(report_result['written'])
                     n_failed = len(report_result['failed'])
                     bandit_log.info(f'Streamgage report: {n_written} page(s) written to '
                                     f'{report_result["outdir"]}')
+
                     if report_result['index'] is not None:
                         bandit_log.info(f'Streamgage report index map: {report_result["index"]}')
+
                     if n_failed > 0:
                         bandit_log.info(f'Streamgage report: {n_failed} POI(s) had no report '
                                         f'(no usable observations)')
@@ -639,6 +660,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                         con.print(f'[green4]INFO[/]: Streamgage report written to '
                                   f'{report_result["outdir"]} ({n_written} page(s), '
                                   f'{n_failed} skipped)')
+
                         if report_result['index'] is not None:
                             con.print(f'[green4]INFO[/]: Streamgage index map: '
                                       f'{report_result["index"]}')
