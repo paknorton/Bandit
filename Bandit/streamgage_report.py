@@ -252,7 +252,8 @@ def _normalize_streamflow(streamflow: Any,
     raise ReportError(f'Unsupported streamflow data type: {type(data)!r}')
 
 
-def _normalize_from_poi(ds: Any, gage_ids: List[str],
+def _normalize_from_poi(ds: Any,
+                        gage_ids: List[str],
                         st_date: Optional[datetime.datetime] = None,
                         en_date: Optional[datetime.datetime] = None) -> List[_GageSeries]:
     """Build per-gage series from a POI xarray Dataset.
@@ -303,7 +304,8 @@ def _normalize_from_poi(ds: Any, gage_ids: List[str],
     return series_list
 
 
-def _normalize_from_nwis(df: pd.DataFrame, gage_ids: List[str],
+def _normalize_from_nwis(df: pd.DataFrame,
+                         gage_ids: List[str],
                          st_date: Optional[datetime.datetime] = None,
                          en_date: Optional[datetime.datetime] = None) -> List[_GageSeries]:
     """Build per-gage series from an NWIS DataFrame (discharge only).
@@ -404,7 +406,8 @@ def _analyze(gage: _GageSeries) -> dict:
             'by_year':       by_year}
 
 
-def _build_figure(gage: _GageSeries, analysis: dict):
+def _build_figure(gage: _GageSeries,
+                  analysis: dict):
     """Build the interactive Plotly streamflow figure for a gage.
 
     steelblue daily line, gold Provisional overlay, dark orange Revised
@@ -531,7 +534,8 @@ def _build_figure(gage: _GageSeries, analysis: dict):
 # HTML rendering
 # ---------------------------------------------------------------------------
 
-def _df_to_html(df: pd.DataFrame, index: bool = False) -> str:
+def _df_to_html(df: pd.DataFrame,
+                index: bool = False) -> str:
     """Render a DataFrame as an HTML table with sensible defaults.
 
     :param df: DataFrame to render
@@ -543,7 +547,8 @@ def _df_to_html(df: pd.DataFrame, index: bool = False) -> str:
                       classes='report-table', justify='left')
 
 
-def _qualifier_legend_html(color_map: Dict[str, str], default_color: str) -> str:
+def _qualifier_legend_html(color_map: Dict[str, str],
+                           default_color: str) -> str:
     """Render the qualifier color map as an HTML swatch table.
 
     :param color_map: mapping of qualifier code to color
@@ -617,7 +622,9 @@ def _meta_section_html(gage: _GageSeries) -> str:
     return '<h2>Station Metadata</h2>\n<ul>\n' + '\n'.join(rows) + '\n</ul>'
 
 
-def _render_report_html(gage: _GageSeries, analysis: dict, plot_html: str,
+def _render_report_html(gage: _GageSeries,
+                        analysis: dict,
+                        plot_html: str,
                         source_kind: str) -> str:
     """Assemble the full HTML report for a single gage.
 
@@ -753,14 +760,12 @@ def _map_legend_html() -> str:
 
 # Styling (Leaflet path options) for each optional context overlay. Keys are
 # the Bandit subset layer names written by the shapefile/geopackage step.
-_CONTEXT_LAYER_STYLE = {
-    'domain':    {'color': '#d7301f', 'weight': 2,   'fillColor': '#d7301f',
-                  'fillOpacity': 0.05, 'label': 'Domain outline', 'default_on': True},
-    'nhru':      {'color': '#7f7f7f', 'weight': 0.6, 'fillColor': '#7f7f7f',
-                  'fillOpacity': 0.08, 'label': 'HRUs',           'default_on': False},
-    'nsegment':  {'color': '#1f6fb4', 'weight': 1.2, 'fillColor': '#1f6fb4',
-                  'fillOpacity': 0.0,  'label': 'Stream segments', 'default_on': True},
-}
+_CONTEXT_LAYER_STYLE = {'domain':    {'color': '#d7301f', 'weight': 2,   'fillColor': '#d7301f',
+                                      'fillOpacity': 0.05, 'label': 'Domain outline', 'default_on': True},
+                        'nhru': {'color': '#7f7f7f', 'weight': 0.6, 'fillColor': '#7f7f7f',
+                                 'fillOpacity': 0.08, 'label': 'HRUs', 'default_on': False},
+                        'nsegment': {'color': '#1f6fb4', 'weight': 1.2, 'fillColor': '#1f6fb4',
+                                     'fillOpacity': 0.0, 'label': 'Stream segments', 'default_on': True}}
 
 # Order (bottom-to-top) in which context overlays are drawn / listed.
 _CONTEXT_LAYER_ORDER = ['nhru', 'domain', 'nsegment']
@@ -899,7 +904,8 @@ def _load_context_layers(gis_dir: Optional[Path],
     return layers
 
 
-def _build_index_map(features: List[dict], outdir: Path,
+def _build_index_map(features: List[dict],
+                     outdir: Path,
                      context_layers: Optional[List[Tuple[str, str, dict]]] = None) -> Optional[Path]:
     """Build a self-contained Leaflet index map and write it to ``index.html``.
 
@@ -944,11 +950,12 @@ def _build_index_map(features: List[dict], outdir: Path,
                       'fillColor':   style.get('fillColor', style.get('color', '#888')),
                       'fillOpacity': style.get('fillOpacity', 0.05)}
         label = style.get('label', layer)
-        context_js_parts.append(
-            f'  var {var}Data = {geojson};\n'
-            f'  var {var} = L.geoJSON({var}Data, {{ style: {json.dumps(path_style)}, '
-            f'interactive: false }});')
+
+        context_js_parts.append(f'  var {var}Data = {geojson};\n'
+                                f'  var {var} = L.geoJSON({var}Data, {{ style: {json.dumps(path_style)}, '
+                                f'interactive: false }});')
         overlay_entries.append(f'{json.dumps(label)}: {var}')
+
         if style.get('default_on'):
             default_on_adds.append(f'  {var}.addTo(map);')
 
@@ -1109,8 +1116,7 @@ def generate_report(streamflow: Any,
 
     include_plotlyjs: Union[bool, str] = True if offline else 'cdn'
 
-    series_list, source_kind = _normalize_streamflow(streamflow, gage_ids,
-                                                      st_date, en_date)
+    series_list, source_kind = _normalize_streamflow(streamflow, gage_ids, st_date, en_date)
 
     def _msg(text: str):
         if con is not None:
