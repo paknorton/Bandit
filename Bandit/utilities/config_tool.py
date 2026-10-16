@@ -41,46 +41,40 @@ cfgtool_log = logging.getLogger('config_tool')
 # Configuration variables that point at a filesystem path and therefore can be
 # checked for existence by the verify command. The value may be a directory, a
 # file, or (for poi_dir) a glob pattern.
-PATH_VARS = [
-    'output_dir',
-    'poi_dir',
-    'control_filename',
-    'paramdb_dir',
-    'dyn_params_dir',
-    'output_vars_dir',
-    'cbh_dir',
-    'streamgage_file',
-]
+PATH_VARS = ['output_dir',
+             'poi_dir',
+             'control_filename',
+             'paramdb_dir',
+             'dyn_params_dir',
+             'output_vars_dir',
+             'cbh_dir',
+             'streamgage_file']
 
 # Variables that are protected from the update command by default. These are
 # specific to an individual extraction/run rather than to the shared data
 # environment, so they are preserved in the target config unless the user names
 # them explicitly via --include. The nested GIS key is referenced in dotted
 # form ('gis.dst_extension').
-PROTECTED_VARS = [
-    'output_dir',
-    'control_filename',
-    'param_filename',
-    'outlets',
-    'cutoffs',
-    'hru_noroute',
-    'check_DAG',
-    'include_model_output',
-    'output_vars',
-    'output_cbh',
-    'output_shapefiles',
-    'output_streamflow',
-    'start_date',
-    'end_date',
-    'gis.dst_extension',
-]
+PROTECTED_VARS = ['output_dir',
+                  'control_filename',
+                  'param_filename',
+                  'outlets',
+                  'cutoffs',
+                  'hru_noroute',
+                  'check_DAG',
+                  'include_model_output',
+                  'output_vars',
+                  'output_cbh',
+                  'output_shapefiles',
+                  'output_streamflow',
+                  'start_date',
+                  'end_date',
+                  'gis.dst_extension']
 
 # Date variables get special reporting: when a date differs but is not included
 # for update, a NOTE is emitted rather than silently leaving it unchanged.
-DATE_VARS = [
-    'start_date',
-    'end_date',
-]
+DATE_VARS = ['start_date',
+             'end_date']
 
 
 # ---------------------------------------------------------------------------
@@ -134,10 +128,9 @@ def _resolve_include(include: Optional[List[str]]) -> Set[str]:
     unknown = sorted(n for n in names if n not in PROTECTED_VARS)
     if unknown:
         allowed = ', '.join(PROTECTED_VARS)
-        raise BanditError(
-            f"--include has unknown variable(s): {', '.join(unknown)}. "
-            f"Allowed values: {allowed}",
-            exit_code=2)
+        raise BanditError(f'--include has unknown variable(s): {", ".join(unknown)}. '
+                          f'Allowed values: {allowed}',
+                          exit_code=2)
 
     return names
 
@@ -283,7 +276,7 @@ def _verify_gis(gis: Any, base_dir: Path) -> List[Tuple[str, str]]:
 
         if str(layer_name) not in available:
             problems.append((f'gis.layers.{entry_name}.layer',
-                             f"Layer '{layer_name}' not found in GIS source"))
+                             f'Layer, {layer_name}, not found in GIS source'))
 
     return problems
 
@@ -432,9 +425,11 @@ def update(source_config: Annotated[Path, Parameter(validator=validators.Path(ex
     for name in DATE_VARS:
         if name in include_set:
             continue
+
         if src.exists(name) and target.exists(name):
             src_val = src.get_value(name)
             target_val = target.get_value(name)
+
             if src_val != target_val:
                 con.print(f'[gold3]NOTE[/]: {name} differs - '
                           f'source={_format_value(src_val)}, '
