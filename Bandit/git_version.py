@@ -6,117 +6,83 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
 
+from pyPRMS.base.console import get_console_instance
+
+con = None
+
 # Modified version of function from numpy setup.py
 # http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
 # Accessed on 2017-02-24
 
+class Repo:
+    def __init__(self, path: str | Path):
+        global con
+        con = get_console_instance()
 
-def _minimal_ext_cmd(cmd: Union[List[str], str]) -> Union[str, bytes]:
-    """Run an external command and return the output.
+        if isinstance(path, str):
+            path = Path(path)
+        self.path_repo = path.resolve()
 
-    :param cmd: command to execute
-    :returns: Output from command
-    """
-    env = {}
+    def _git(self, *args, allowed_codes=(0,)):
+        result = subprocess.run(['git', *args],
+                                cwd=self.path_repo,
+                                capture_output=True,
+                                text=True)
 
-    # Construct a minimal environment
-    for k in ['SYSTEMROOT', 'PATH']:
-        v = os.environ.get(k)
-        if v is not None:
-            env[k] = v
+        if result.returncode not in allowed_codes:
+            raise subprocess.CalledProcessError(result.returncode,
+                                                result.args,
+                                                output=result.stdout,
+                                                stderr=result.stderr)
+        return result
 
-    # LANGUAGE is used on win32
-    env['LANGUAGE'] = 'C'
-    env['LANG'] = 'C'
-    env['LC_ALL'] = 'C'
-    result = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env).communicate()[0]
-    return result
+    @property
+    def branch(self) -> str:
+        """Get the current branch.
 
+        :returns: current branch for local repository
+        """
 
-def git_commit_url(repo_dir: Union[str, Path]) -> str:
-    """Get remote repository URL for a local repository.
+        result = self._git('symbolic-ref', '--quiet', '--short', 'HEAD', allowed_codes=(0, 1))
+        return result.stdout.rstrip() if result.returncode == 0 else None
 
-    :param repo_dir: path to local repository
+    @property
+    def commit(self) -> str:
+        """Retrieve current commit number.
+        """
 
-    :returns: URL for remote Git repository
-    """
-    src_url = git_repo(repo_dir)
-    src_commit = git_commit(repo_dir)
+        return self._git('rev-parse', '--verify', 'HEAD').stdout.strip()
 
-    dst_url = src_url.replace(':', '/').replace('.git', '').replace('git@', 'https://')
-    dst_url += f'/-/commit/{src_commit}'
-    return dst_url
+    @property
+    def remote_url(self) -> str | None:
+        """Returns the remote commit URL for the branch or commit
 
+        This always returns a URL for commit whether detached or associated with a branch.
+        If it's a detached commit remote origin is assumed.
+        """
 
-def git_commit(repo_dir: Union[str, Path], length: Optional[int]=None) -> str:
-    """Retrieve current commit number from local directory.
-
-    :param repo_dir: local Git repository directory
-    :param length: number of digits to return from commit number
-    :returns: current revision number for local repository
-    """
-
-    try:
-        if length is None:
-            out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', 'HEAD'])
+        branch = self.branch
+        if branch is None:
+            result = self._git('config', '--get', 'remote.origin.url').stdout.rstrip()
         else:
-            out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', f'--short={length}', 'HEAD'])
-        git_revision = out.strip().decode('ascii')
-    except OSError:
-        git_revision = "Unknown"
+            br_remote = self._git('config', '--get', f'branch.{branch}.remote').stdout.rstrip()
 
-    return git_revision
+            # remote = br_remote.stdout.rstrip()
+            if br_remote == '.':
+                return None  # Upstream is another branch in this repository.
+            result = self._git('remote', 'get-url', br_remote).stdout.rstrip()
 
+        final_url = result.replace(':', '/').replace('.git', '').replace('git@', 'https://')
+        final_url += f'/-/commit/{self.commit}'
 
-def git_repo(repo_dir: Union[str, Path]) -> str:
-    """Get the remote Git URL for a local repository.
+        return final_url
 
-    :param repo_dir: local Git repository directory
-    :returns: remote Git URL
-    """
+    def checkout(self, bct: str):
+        """Checkout a branch, commit, or tag
 
-    try:
-        out = _minimal_ext_cmd(['git', '-C', repo_dir, 'config', '--get', 'remote.origin.url'])
-        git_repo_url = out.strip().decode('ascii')
-    except OSError:
-        git_repo_url = "Unknown"
+        Commits or tags always have HEAD detached
+        """
+        res = self._git('checkout', bct, allowed_codes=(0, 1))
+        if res.returncode == 1:
+            con.print('[red]ERROR[/]: Invalid branch, commit, or tag')
 
-    return git_repo_url
-
-
-def git_branch(repo_dir: Union[str, Path]) -> str:
-    """Get the current branch for a local repository
-
-    :param repo_dir: local Git repository directory
-    :returns: current branch for local repository
-    """
-
-    try:
-        out = _minimal_ext_cmd(['git', '-C', repo_dir, 'rev-parse', '--abbrev-ref', 'HEAD'])
-        git_repo_branch = out.strip().decode('ascii')
-    except OSError:
-        git_repo_branch = "Unknown"
-
-    return git_repo_branch
-
-
-def main():
-    import argparse
-
-    # Command line arguments
-    parser = argparse.ArgumentParser(description='Get current revision of GIT repo')
-    parser.add_argument('-p', '--path_repo', help='Path to local repository')
-    parser.add_argument('--verbose', help='Verbose output', action='store_true')
-
-    args = parser.parse_args()
-
-    if args.verbose:
-        print(f'GIT version for {args.path_repo}')
-
-    print(f'GIT repo URL: {git_repo(args.path_repo)}')
-    print(f'GIT branch: {git_branch(args.path_repo)}')
-    print(f'GIT commit: {git_commit(args.path_repo)}')
-
-
-if __name__ == '__main__':
-    main()

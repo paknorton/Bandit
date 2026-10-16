@@ -31,7 +31,8 @@ from Bandit import __version__
 from Bandit.bandit_helpers import parse_gages, write_gis
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
-from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
+# from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
+from Bandit.git_version import Repo
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI   # type: ignore
 from Bandit.streamgage_report import generate_report, ReportError
@@ -202,11 +203,13 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         ctl.get('end_time').values = en_date
 
         # Output revision of NhmParamDb
-        git_url = git_commit_url(paramdb_dir)
-        nhmparamdb_revision = git_commit(paramdb_dir, length=7)
-        bandit_log.info(f'Parameter database: {git_repo(paramdb_dir)}')
-        bandit_log.info(f'Branch: {git_branch(paramdb_dir)}')
-        bandit_log.info(f'Commit: {nhmparamdb_revision}')
+        pdb_repo = Repo(paramdb_dir)
+        git_url = pdb_repo.remote_url
+        git_branch = pdb_repo.branch
+        git_commit = pdb_repo.commit
+        bandit_log.info(f'Parameter database: {git_url}')
+        bandit_log.info(f'Branch: {git_branch}')
+        bandit_log.info(f'Commit: {git_commit}')
 
         # client = Client(threads_per_worker=1)
         with Client() as client:
@@ -216,9 +219,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
             # Load the NHMparamdb
             if verbose:
-                con.print(f'[green4]INFO[/]: Parameter database: {git_repo(paramdb_dir)}')
-                con.print(f'[green4]INFO[/]: Branch: {git_branch(paramdb_dir)}')
-                con.print(f'[green4]INFO[/]: Commit: {nhmparamdb_revision}')
+                con.print(f'[green4]INFO[/]: Parameter database: {git_url}')
+                con.print(f'[green4]INFO[/]: Branch: {git_branch}')
+                con.print(f'[green4]INFO[/]: Commit: {git_commit}')
 
             pdb = ParamDb(paramdb_dir=paramdb_dir, metadata=prms_meta, verbose=verbose)
             pdb.control = ctl
