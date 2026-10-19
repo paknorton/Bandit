@@ -30,9 +30,9 @@ from Bandit.git_version import Repo
 from Bandit.bandit_helpers import write_gis
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI   # type: ignore
+from Bandit.WDFN import WDFNStreamflow
 import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
-import Bandit.prms_nwis as prms_nwis   # type: ignore
 
 import warnings
 warnings.filterwarnings('ignore', message=r'.*Measured \(M\) geometry types are not supported.*')
@@ -366,10 +366,12 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         # Write streamflow
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         if config.output_streamflow:
+            # Single-HRU extractions have no POIs, so a dummy streamgage of
+            # missing values is written. WDFNStreamflow produces the dummy
+            # record directly when given no gage IDs.
             if verbose:
                 con.print('Writing dummy streamflow data file', style='green4')
-            streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
-            streamflow.get_daily_streamgage_observations()
+            streamflow = WDFNStreamflow(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
             streamflow.write_ascii(filename=sg_dir / f'{config.streamflow_filename}')
 
         # *******************************************
