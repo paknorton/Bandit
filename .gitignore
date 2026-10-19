@@ -74,4 +74,7 @@ Icon
 .vscode
 *.code-workspace
 
+# Codegraph local index
+.codegraph/
+
 .DS_Store
