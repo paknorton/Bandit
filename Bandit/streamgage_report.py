@@ -5,8 +5,8 @@ This module produces the same style of report as the standalone
 ``inspect_nwis_station_cache`` tool, but it is driven by the in-memory
 streamflow object that Bandit builds during an extraction (either a
 :class:`Bandit.points_of_interest.POI` backed by cached netCDF/zarr source
-files, or a :class:`Bandit.prms_nwis.NWIS` object populated from the online
-NWIS service).
+files, or a :class:`Bandit.WDFN.WDFNStreamflow` object populated from the
+online USGS Water Data (WDFN) service).
 
 For each POI in the model subset a self-contained HTML file is written
 containing:
