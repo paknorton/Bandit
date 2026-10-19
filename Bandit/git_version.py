@@ -7,10 +7,6 @@ from typing import Optional, Sequence, Union
 
 from Bandit.exceptions import BanditError
 
-# Modified version of function from numpy setup.py
-# http://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script
-# Accessed on 2017-02-24
-
 
 class Repo:
     """Thin wrapper around a local git repository for querying revision info."""
