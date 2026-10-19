@@ -7,7 +7,6 @@ import networkx as nx   # type: ignore
 import numpy as np
 import os
 import pyogrio as pyg  # type: ignore
-import sys
 import time
 
 from cyclopts import App, Parameter, validators
@@ -28,15 +27,14 @@ from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import get_streamnet_subset, set_date   # type: ignore
 
 from Bandit import __version__
-from Bandit.bandit_helpers import parse_gages, write_gis
+from Bandit.bandit_helpers import parse_gages, write_gis, write_streamflow
+from Bandit.cli_shared import run_cli
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
 # from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.git_version import Repo
 from Bandit.model_output import ModelOutput
-from Bandit.points_of_interest import POI   # type: ignore
 from Bandit.streamgage_report import generate_report, ReportError
-from Bandit.WDFN import WDFNStreamflow
 import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
 
@@ -499,60 +497,19 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             # Write streamflow
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             if config.output_streamflow:
-                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                # Download the streamgage information from NWIS
-                if len(new_poi_gage_id) > 0:
-                    if verbose:
-                        con.print(f'[green4]INFO[/]: Retrieving streamgage observations for {len(new_poi_gage_id)} stations', style='green4')
-
-                    wdfn_api_key = config.wdfn_api_key if config.exists('wdfn_api_key') else None
-
-                    # poi_dir may be absent, an empty string, or a bare YAML key
-                    # (parsed as None); treat all of those as "no local cache".
-                    poi_dir = config.poi_dir if config.exists('poi_dir') else None
-                    has_poi_dir = poi_dir is not None and str(poi_dir).strip() != ''
-
-                    if has_poi_dir:
-                        bandit_log.info('Retrieving POIs from local HYDAT and NWIS cache files')
-
-                        # When ad-hoc gages were supplied on the command line,
-                        # enable an online WDFN lookup for any gage that has no
-                        # observations in the cached POI source files. Gages
-                        # that cannot be retrieved fall back to NaN entries.
-                        online_lookup = bool(addl_gages)
-
-                        streamflow = POI(src_path=poi_dir, st_date=st_date, en_date=en_date,
-                                         gage_ids=new_poi_gage_id, online_lookup=online_lookup,
-                                         api_key=wdfn_api_key, verbose=verbose)
+                if verbose:
+                    if len(new_poi_gage_id) > 0:
+                        con.print(f'[green4]INFO[/]: Retrieving streamgage observations for '
+                                  f'{len(new_poi_gage_id)} stations', style='green4')
                     else:
-                        # No local POI cache: retrieve observations online from
-                        # the USGS Water Data (WDFN) service. This replaces the
-                        # retired NWIS web service (waterservices.usgs.gov).
-                        bandit_log.info('No poi_dir: retrieving POIs online from the USGS WDFN service.')
-                        streamflow = WDFNStreamflow(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
-                                                    api_key=wdfn_api_key, verbose=verbose)
+                        con.print('[green4]WARNING[/]: No POIs exist in model subset; writing dummy data',
+                                  style='gold3')
 
-                    if streamflow_netcdf:
-                        streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
-                    else:
-                        streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
-                else:
-                    # No POIs in the model subset. PRMS still expects a runoff
-                    # file, so write a single dummy streamgage of missing values
-                    # in the requested format (netCDF or ASCII).
-                    if verbose:
-                        con.print('[green4]WARNING[/]: No POIs exist in model subset; writing dummy data', style='gold3')
-
-                    wdfn_api_key = config.wdfn_api_key if config.exists('wdfn_api_key') else None
-                    streamflow = WDFNStreamflow(gage_ids=None, st_date=st_date, en_date=en_date,
-                                                api_key=wdfn_api_key, verbose=verbose)
-
-                    if streamflow_netcdf:
-                        streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
-                    else:
-                        streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
-                    bandit_log.info('No POIs exist in model subset; dummy data written.')
+                write_streamflow(config, poi_gage_ids=new_poi_gage_id,
+                                 st_date=st_date, en_date=en_date,
+                                 out_path=outdir / config.streamflow_filename,
+                                 netcdf=streamflow_netcdf, addl_gages=addl_gages,
+                                 verbose=verbose)
 
             # *******************************************
             # Create a shapefile of the selected HRUs
@@ -719,13 +676,9 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
 
 def main():
-    try:
-        app()
-    except BanditError as err:
-        bandit_log.error(str(err))
-        con.print(f'[red]ERROR[/]: {err}')
-        sys.exit(err.exit_code)
+    """CLI entry point for Bandit extractions."""
+    run_cli(app, logger=bandit_log)
 
 
 if __name__ == '__main__':
-    app()
+    main()

@@ -19,157 +19,27 @@ Each location is extracted into its own output directory and the per-run
 summaries are collected into a console table and an HTML roll-up report.
 """
 
-import datetime
-import html
-import json
-import logging
 import os
-import queue
 import shutil
-import subprocess
-import sys
-import threading
 
 from cyclopts import App, Parameter
 from pathlib import Path
-from rich.progress import (BarColumn, MofNCompleteColumn, Progress, SpinnerColumn,
-                           TaskProgressColumn, TextColumn, TimeElapsedColumn,
-                           TimeRemainingColumn)
-from rich.table import Table
-from typing import Annotated, NamedTuple, Union
-
-from pyPRMS.base.console import get_console_instance   # type: ignore
+from typing import Annotated, Union
 
 from Bandit import bandit_cfg as bc
+from Bandit.cli_shared import (check_paramdb_revision, collect_summary_rows, con,
+                               print_summary_table, RESERVED_BANDIT_ARGS, run_cli,
+                               run_worker_pool, write_summary_report)
 from Bandit.exceptions import BanditError
-from Bandit.git_version import Repo
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
-
-# Rich console for user-facing output
-con = get_console_instance()
 
 # Default arguments passed through to each bandit extraction when the
 # user does not supply any on the command line.
 DEFAULT_BANDIT_ARGS = ['--keep_hru_order']
 
-# bandit uses return codes >= this value to report extraction errors that do
-# not require shutting the whole batch down. Smaller non-zero codes indicate a
-# failure that should stop the batch.
-BANDIT_ERROR_FLOOR = 200
-
-# Arguments that this driver sets for each extraction and so must not be
-# supplied as pass-through arguments.
-RESERVED_BANDIT_ARGS = {'--job-dir', '-j', '--config-file'}
-
 # A location key may be a string name or an integer ID.
 LocationId = Union[str, int]
-
-
-class Result(NamedTuple):
-    """Result of running one bandit extraction in a worker thread."""
-
-    thread: str          # Name of the worker thread that ran the command
-    cmd: list[str]       # The command that was run
-    retcode: int         # Process return code (-1 if it failed to launch)
-
-
-# Setup logging. User-facing output is written explicitly with con.print();
-# the bandit_log logger records messages without echoing them to the console.
-# The NullHandler keeps the logging framework from falling back to its
-# last-resort stderr handler when no file handler is attached.
-bandit_log = logging.getLogger('bandit')
-bandit_log.addHandler(logging.NullHandler())
-
-
-def check_paramdb_revision(config: bc.Cfg):
-    """Verify the parameter database is at the revision named in the config.
-
-    When the config's ``revision`` variable is set, the parameter database at
-    ``paramdb_dir`` must currently be checked out at that branch, commit (full
-    or partial), or tag. An empty ``revision`` skips the check.
-
-    :param config: Loaded Bandit configuration
-    :raises BanditError: If the paramdb is not at the requested revision
-    """
-
-    cfg_revision = config.revision if config.exists('revision') else ''
-    if not cfg_revision:
-        return
-
-    pdb_repo = Repo(config.paramdb_dir)
-    if not pdb_repo.matches_revision(cfg_revision):
-        # The BanditError is surfaced to the console and log by the top-level
-        # handler in main().
-        raise BanditError(f"Parameter database revision mismatch: config 'revision' is "
-                          f"'{cfg_revision}' but paramdb is on branch '{pdb_repo.branch}' "
-                          f"(commit {pdb_repo.commit})", exit_code=2)
-
-
-class WorkerThread(threading.Thread):
-    """A worker thread that pulls bandit commands off a queue and runs them.
-
-    Input is done by placing commands (as lists of tokens) into the queue
-    passed in ``input_q``.
-
-    Output is done by placing tuples into the queue passed in ``result_q``.
-    Each tuple is (thread name, command, return code).
-
-    Ask the thread to stop by calling its :meth:`join` method.
-    """
-
-    def __init__(self, input_q: queue.Queue, result_q: queue.Queue):
-        """Init method for WorkerThread.
-
-        :param input_q: Queue of commands to run
-        :param result_q: Queue to place command results into
-        """
-        super().__init__()
-        # Daemon threads so an unhandled interrupt in the main thread cannot
-        # be blocked indefinitely waiting on a worker to finish.
-        self.daemon = True
-        self.input_q = input_q
-        self.result_q = result_q
-        self.stoprequest = threading.Event()
-
-    def run(self):
-        """Pull commands from the input queue and run them until asked to stop.
-
-        The tasks are taken with a blocking ``get`` given a short timeout so
-        that ``stoprequest`` is always checked, even when the queue is empty.
-        """
-        while not self.stoprequest.is_set():
-            try:
-                thecmd = self.input_q.get(True, 0.05)
-                retcode = self.run_cmd(thecmd)
-                self.result_q.put(Result(thread=self.name, cmd=thecmd, retcode=retcode))
-            except queue.Empty:
-                continue
-
-    def join(self, timeout=None):
-        """Request the thread stop and wait for it to finish.
-
-        :param timeout: Optional timeout in seconds
-        """
-        self.stoprequest.set()
-        super().join(timeout)
-
-    def run_cmd(self, thecmd: list[str]) -> int:
-        """Run a single bandit command in a subprocess.
-
-        :param thecmd: Command to run, as a list of argument tokens
-        :returns: Return code from the subprocess (-1 on failure to launch)
-        """
-        retcode = 0
-
-        try:
-            retcode = subprocess.call(thecmd)
-        except Exception as err:   # noqa: BLE001
-            # Error launching the command; shut this worker down
-            bandit_log.error(f'run_cmd() failed to launch {thecmd}: {err}')
-            retcode = -1
-            self.stoprequest.set()
-        return retcode
 
 
 def _location_key(raw: str) -> LocationId:
@@ -291,149 +161,6 @@ def location_dirname(loc: LocationId, prefix: str | None) -> str:
     return base if prefix is None else f'{prefix}{base}'
 
 
-def stop_pool(pool: list[WorkerThread], cmd_q: queue.Queue):
-    """Stop a pool of worker threads, abandoning any un-started work.
-
-    Any commands still queued are discarded so that no new extractions start.
-    Each worker is then asked to stop and briefly joined. Workers are daemon
-    threads, so an extraction still running past the join timeout does not
-    block process exit (its output directory may be left incomplete).
-
-    :param pool: Worker threads to stop
-    :param cmd_q: Command queue to drain of un-started work
-    """
-
-    # Discard any queued commands that have not been picked up yet
-    while True:
-        try:
-            cmd_q.get_nowait()
-        except queue.Empty:
-            break
-
-    for thread in pool:
-        thread.join(timeout=5.0)
-
-
-# A summary row: (location, HRUs, segments, POIs, status). Count fields are
-# ints for completed runs, otherwise a placeholder string such as '-'.
-SummaryRow = tuple[str, 'int | str', 'int | str', 'int | str', str]
-
-
-def collect_summary_rows(dir_by_loc: 'dict[LocationId, str]',
-                         job_dir: str | Path) -> list[SummaryRow]:
-    """Collect per-location summary rows for the roll-up report.
-
-    Each extraction's counts are read from the ``summary.json`` written by
-    bandit into that run's output directory. A location whose run did not
-    produce a summary (e.g. it failed or was never started) is marked as not
-    completed.
-
-    :param dir_by_loc: Mapping of location ID to its output directory name
-    :param job_dir: Top-level job directory the extractions ran under
-    :returns: List of summary rows
-    """
-
-    rows: list[SummaryRow] = []
-    for loc, cdir in dir_by_loc.items():
-        summary_file = Path(job_dir) / cdir / 'summary.json'
-
-        num_hru: int | str
-        num_seg: int | str
-        num_poi: int | str
-        status: str
-
-        if summary_file.is_file():
-            try:
-                with open(summary_file, 'r') as fhdl:
-                    data = json.load(fhdl)
-                num_hru = data.get('num_hru', '?')
-                num_seg = data.get('num_segments', '?')
-                num_poi = data.get('num_poi', '?')
-                status = 'completed'
-            except (OSError, json.JSONDecodeError):
-                num_hru = num_seg = num_poi = '-'
-                status = 'unreadable summary'
-        else:
-            num_hru = num_seg = num_poi = '-'
-            status = 'not completed'
-
-        rows.append((str(loc), num_hru, num_seg, num_poi, status))
-
-    return rows
-
-
-def print_summary_table(rows: list[SummaryRow]):
-    """Print a summary table of the batch extraction to the console.
-
-    :param rows: Summary rows from :func:`collect_summary_rows`
-    """
-
-    table = Table(title='Bandit extraction summary')
-    table.add_column('Location')
-    table.add_column('HRUs', justify='right')
-    table.add_column('Segments', justify='right')
-    table.add_column('POIs', justify='right')
-    table.add_column('Status')
-
-    for loc, num_hru, num_seg, num_poi, status in rows:
-        if status == 'completed':
-            style = 'green4'
-        elif status.startswith('skipped'):
-            style = 'dark_orange3'
-        else:
-            style = 'red'
-
-        table.add_row(str(loc), str(num_hru), str(num_seg), str(num_poi),
-                      f'[{style}]{status}[/]')
-
-    con.print(table)
-
-
-def write_summary_report(report_path: str | Path, rows: list[SummaryRow]):
-    """Write an HTML table summarizing each location extraction.
-
-    :param report_path: Path of the HTML report to write
-    :param rows: Summary rows from :func:`collect_summary_rows`
-    """
-
-    generated = datetime.datetime.now().isoformat(timespec='seconds')
-
-    lines = ['<!DOCTYPE html>',
-             '<html lang="en">',
-             '<head>',
-             '<meta charset="utf-8">',
-             '<title>Bandit extraction summary</title>',
-             '<style>',
-             'body { font-family: sans-serif; margin: 2em; }',
-             'table { border-collapse: collapse; }',
-             'th, td { border: 1px solid #ccc; padding: 4px 10px; text-align: right; }',
-             'th { background: #f0f0f0; }',
-             'td.loc, td.status { text-align: left; }',
-             '</style>',
-             '</head>',
-             '<body>',
-             '<h1>Bandit extraction summary</h1>',
-             f'<p>Generated {html.escape(generated)}</p>',
-             '<table>',
-             '<thead>',
-             '<tr><th>Location</th><th>HRUs</th><th>Segments</th>'
-             '<th>POIs</th><th>Status</th></tr>',
-             '</thead>',
-             '<tbody>']
-
-    for loc, num_hru, num_seg, num_poi, status in rows:
-        lines.append(f'<tr><td class="loc">{html.escape(str(loc))}</td>'
-                     f'<td>{html.escape(str(num_hru))}</td>'
-                     f'<td>{html.escape(str(num_seg))}</td>'
-                     f'<td>{html.escape(str(num_poi))}</td>'
-                     f'<td class="status">{html.escape(status)}</td></tr>')
-
-    lines.extend(['</tbody>', '</table>', '</body>', '</html>', ''])
-
-    with open(report_path, 'w') as fhdl:
-        fhdl.write('\n'.join(lines))
-
-
 app = App(default_parameter=Parameter(negative=()))
 
 
@@ -542,22 +269,10 @@ def multi_locations(seg_outlets: Annotated[Path, Parameter(name=['--seg_outlets'
         noroute_hrus_by_loc = read_values(nr_hrus)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Setup validated and there is work to do: initialize the worker pool.
+    # Setup validated and there is work to do: build the per-location commands,
+    # writing each run's config, then run them through the pool.
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    cmd_q: queue.Queue = queue.Queue()
-    result_q: queue.Queue = queue.Queue()
-
-    # No point starting more workers than there are extractions to run
-    pool_size = min(num_threads, len(segments_by_loc))
-
-    # Create pool of threads
-    pool = [WorkerThread(input_q=cmd_q, result_q=result_q) for __ in range(pool_size)]
-
-    # Start the threads
-    for thread in pool:
-        thread.start()
-
-    work_count = 0
+    commands: list[list[str]] = []
 
     # Map each location to the directory its extraction runs in, so the
     # per-run summaries can be collected into a roll-up report afterward.
@@ -584,65 +299,19 @@ def multi_locations(seg_outlets: Annotated[Path, Parameter(name=['--seg_outlets'
 
         config.write(f'{cdir}/bandit.cfg')
 
-        # Add bandit job to the processing queue
-        work_count += 1
-        cmd = [cmd_bandit] + passthrough_args + ['--job-dir', f'{job_dir}/{cdir}']
+        commands.append([cmd_bandit] + passthrough_args + ['--job-dir', f'{job_dir}/{cdir}'])
 
-        cmd_q.put(cmd)
+    con.print(f'Total number of locations: {len(commands)}')
 
-    total_jobs = work_count
-    con.print(f'Total number of locations: {total_jobs}')
-
-    # Collect results, displaying a progress bar as extractions complete
-    progress = Progress(SpinnerColumn(),
-                        TextColumn('[progress.description]{task.description}'),
-                        BarColumn(),
-                        MofNCompleteColumn(),
-                        TaskProgressColumn(),
-                        TextColumn('•'),
-                        TimeElapsedColumn(),
-                        TextColumn('elapsed •'),
-                        TimeRemainingColumn(),
-                        TextColumn('remaining'),
-                        console=con)
-
-    aborted = False
-
-    with progress:
-        task = progress.add_task('Extracting', total=total_jobs)
-
-        remaining = total_jobs
-        while remaining > 0:
-            try:
-                result = result_q.get()
-            except KeyboardInterrupt:
-                con.print('\n[gold3]Interrupted[/]: stopping remaining extractions')
-                aborted = True
-                break
-
-            progress.advance(task)
-            remaining -= 1
-
-            if result.retcode != 0 and result.retcode < BANDIT_ERROR_FLOOR:
-                # An error occurred running the command. Return codes at or
-                # above BANDIT_ERROR_FLOOR are generated by bandit extraction
-                # errors that don't necessitate shutting the entire job down.
-                con.print(f'[red]ERROR[/]: Thread {result.thread} return code = {result.retcode} '
-                          f'({" ".join(result.cmd)})')
-                aborted = True
-                break
-
-    # Stop the workers, discarding any extractions that have not yet started.
-    # Extractions already running are allowed to finish.
-    stop_pool(pool, cmd_q)
+    aborted = run_worker_pool(commands, num_threads)
 
     # Build a roll-up report from the per-run summaries. This runs even on an
     # abort so the report reflects whatever extractions did complete.
     rows = collect_summary_rows(dir_by_loc, job_dir)
-    print_summary_table(rows)
+    print_summary_table(rows, label='Location')
 
     report = Path(job_dir) / 'extraction_summary.html'
-    write_summary_report(report, rows)
+    write_summary_report(report, rows, label='Location')
     con.print(f'Summary report: {report}')
 
     if aborted:
@@ -652,12 +321,7 @@ def multi_locations(seg_outlets: Annotated[Path, Parameter(name=['--seg_outlets'
 
 def main():
     """CLI entry point for batch Bandit extractions by location."""
-    try:
-        app()
-    except BanditError as err:
-        bandit_log.error(str(err))
-        con.print(f'[red]ERROR[/]: {err}')
-        sys.exit(err.exit_code)
+    run_cli(app)
 
 
 if __name__ == '__main__':
