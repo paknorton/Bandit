@@ -6,7 +6,6 @@ import logging
 import numpy as np
 import os
 import pyogrio as pyg  # type: ignore
-import sys
 import time
 
 from cyclopts import App, Parameter, validators
@@ -23,14 +22,13 @@ from pyPRMS.metadata.metadata import MetaData   # type: ignore
 from pyPRMS.prms_helpers import set_date   # type: ignore
 
 from Bandit import __version__
+from Bandit.cli_shared import run_cli
 from Bandit.config_validator import ConfigValidator
 from Bandit.exceptions import BanditError
 # from Bandit.git_version import git_commit, git_repo, git_branch, git_commit_url
 from Bandit.git_version import Repo
-from Bandit.bandit_helpers import write_gis
+from Bandit.bandit_helpers import write_gis, write_streamflow
 from Bandit.model_output import ModelOutput
-from Bandit.points_of_interest import POI   # type: ignore
-from Bandit.WDFN import WDFNStreamflow
 import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
 
@@ -366,13 +364,12 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         # Write streamflow
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         if config.output_streamflow:
-            # Single-HRU extractions have no POIs, so a dummy streamgage of
-            # missing values is written. WDFNStreamflow produces the dummy
-            # record directly when given no gage IDs.
+            # Single-HRU extractions have no POIs, so write_streamflow() writes
+            # a dummy streamgage of missing values (empty gage list).
             if verbose:
                 con.print('Writing dummy streamflow data file', style='green4')
-            streamflow = WDFNStreamflow(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
-            streamflow.write_ascii(filename=sg_dir / f'{config.streamflow_filename}')
+            write_streamflow(config, poi_gage_ids=[], st_date=st_date, en_date=en_date,
+                             out_path=sg_dir / config.streamflow_filename, verbose=verbose)
 
         # *******************************************
         # Create a shapefile of the selected HRUs
@@ -454,12 +451,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
 def main():
     """CLI entry point for single-HRU Bandit extractions."""
-    try:
-        app()
-    except BanditError as err:
-        bandit_log.error(str(err))
-        con.print(f'[red]ERROR[/]: {err}')
-        sys.exit(err.exit_code)
+    run_cli(app, logger=bandit_log)
 
 
 if __name__ == '__main__':
