@@ -132,15 +132,78 @@ class Repo:
 
         return url
 
-    def checkout(self, bct: str) -> None:
+    def resolve_commit(self, revision: str) -> Optional[str]:
+        """Resolve a branch, commit, or tag to its full commit hash.
+
+        A partial commit hash is accepted as long as it is unambiguous within
+        the repository.
+
+        :param revision: branch name, commit hash (full or partial), or tag
+        :returns: the full commit hash, or None when ``revision`` does not
+                  resolve to a commit in this repository
+        """
+
+        # `<rev>^{commit}` forces resolution to a commit object, so an
+        # annotated tag is dereferenced to the commit it points at. git
+        # rev-parse resolves an unambiguous partial hash to the full hash.
+        result = self._git('rev-parse', '--verify', '--quiet', f'{revision}^{{commit}}',
+                           allowed_codes=(0, 1))
+        if result.returncode != 0:
+            return None
+
+        resolved = result.stdout.strip()
+        return resolved if resolved else None
+
+    def matches_revision(self, revision: Optional[str]) -> bool:
+        """Check whether the repository is currently at the given revision.
+
+        The ``revision`` may be a branch name, a tag, or a commit hash (full or
+        partial). A partial commit hash matches when it is a prefix of the
+        current commit hash (and, when it resolves through git, when it points
+        at the current commit).
+
+        An empty or ``None`` ``revision`` means no revision was requested and is
+        always treated as a match.
+
+        :param revision: branch, commit, or tag to compare against HEAD
+        :returns: True when the repository is at ``revision`` (or no revision
+                  was requested)
+        """
+
+        if revision is None or revision.strip() == '':
+            # No revision requested; nothing to check against.
+            return True
+
+        revision = revision.strip()
+        current_commit = self.commit
+
+        # Direct match on the current branch name.
+        if revision == self.branch:
+            return True
+
+        # A (possibly partial) commit hash that is a prefix of HEAD's commit.
+        # Covers a detached checkout at a specific commit, where there is no
+        # branch to match on.
+        lowered = revision.lower()
+        if (all(ch in '0123456789abcdef' for ch in lowered)
+                and len(lowered) >= 4
+                and current_commit.lower().startswith(lowered)):
+            return True
+
+        # Resolve the revision through git (handles branches, tags, and
+        # unambiguous partial commits) and compare to the current commit.
+        resolved = self.resolve_commit(revision)
+        return resolved is not None and resolved == current_commit
+
+    def checkout(self, revision: str) -> None:
         """Checkout a branch, commit, or tag.
 
         Commits or tags always have HEAD detached.
 
-        :param bct: branch name, commit hash, or tag to check out
-        :raises BanditError: if ``bct`` is not a valid branch, commit, or tag
+        :param revision: branch name, commit hash, or tag to check out
+        :raises BanditError: if ``revision`` is not a valid branch, commit, or tag
         """
 
-        res = self._git('checkout', bct, allowed_codes=(0, 1))
+        res = self._git('checkout', revision, allowed_codes=(0, 1))
         if res.returncode == 1:
-            raise BanditError(f'Invalid branch, commit, or tag: {bct}')
+            raise BanditError(f'Invalid branch, commit, or tag: {revision}')

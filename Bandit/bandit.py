@@ -61,12 +61,17 @@ root.setLevel(logging.INFO)
 
 log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
 
-# Handler for console logs
-clog = logging.StreamHandler()
-clog.setLevel(logging.ERROR)
-clog.setFormatter(log_fmt)
-
-bandit_log.addHandler(clog)
+# User-facing console output is written explicitly with con.print(); the
+# bandit_log logger is used only to record messages in bandit.log. The two are
+# kept separate so a logged error is not also echoed to the console (which
+# previously produced a duplicate line alongside the con.print() message).
+#
+# A NullHandler keeps the logging framework from falling back to its
+# last-resort stderr handler when no file handler is attached (e.g. after the
+# per-run handler is removed, or before it is added). Records still propagate
+# to the root logger's file handler while it is attached, so they land in
+# bandit.log without ever being written to the console.
+bandit_log.addHandler(logging.NullHandler())
 
 # NOTE: The log file handler is added inside extract() *after* any change into
 # the job directory, so that bandit.log is written in the directory the
@@ -210,6 +215,20 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         bandit_log.info(f'Parameter database: {git_url}')
         bandit_log.info(f'Branch: {git_branch}')
         bandit_log.info(f'Commit: {git_commit}')
+
+        # When the config requests a specific parameter database revision,
+        # verify the paramdb is actually checked out at that branch, commit,
+        # or tag before extracting against it. Log the mismatch here (while the
+        # per-run file handler is attached) so it is recorded in bandit.log;
+        # the single console message is emitted by main() when it catches the
+        # BanditError.
+        cfg_revision = config.revision if config.exists('revision') else ''
+        if cfg_revision and not pdb_repo.matches_revision(cfg_revision):
+            msg = (f"Parameter database revision mismatch: config 'revision' is "
+                   f"'{cfg_revision}' but paramdb is on branch '{git_branch}' "
+                   f"(commit {git_commit})")
+            bandit_log.error(msg)
+            raise BanditError(msg, exit_code=2)
 
         # client = Client(threads_per_worker=1)
         with Client() as client:

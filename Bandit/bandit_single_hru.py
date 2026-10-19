@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import os
 import pyogrio as pyg  # type: ignore
+import sys
 import time
 
 from cyclopts import App, Parameter, validators
@@ -52,18 +53,19 @@ root.setLevel(logging.INFO)
 
 log_fmt = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
 
-# Handler for console logs
-clog = logging.StreamHandler()
-clog.setLevel(logging.ERROR)
-clog.setFormatter(log_fmt)
-
 # Handler for logging to file
 flog = logging.FileHandler(f'{os.getcwd()}/bandit.log')
 flog.setLevel(logging.INFO)
 flog.setFormatter(log_fmt)
 
 root.addHandler(flog)
-bandit_log.addHandler(clog)
+
+# User-facing console output is written explicitly with con.print(); the
+# bandit_log logger is used only to record messages in bandit.log. Keeping the
+# two separate avoids echoing a logged error to the console as a duplicate of
+# the con.print() message. The NullHandler keeps the logging framework from
+# falling back to its last-resort stderr handler.
+bandit_log.addHandler(logging.NullHandler())
 
 app = App(default_parameter=Parameter(negative=()))
 
@@ -165,6 +167,16 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     bandit_log.info(f'Parameter database: {git_url}')
     bandit_log.info(f'Branch: {git_branch}')
     bandit_log.info(f'Commit: {git_commit}')
+
+    # When the config requests a specific parameter database revision, verify
+    # the paramdb is actually checked out at that branch, commit, or tag
+    # before extracting against it. The BanditError is surfaced to the console
+    # and log by the top-level handler in main().
+    cfg_revision = config.revision if config.exists('revision') else ''
+    if cfg_revision and not pdb_repo.matches_revision(cfg_revision):
+        raise BanditError(f"Parameter database revision mismatch: config 'revision' is "
+                          f"'{cfg_revision}' but paramdb is on branch '{git_branch}' "
+                          f"(commit {git_commit})", exit_code=2)
 
     # Load the NHMparamdb
     if verbose:
@@ -439,8 +451,14 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
 
 
 def main():
-    app()
+    """CLI entry point for single-HRU Bandit extractions."""
+    try:
+        app()
+    except BanditError as err:
+        bandit_log.error(str(err))
+        con.print(f'[red]ERROR[/]: {err}')
+        sys.exit(err.exit_code)
 
 
 if __name__ == '__main__':
-    app()
+    main()
