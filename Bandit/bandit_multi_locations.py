@@ -42,6 +42,7 @@ from pyPRMS.base.console import get_console_instance   # type: ignore
 
 from Bandit import bandit_cfg as bc
 from Bandit.exceptions import BanditError
+from Bandit.git_version import Repo
 
 __author__ = 'Parker Norton (pnorton@usgs.gov)'
 
@@ -73,8 +74,36 @@ class Result(NamedTuple):
     retcode: int         # Process return code (-1 if it failed to launch)
 
 
-# Setup logging
+# Setup logging. User-facing output is written explicitly with con.print();
+# the bandit_log logger records messages without echoing them to the console.
+# The NullHandler keeps the logging framework from falling back to its
+# last-resort stderr handler when no file handler is attached.
 bandit_log = logging.getLogger('bandit')
+bandit_log.addHandler(logging.NullHandler())
+
+
+def check_paramdb_revision(config: bc.Cfg):
+    """Verify the parameter database is at the revision named in the config.
+
+    When the config's ``revision`` variable is set, the parameter database at
+    ``paramdb_dir`` must currently be checked out at that branch, commit (full
+    or partial), or tag. An empty ``revision`` skips the check.
+
+    :param config: Loaded Bandit configuration
+    :raises BanditError: If the paramdb is not at the requested revision
+    """
+
+    cfg_revision = config.revision if config.exists('revision') else ''
+    if not cfg_revision:
+        return
+
+    pdb_repo = Repo(config.paramdb_dir)
+    if not pdb_repo.matches_revision(cfg_revision):
+        # The BanditError is surfaced to the console and log by the top-level
+        # handler in main().
+        raise BanditError(f"Parameter database revision mismatch: config 'revision' is "
+                          f"'{cfg_revision}' but paramdb is on branch '{pdb_repo.branch}' "
+                          f"(commit {pdb_repo.commit})", exit_code=2)
 
 
 class WorkerThread(threading.Thread):
@@ -484,6 +513,11 @@ def multi_locations(seg_outlets: Annotated[Path, Parameter(name=['--seg_outlets'
 
     # Update control_filename to include the main extraction path
     config.update_value('control_filename', f'{job_dir}/control.default')
+
+    # When the config requests a specific parameter database revision, verify
+    # the paramdb is actually checked out at that branch, commit, or tag before
+    # launching any extractions.
+    check_paramdb_revision(config)
 
     # Read the segment outlets by location
     segments_by_loc = read_outlets(seg_outlets)
