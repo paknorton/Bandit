@@ -36,9 +36,9 @@ from Bandit.git_version import Repo
 from Bandit.model_output import ModelOutput
 from Bandit.points_of_interest import POI   # type: ignore
 from Bandit.streamgage_report import generate_report, ReportError
+from Bandit.WDFN import WDFNStreamflow
 import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
-import Bandit.prms_nwis as prms_nwis   # type: ignore
 
 import warnings
 warnings.filterwarnings('ignore', message=r'.*Measured \(M\) geometry types are not supported.*')
@@ -506,7 +506,14 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                     if verbose:
                         con.print(f'[green4]INFO[/]: Retrieving streamgage observations for {len(new_poi_gage_id)} stations', style='green4')
 
-                    if config.exists('poi_dir') and config.poi_dir != '':
+                    wdfn_api_key = config.wdfn_api_key if config.exists('wdfn_api_key') else None
+
+                    # poi_dir may be absent, an empty string, or a bare YAML key
+                    # (parsed as None); treat all of those as "no local cache".
+                    poi_dir = config.poi_dir if config.exists('poi_dir') else None
+                    has_poi_dir = poi_dir is not None and str(poi_dir).strip() != ''
+
+                    if has_poi_dir:
                         bandit_log.info('Retrieving POIs from local HYDAT and NWIS cache files')
 
                         # When ad-hoc gages were supplied on the command line,
@@ -514,30 +521,38 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                         # observations in the cached POI source files. Gages
                         # that cannot be retrieved fall back to NaN entries.
                         online_lookup = bool(addl_gages)
-                        wdfn_api_key = config.wdfn_api_key if config.exists('wdfn_api_key') else None
 
-                        streamflow = POI(src_path=config.poi_dir, st_date=st_date, en_date=en_date,
+                        streamflow = POI(src_path=poi_dir, st_date=st_date, en_date=en_date,
                                          gage_ids=new_poi_gage_id, online_lookup=online_lookup,
                                          api_key=wdfn_api_key, verbose=verbose)
                     else:
-                        # Default to retrieving only NWIS stations from waterservices.usgs.gov
-                        bandit_log.info('No poi_dir: retrieving only NWIS POIs from online NWIS service.')
-                        streamflow = prms_nwis.NWIS(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
-                                                    verbose=verbose)
-                        streamflow.get_daily_streamgage_observations()
+                        # No local POI cache: retrieve observations online from
+                        # the USGS Water Data (WDFN) service. This replaces the
+                        # retired NWIS web service (waterservices.usgs.gov).
+                        bandit_log.info('No poi_dir: retrieving POIs online from the USGS WDFN service.')
+                        streamflow = WDFNStreamflow(gage_ids=new_poi_gage_id, st_date=st_date, en_date=en_date,
+                                                    api_key=wdfn_api_key, verbose=verbose)
 
                     if streamflow_netcdf:
                         streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
                     else:
                         streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
                 else:
-                    # TODO: 2025-03-25 PAN - this should write a netcdf file if that option was selected
+                    # No POIs in the model subset. PRMS still expects a runoff
+                    # file, so write a single dummy streamgage of missing values
+                    # in the requested format (netCDF or ASCII).
                     if verbose:
                         con.print('[green4]WARNING[/]: No POIs exist in model subset; writing dummy data', style='gold3')
-                    streamflow = prms_nwis.NWIS(gage_ids=None, st_date=st_date, en_date=en_date, verbose=verbose)
-                    streamflow.get_daily_streamgage_observations()
-                    streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
-                    bandit_log.info(f'No POIs exist in model subset; dummy data written.')
+
+                    wdfn_api_key = config.wdfn_api_key if config.exists('wdfn_api_key') else None
+                    streamflow = WDFNStreamflow(gage_ids=None, st_date=st_date, en_date=en_date,
+                                                api_key=wdfn_api_key, verbose=verbose)
+
+                    if streamflow_netcdf:
+                        streamflow.write_netcdf(filename=outdir / f'{config.streamflow_filename}.nc')
+                    else:
+                        streamflow.write_ascii(filename=outdir / f'{config.streamflow_filename}')
+                    bandit_log.info('No POIs exist in model subset; dummy data written.')
 
             # *******************************************
             # Create a shapefile of the selected HRUs

@@ -26,15 +26,21 @@ import json
 import logging
 import time
 
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional, Union
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+import netCDF4 as nc  # type: ignore
 import numpy as np
 import pandas as pd  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+# Placeholder gage ID used when a model subset contains no POIs. PRMS still
+# expects a runoff file, so a single all-missing streamgage is written.
+DUMMY_GAGE_ID = '00000000'
 
 # ===========================================================================
 # Configuration
@@ -279,3 +285,259 @@ def _request_with_retry(url: str) -> Optional[Dict]:
 
     logger.error(f'WDFN gave up after {MAX_RETRIES} retries for URL: {url[:200]}')
     return None
+
+
+# ===========================================================================
+# Streamflow writer
+# ===========================================================================
+
+class WDFNStreamflow:
+    """Daily streamflow observations retrieved from the USGS WDFN service.
+
+    This is the online-only replacement for the retired NWIS web service
+    (``waterservices.usgs.gov``). It retrieves daily mean discharge and
+    monitoring-location metadata for a set of streamgages from the USGS Water
+    Data API and writes them to PRMS-format ASCII or netCDF files, matching the
+    output produced by :class:`Bandit.points_of_interest.POI`.
+
+    When no streamgages are supplied (a model subset with no POIs), a single
+    dummy streamgage of all-missing values is produced so a valid runoff file
+    is still written.
+    """
+
+    def __init__(self,
+                 gage_ids: Optional[List[str]],
+                 st_date: datetime.datetime,
+                 en_date: datetime.datetime,
+                 api_key: Optional[str] = None,
+                 verbose: bool = False):
+        """Create the WDFNStreamflow object and retrieve observations.
+
+        :param gage_ids: list of NWIS gage IDs to retrieve; an empty list or
+            None produces a single dummy streamgage of missing values
+        :param st_date: start date for retrieving streamgage observations
+        :param en_date: end date for retrieving streamgage observations
+        :param api_key: optional USGS Water Data API key for the WDFN lookup
+        :param verbose: output additional information
+        """
+
+        logger.info('WDFNStreamflow instance')
+
+        self.__stdate = st_date
+        self.__endate = en_date
+        self.__api_key = api_key
+        self.__verbose = verbose
+
+        self.__date_range = pd.date_range(start=st_date, end=en_date, freq='D')
+
+        # An empty/None gage list means the model subset has no POIs; write a
+        # single dummy streamgage so PRMS still gets a valid runoff file.
+        self.__is_dummy = not gage_ids
+        self.__gageids: List[str] = list(gage_ids) if gage_ids else [DUMMY_GAGE_ID]
+
+        # discharge: date (rows) x gage (columns); metadata: gage -> dict
+        self.__discharge: pd.DataFrame
+        self.__meta: Dict[str, Dict]
+
+        self._retrieve()
+
+    def _retrieve(self):
+        """Retrieve discharge and metadata from WDFN (unless this is a dummy)."""
+
+        if self.__is_dummy:
+            logger.warning('No streamgages provided - dummy entry created.')
+            self.__discharge = pd.DataFrame(index=self.__date_range,
+                                            columns=self.__gageids)
+            self.__discharge.index.name = 'date'
+            self.__meta = {}
+            return
+
+        if self.__verbose:
+            logger.info(f'Retrieving {len(self.__gageids)} streamgage(s) from WDFN')
+
+        # Daily discharge: all-NaN columns for any gage WDFN has no data for.
+        # Any failure falls back to an all-NaN frame so a file is still written.
+        try:
+            self.__discharge = get_daily_streamflow(gage_ids=self.__gageids,
+                                                    st_date=self.__stdate,
+                                                    en_date=self.__endate,
+                                                    api_key=self.__api_key)
+        except Exception as err:   # noqa: BLE001 - fall back to NaN on any failure
+            logger.warning(f'WDFN streamflow lookup failed for {self.__gageids}: {err}')
+            self.__discharge = pd.DataFrame(index=self.__date_range,
+                                            columns=self.__gageids)
+            self.__discharge.index.name = 'date'
+
+        # Monitoring-location metadata is best-effort.
+        try:
+            self.__meta = get_monitoring_locations(gage_ids=self.__gageids,
+                                                   api_key=self.__api_key)
+        except Exception as err:   # noqa: BLE001 - metadata is best-effort
+            logger.warning(f'WDFN metadata lookup failed for {self.__gageids}: {err}')
+            self.__meta = {}
+
+    @property
+    def data(self) -> pd.DataFrame:
+        """Get the discharge dataframe (date rows x gage columns).
+
+        :returns: DataFrame of daily discharge indexed by date
+        """
+        return self.__discharge
+
+    def _discharge_by_date(self) -> pd.DataFrame:
+        """Return discharge as a date-indexed frame with one column per gage.
+
+        Columns are ordered to match ``gage_ids`` and the index spans the full
+        requested date range, so every day is present (NaN where missing).
+
+        :returns: DataFrame indexed by date with one discharge column per gage
+        """
+
+        data = self.__discharge.reindex(index=self.__date_range,
+                                        columns=self.__gageids)
+        data.index.name = 'date'
+        return data
+
+    def _meta_value(self, gage_id: str, key: str, default):
+        """Look up a metadata value for a gage, falling back to a default.
+
+        :param gage_id: streamgage ID
+        :param key: metadata key (e.g. ``latitude``)
+        :param default: value to use when the gage or key is missing
+        :returns: the metadata value or the default
+        """
+
+        value = self.__meta.get(gage_id, {}).get(key)
+        if value is None:
+            return default
+        if isinstance(value, float) and np.isnan(value):
+            return default
+        return value
+
+    def write_ascii(self, filename: Union[str, Path]):
+        """Write streamgage observations to a file in PRMS format.
+
+        :param filename: name of the file to create
+        """
+
+        data = self._discharge_by_date()
+
+        # Prepend the date component columns in the order PRMS expects.
+        out_order = list(self.__gageids)
+        for cc in ['second', 'minute', 'hour', 'day', 'month', 'year']:
+            out_order.insert(0, cc)
+
+        data['year'] = data.index.year
+        data['month'] = data.index.month
+        data['day'] = data.index.day
+        data['hour'] = data.index.hour
+        data['minute'] = data.index.minute
+        data['second'] = data.index.second
+        data.fillna(-999, inplace=True)
+
+        with open(filename, 'w') as outhdl:
+            outhdl.write('Created by Bandit\n')
+            outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
+            outhdl.write('// Station IDs for runoff:\n')
+            outhdl.write('// ID\n')
+
+            for gg in self.__gageids:
+                outhdl.write(f'// {gg}\n')
+
+            outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
+            outhdl.write('// Unit: runoff = cfs\n')
+            outhdl.write('/////////////////////////////////////////////////////////////////////////\n')
+            outhdl.write(f'runoff {len(self.__gageids)}\n')
+            outhdl.write('#########################################################\n')
+
+            data.to_csv(outhdl, sep=' ', columns=out_order, index=False, header=False)
+
+        if self.__verbose:
+            logger.info(f'Streamflow data written to: {filename}')
+
+    def write_netcdf(self, filename: Union[str, Path]):
+        """Write streamgage observations to a netCDF format file.
+
+        :param filename: name of the netCDF file to create
+        """
+
+        data = self._discharge_by_date()
+
+        poiname_list = [str(self._meta_value(gg, 'poi_name', '')) for gg in self.__gageids]
+
+        max_poiid_len = len(max(self.__gageids, key=len))
+        max_poiname_len = max(len(max(poiname_list, key=len)), 1)
+
+        nco = nc.Dataset(filename, 'w', clobber=True)
+
+        # Create the dimensions
+        nco.createDimension('poiid_nchars', max_poiid_len)
+        nco.createDimension('poi_id', len(self.__gageids))
+        nco.createDimension('poiname_nchars', max_poiname_len)
+        nco.createDimension('time', None)
+
+        reference_time = self.__stdate.strftime('%Y-%m-%d %H:%M:%S')
+        cal_type = 'standard'
+
+        # Create the variables
+        timeo = nco.createVariable('time', 'f4', 'time')
+        timeo.calendar = cal_type
+        timeo.units = f'days since {reference_time}'
+
+        poiido = nco.createVariable('poi_id', 'S1', ('poi_id', 'poiid_nchars'), zlib=True)
+        poiido.long_name = 'Point-of-Interest ID'
+        poiido.cf_role = 'timeseries_id'
+        poiido._Encoding = 'ascii'
+
+        poinameo = nco.createVariable('poi_name', 'S1', ('poi_id', 'poiname_nchars'), zlib=True)
+        poinameo.long_name = 'Name of POI station'
+
+        lato = nco.createVariable('latitude', 'f4', 'poi_id', zlib=True)
+        lato.long_name = 'Latitude'
+        lato.units = 'degrees_north'
+
+        lono = nco.createVariable('longitude', 'f4', 'poi_id', zlib=True)
+        lono.long_name = 'Longitude'
+        lono.units = 'degrees_east'
+
+        draino = nco.createVariable('drainage_area', 'f4', 'poi_id',
+                                    fill_value=nc.default_fillvals['f4'], zlib=True)
+        draino.long_name = 'Drainage Area'
+        draino.units = 'mi2'
+
+        draineffo = nco.createVariable('drainage_area_contrib', 'f4', 'poi_id',
+                                       fill_value=nc.default_fillvals['f4'], zlib=True)
+        draineffo.long_name = 'Effective drainage area'
+        draineffo.units = 'mi2'
+
+        varo = nco.createVariable('discharge', 'f4', ('poi_id', 'time'),
+                                  fill_value=nc.default_fillvals['f4'], zlib=True)
+        varo.long_name = 'discharge'
+        varo.units = 'ft3 s-1'
+
+        nco.setncattr('Description', 'POI data for PRMS')
+        nco.setncattr('FeatureType', 'timeSeries')
+
+        # Write the Streamgage IDs
+        poiido[:] = nc.stringtochar(np.array(self.__gageids).astype('S'))
+
+        timeo[:] = nc.date2num(pd.to_datetime(data.index).tolist(),
+                               units=f'days since {reference_time}',
+                               calendar=cal_type)
+
+        # Discharge is poi_id (rows) x time (columns) in the netCDF layout.
+        varo[:, :] = data.to_numpy(dtype=float).T
+
+        poinameo[:] = nc.stringtochar(np.array(poiname_list).astype('S'))
+        lato[:] = np.array([self._meta_value(gg, 'latitude', np.nan)
+                            for gg in self.__gageids], dtype=float)
+        lono[:] = np.array([self._meta_value(gg, 'longitude', np.nan)
+                            for gg in self.__gageids], dtype=float)
+        draino[:] = np.array([self._meta_value(gg, 'drainage_area', np.nan)
+                              for gg in self.__gageids], dtype=float)
+        draineffo[:] = np.array([self._meta_value(gg, 'drainage_area_contrib', np.nan)
+                                 for gg in self.__gageids], dtype=float)
+        nco.close()
+
+        if self.__verbose:
+            logger.info(f'Streamflow data written to: {filename}')
