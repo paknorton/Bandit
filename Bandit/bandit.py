@@ -15,9 +15,9 @@ from dask.distributed import Client
 from packaging.version import Version
 from pathlib import Path
 from rich.rule import Rule
-from typing import Annotated
+from typing import Annotated, TYPE_CHECKING
 
-from pyPRMS.base.console import get_console_instance
+from pyPRMS.base.console import get_console_instance   # type: ignore
 from pyPRMS import Cbh   # type: ignore
 from pyPRMS import ControlFile   # type: ignore
 from pyPRMS import ParamDb   # type: ignore
@@ -37,6 +37,10 @@ from Bandit.model_output import ModelOutput
 from Bandit.streamgage_report import generate_report, ReportError
 import Bandit.bandit_cfg as bc   # type: ignore
 import Bandit.dynamic_parameters as dyn_params
+
+if TYPE_CHECKING:
+    from Bandit.points_of_interest import POI
+    from Bandit.WDFN import WDFNStreamflow
 
 import warnings
 warnings.filterwarnings('ignore', message=r'.*Measured \(M\) geometry types are not supported.*')
@@ -132,7 +136,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     """
 
     if isinstance(prms_version, str):
-        prms_version: Version = Version(prms_version)
+        prms_version = Version(prms_version)
 
     stdir = os.getcwd()
     chdir_needed = False
@@ -496,6 +500,10 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Write streamflow
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Holds the streamflow object once written, so the optional
+            # streamgage report below can reuse it.
+            streamflow: POI | WDFNStreamflow | None = None
+
             if config.output_streamflow:
                 if verbose:
                     if len(new_poi_gage_id) > 0:
@@ -505,11 +513,11 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
                         con.print('[green4]WARNING[/]: No POIs exist in model subset; writing dummy data',
                                   style='gold3')
 
-                write_streamflow(config, poi_gage_ids=new_poi_gage_id,
-                                 st_date=st_date, en_date=en_date,
-                                 out_path=outdir / config.streamflow_filename,
-                                 netcdf=streamflow_netcdf, addl_gages=addl_gages,
-                                 verbose=verbose)
+                streamflow = write_streamflow(config, poi_gage_ids=new_poi_gage_id,
+                                              st_date=st_date, en_date=en_date,
+                                              out_path=outdir / config.streamflow_filename,
+                                              netcdf=streamflow_netcdf, addl_gages=addl_gages,
+                                              verbose=verbose)
 
             # *******************************************
             # Create a shapefile of the selected HRUs

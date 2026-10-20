@@ -13,7 +13,7 @@ from packaging.version import Version
 from pathlib import Path
 from typing import Annotated, Optional, Union
 
-from pyPRMS.base.console import get_console_instance
+from pyPRMS.base.console import get_console_instance   # type: ignore
 from pyPRMS import Cbh   # type: ignore
 from pyPRMS import ControlFile   # type: ignore
 from pyPRMS import ParamDb   # type: ignore
@@ -69,7 +69,7 @@ app = App(default_parameter=Parameter(negative=()))
 
 @app.default
 def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exists=True))] = Path('bandit.cfg'),
-            job_dir: Union[str, Path] = None,
+            job_dir: Optional[Union[str, Path]] = None,
             verbose: bool = False,
             cbh_netcdf: bool = False,
             model_output_netcdf: bool = False,
@@ -93,7 +93,7 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
     """
 
     if isinstance(prms_version, str):
-        prms_version: Version = Version(prms_version)
+        prms_version = Version(prms_version)
 
     stdir = os.getcwd()
 
@@ -251,11 +251,11 @@ def extract(config_file: Annotated[Path, Parameter(validator=validators.Path(exi
         # Process the parameters and create a parameter file for the subset
 
         # The following 5 variables are not used for single-HRU extractions
-        new_hru_segment = []
-        new_poi_gage_id = []
-        new_poi_gage_segment = []
-        new_poi_type = []
-        new_tosegment = []
+        new_hru_segment: list = []
+        new_poi_gage_id: list = []
+        new_poi_gage_segment: list = []
+        new_poi_type: list = []
+        new_tosegment: list = []
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Process the parameters and create a parameter file for the subset
         new_ps = pdb.create_subset(hru_order_subset, new_hru_segment, new_nhm_seg,
