@@ -59,6 +59,13 @@ config_tool = "Bandit.utilities.config_tool:main"
 minversion = "6.0"
 addopts = "--cov=Bandit --cov-report=term-missing --cov-report=xml:coverage.xml"
 testpaths = ["tests"]
+filterwarnings = [
+    # Cartopy 0.26 deprecated the module-level LONGITUDE_FORMATTER /
+    # LATITUDE_FORMATTER attributes; the warning is emitted by the companion
+    # pyPRMS library on import, not by Bandit. Silence it here until pyPRMS is
+    # updated to use LongitudeFormatter / LatitudeFormatter.
+    "ignore:The (LONGITUDE|LATITUDE)_FORMATTER module-level attribute was deprecated:DeprecationWarning",
+]
 
 [tool.mypy]
 python_version = "3.10"
