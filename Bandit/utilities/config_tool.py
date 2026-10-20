@@ -418,6 +418,12 @@ def update(source_config: Annotated[Path, Parameter(validator=validators.Path(ex
 
     include_set = _resolve_include(include)
 
+    # Keys literally present in the target file. Cfg.exists() also reports True
+    # for any name that merely has a built-in default, which would let a source
+    # variable absent from the target (but a known default, e.g. dyn_params_dir)
+    # slip past the guard below and then raise KeyError in update_value().
+    target_keys = set(_config_keys(target))
+
     updated: List[Tuple[str, Any, Any]] = []
 
     # Report date mismatches that are not being updated, so the user is aware
@@ -451,8 +457,10 @@ def update(source_config: Annotated[Path, Parameter(validator=validators.Path(ex
                 updated.extend(gis_updates)
             continue
 
-        if not target.exists(name):
-            # Variable not present in the target; skip rather than inject new keys.
+        if name not in target_keys:
+            # Variable not present in the target file; skip rather than inject
+            # new keys (a key that merely has a built-in default does not count
+            # as present).
             continue
 
         target_val = target.get_value(name)
