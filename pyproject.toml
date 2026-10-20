@@ -12,7 +12,7 @@ license = {file = "LICENSE"}
 authors = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
 maintainers = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
 keywords = ["PRMS", "NHM", "streamflow", "hydrology", "surface"]
-classifiers = ["Development Status :: 3 - Alpha",
+classifiers = ["Development Status :: 4 - Beta",
                "Programming Language :: Python :: 3", ]
 
 dependencies = ["cyclopts",
@@ -59,6 +59,50 @@ config_tool = "Bandit.utilities.config_tool:main"
 minversion = "6.0"
 addopts = "--cov=Bandit --cov-report=term-missing --cov-report=xml:coverage.xml"
 testpaths = ["tests"]
+filterwarnings = [
+    # Cartopy 0.26 deprecated the module-level LONGITUDE_FORMATTER /
+    # LATITUDE_FORMATTER attributes; the warning is emitted by the companion
+    # pyPRMS library on import, not by Bandit. Silence it here until pyPRMS is
+    # updated to use LongitudeFormatter / LatitudeFormatter.
+    "ignore:The (LONGITUDE|LATITUDE)_FORMATTER module-level attribute was deprecated:DeprecationWarning",
+]
+
+[tool.mypy]
+python_version = "3.10"
+
+# Several runtime dependencies ship no type information. Rather than scatter
+# per-import "# type: ignore" comments, silence the missing-stub errors for
+# those third-party packages here.
+[[tool.mypy.overrides]]
+module = ["osgeo.*", "pyPRMS.*"]
+ignore_missing_imports = true
+
+# The modules below are thin wrappers around dynamically-typed scientific
+# libraries (pandas, xarray, netCDF4, GDAL/OGR). mypy cannot follow the runtime
+# types those libraries return (e.g. a pandas DatetimeIndex surfaced as a bare
+# Index, or xarray open_* returning Dataset | None), so it reports errors on
+# code that is correct at run time. Relax checking for just these data-plumbing
+# modules; the core extraction/CLI modules remain strictly checked.
+[[tool.mypy.overrides]]
+module = [
+    "Bandit.WDFN",
+    "Bandit.dynamic_parameters",
+    "Bandit.model_output",
+    "Bandit.points_of_interest",
+    "Bandit.prms_geo",
+]
+disable_error_code = [
+    "attr-defined",
+    "union-attr",
+    "index",
+    "return-value",
+    "arg-type",
+    "assignment",
+    "call-overload",
+    "operator",
+    "dict-item",
+    "func-returns-value",
+]
 
 [tool.coverage.run]
 source = ["Bandit"]

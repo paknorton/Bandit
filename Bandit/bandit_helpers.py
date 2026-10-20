@@ -1,7 +1,11 @@
 
 import logging
 
-from typing import Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Tuple, Union
+
+if TYPE_CHECKING:
+    from Bandit.points_of_interest import POI
+    from Bandit.WDFN import WDFNStreamflow
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +64,7 @@ def write_streamflow(config,
                      out_path,
                      netcdf: bool = False,
                      addl_gages: Dict | None = None,
-                     verbose: bool = False) -> None:
+                     verbose: bool = False) -> 'Union[POI, WDFNStreamflow]':
     """Write streamflow observations for a model subset.
 
     Selects the streamflow source and writes it in the requested format
@@ -83,6 +87,8 @@ def write_streamflow(config,
     :param netcdf: write netCDF instead of PRMS ASCII when True
     :param addl_gages: ad-hoc gages supplied on the command line, if any
     :param verbose: output additional information
+    :returns: the streamflow object that was written (a POI or WDFNStreamflow),
+        so callers can reuse it (e.g. for the streamgage report)
     """
 
     from pathlib import Path
@@ -131,3 +137,5 @@ def write_streamflow(config,
         streamflow.write_netcdf(filename=out_path.with_suffix('.nc'))
     else:
         streamflow.write_ascii(filename=out_path)
+
+    return streamflow

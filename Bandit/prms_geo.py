@@ -49,7 +49,8 @@ class Geo(object):
 
         self.__filename = filename
         self.__layers: Optional[OrderedDictType] = None
-        self.__selected_layer = None
+        # Holds the OGR layer selected via select_layer(); None until selected.
+        self.__selected_layer: Optional[ogr.Layer] = None
 
         # Use OGR specific exceptions
         ogr.UseExceptions()
