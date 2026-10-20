@@ -1,5 +1,5 @@
 major = 0
-minor = 18
+minor = 19
 micro = 0
 __version__ = f"{major}.{minor}.{micro}"
 
