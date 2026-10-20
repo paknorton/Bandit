@@ -55,6 +55,22 @@ bandit_single_hru = "Bandit.bandit_single_hru:main"
 create_bandit_job = "Bandit.utilities.create_bandit_job:main"
 config_tool = "Bandit.utilities.config_tool:main"
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--cov=Bandit --cov-report=term-missing --cov-report=xml:coverage.xml"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["Bandit"]
+branch = true
+omit = ["*/src/netCDF4/_netCDF4.pyx", ]
+
+[tool.coverage.report]
+omit = ["*/src/netCDF4/_netCDF4.pyx", ]
+show_missing = true
+skip_covered = false
+precision = 1
+
 [tool.setuptools]
 include-package-data = false
 zip-safe = false
