@@ -1033,7 +1033,9 @@ def _build_index_map(features: List[dict],
               marker.on('mouseover', function() {{ this.setStyle({{ weight: 3 }}); }});
               marker.on('mouseout', function() {{ this.setStyle({{ weight: 1 }}); }});
           }}
-          marker.bindTooltip(p.station + ' (' + p.pct_text + ')');
+          var tooltip = p.station + ' (' + p.pct_text + ')';
+          if (p.name) {{ tooltip = p.station + ' - ' + p.name + ' (' + p.pct_text + ')'; }}
+          marker.bindTooltip(tooltip);
           marker.bindPopup(popup);
           return marker;
       }}
