@@ -8,12 +8,19 @@ description = "A set of command-line tools for extracting model subsets from the
 readme = "README.rst"
 dynamic = ["version"]
 requires-python = ">=3.10,<3.15"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE.md"]
 authors = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
 maintainers = [{name = "Parker Norton", email = "pnorton@usgs.gov"}, ]
-keywords = ["PRMS", "NHM", "streamflow", "hydrology", "surface"]
+keywords = ["PRMS", "NHM", "streamflow", "hydrology", "surface water"]
 classifiers = ["Development Status :: 4 - Beta",
-               "Programming Language :: Python :: 3", ]
+               "Programming Language :: Python :: 3",
+               "Programming Language :: Python :: 3 :: Only",
+               "Programming Language :: Python :: 3.10",
+               "Programming Language :: Python :: 3.11",
+               "Programming Language :: Python :: 3.12",
+               "Programming Language :: Python :: 3.13",
+               "Programming Language :: Python :: 3.14",]
 
 dependencies = ["cyclopts",
     "dask",
@@ -23,10 +30,6 @@ dependencies = ["cyclopts",
     "numpy",
     "pandas",
     "plotly",
-    # pyPRMS is the companion PRMS model file I/O library developed alongside
-    # Bandit by the USGS. It is required at runtime (imported throughout) but is
-    # distributed separately rather than via PyPI, so it is typically installed
-    # from source (e.g. pip install -e) into the same environment.
     "pyPRMS",
     "pyogrio>=0.4.2",
     "pyyaml",
@@ -40,9 +43,15 @@ dependencies = ["cyclopts",
 dev = ["hypothesis",
        "mypy",
        "mypy_extensions",
+       "pandas-stubs",
        "pytest",
        "pytest-cov",
-       "pytest-xdist",]
+       "pytest-xdist",
+       "pytest-datafiles",
+       "coverage[toml]",
+       "sphinx",
+       "sphinx-autodoc-typehints",
+       "sphinx-book-theme",]
 
 [project.urls]
 Repository = "https://github.com/paknorton/Bandit.git"
